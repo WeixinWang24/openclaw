@@ -34,12 +34,13 @@ When you need to understand the source quickly, read in this order:
 1. this file
 2. `docs/concepts/architecture.md`
 3. `docs/gateway/protocol.md`
-4. `src/gateway/server-methods/chat.ts`
-5. `src/auto-reply/reply/get-reply.ts`
-6. `src/auto-reply/reply/get-reply-run.ts`
-7. `src/auto-reply/reply/agent-runner.ts`
-8. `src/auto-reply/reply/agent-runner-execution.ts`
-9. `src/hooks/internal-hooks.ts`
+4. `docs/concepts/execution-flow-observability-schema.md`
+5. `src/gateway/server-methods/chat.ts`
+6. `src/auto-reply/reply/get-reply.ts`
+7. `src/auto-reply/reply/get-reply-run.ts`
+8. `src/auto-reply/reply/agent-runner.ts`
+9. `src/auto-reply/reply/agent-runner-execution.ts`
+10. `src/hooks/internal-hooks.ts`
 
 ## Core source areas
 
