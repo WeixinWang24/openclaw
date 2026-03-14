@@ -8,6 +8,11 @@ import {
   isEmbeddedPiRunStreaming,
   resolveEmbeddedSessionLane,
 } from "../../agents/pi-embedded.js";
+import {
+  buildWorkflowPlanningGateText,
+  selectWorkflowForPlanning,
+  shouldRequireWorkflowPlanningGate,
+} from "../../agents/workflow-selector.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
   resolveGroupSessionKey,
@@ -387,6 +392,20 @@ export async function runPreparedReply(
   let prefixedCommandBody = mediaNote
     ? [mediaNote, mediaReplyHint, prefixedBody ?? ""].filter(Boolean).join("\n").trim()
     : prefixedBody;
+  const workflowPlanningGateText = shouldRequireWorkflowPlanningGate({
+    userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
+    workspaceDir,
+  })
+    ? buildWorkflowPlanningGateText(
+        selectWorkflowForPlanning({
+          userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
+          workspaceDir,
+        }),
+      )
+    : "";
+  if (workflowPlanningGateText) {
+    prefixedCommandBody = `${workflowPlanningGateText}\n\n${prefixedCommandBody}`.trim();
+  }
   if (!resolvedThinkLevel) {
     resolvedThinkLevel = await modelState.resolveDefaultThinkingLevel();
   }
@@ -432,7 +451,10 @@ export async function runPreparedReply(
   );
   // Use bodyWithEvents (events prepended, but no session hints / untrusted context) so
   // deferred turns receive system events while keeping the same scope as effectiveBaseBody did.
-  const queueBodyBase = [threadContextNote, bodyWithEvents].filter(Boolean).join("\n\n");
+  const queueBodyBaseRaw = [threadContextNote, bodyWithEvents].filter(Boolean).join("\n\n");
+  const queueBodyBase = workflowPlanningGateText
+    ? `${workflowPlanningGateText}\n\n${queueBodyBaseRaw}`.trim()
+    : queueBodyBaseRaw;
   const queuedBody = mediaNote
     ? [mediaNote, mediaReplyHint, queueBodyBase].filter(Boolean).join("\n").trim()
     : queueBodyBase;
