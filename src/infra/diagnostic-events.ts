@@ -133,6 +133,12 @@ export type DiagnosticDispatchPathEvent = DiagnosticBaseEvent & {
     | "getReply.directive.reply"
     | "getReply.inlineAction.reply"
     | "getReply.runPreparedReply"
+    | "runReplyAgent.entry"
+    | "runReplyAgent.active_run"
+    | "runReplyAgent.queue_short_circuit"
+    | "runReplyAgent.runOutcome.final"
+    | "runReplyAgent.payload.empty"
+    | "runReplyAgent.finalize"
     | "dispatch.return"
     | "chat.fallback.no_agent_run"
     | "chat.broadcast.final";
@@ -141,6 +147,9 @@ export type DiagnosticDispatchPathEvent = DiagnosticBaseEvent & {
   willCreateAgentRun?: boolean;
   willFallback?: boolean;
   queuedFinal?: boolean;
+  queueAction?: "drop" | "enqueue-followup" | "run-now";
+  runOutcomeKind?: "success" | "final";
+  activeRunDetected?: boolean;
   counts?: {
     final?: number;
     block?: number;
