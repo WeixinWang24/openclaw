@@ -9,7 +9,7 @@ A thin personal wrapper UI over OpenClaw gateway chat.
 - Renders prompt/reply in a local web UI
 
 ## URL
-- `http://127.0.0.1:8789`
+- `http://127.0.0.1:8791`
 
 ## LaunchAgent
 Install:
@@ -267,7 +267,7 @@ Correct live source now:
 - `/Users/visen24/MAS/openclaw_fork/apps/viodashboard/public/styles.css`
 
 If changes appear ignored:
-1. Open `http://127.0.0.1:8789/styles.css?v=2`
+1. Open `http://127.0.0.1:8791/styles.css?v=2`
 2. Confirm the response contains the rule you just added
 3. Check `~/Library/LaunchAgents/com.vio.dashboard.plist`
 4. Confirm launchd starts from `/Users/visen24/MAS/openclaw_fork/apps/viodashboard`

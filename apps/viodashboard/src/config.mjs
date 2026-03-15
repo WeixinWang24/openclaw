@@ -48,7 +48,7 @@ export const APP_SUPPORT_RUNTIME_DIR = path.join(APP_SUPPORT_DIR, RUNTIME_DIR_NA
 export const APP_LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', LOG_DIR_NAME);
 export const LAUNCH_AGENTS_DIR = path.join(os.homedir(), 'Library', 'LaunchAgents');
 export const LAUNCHD_PLIST_PATH = path.join(LAUNCH_AGENTS_DIR, LAUNCHD_PLIST_NAME);
-export const APP_BASE_URL = process.env.VIO_WRAPPER_BASE || 'http://127.0.0.1:8789';
+export const APP_BASE_URL = process.env.VIO_WRAPPER_BASE || 'http://127.0.0.1:8791';
 
 export const AREAS_DIR = path.join(PROJECT_ROOT, 'areas');
 export const VIO_CAM_REAL_DIR = path.join(AREAS_DIR, 'utilities', 'vio_cam');

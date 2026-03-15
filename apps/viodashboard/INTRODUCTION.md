@@ -3,7 +3,7 @@
 ## What this project is
 VioDashboard is the local browser-facing shell around OpenClaw. It does three main jobs:
 
-1. opens a local UI at `http://127.0.0.1:8789`
+1. opens a local UI at `http://127.0.0.1:8791`
 2. bridges wrapper chat traffic to the OpenClaw gateway over WebSocket
 3. mirrors assistant state into VioBody so lights / ambient feedback stay in sync
 

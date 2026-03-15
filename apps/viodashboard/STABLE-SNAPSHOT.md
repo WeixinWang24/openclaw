@@ -22,8 +22,8 @@ Version: 2026-03-11-ui-v1
   - css/app short hashes
 
 ## Restore checklist
-1. Confirm LaunchAgent points to workspace root, not runtime copy.
-2. Confirm wrapper URL is `http://127.0.0.1:8789`.
+1. Confirm LaunchAgent points to repo app root, not runtime copy.
+2. Confirm wrapper URL is `http://127.0.0.1:8791`.
 3. Confirm `/styles.css?v=2` returns 200.
 4. Confirm Notes panel shows settings + dev info.
 5. Confirm sending a message causes:
