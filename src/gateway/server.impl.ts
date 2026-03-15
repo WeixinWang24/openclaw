@@ -751,6 +751,10 @@ export async function startGatewayServer(
   const diagnosticUnsub = minimalTestGateway
     ? null
     : onDiagnosticEvent((evt) => {
+        if (evt.type === "model.usage") {
+          broadcast("diagnostic", evt, { dropIfSlow: true });
+          return;
+        }
         if (
           evt.type !== "message.ingressed" &&
           evt.type !== "prompt.assembled" &&
