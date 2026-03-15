@@ -42,33 +42,25 @@ export function servePublicFile(requestUrl, res) {
     return;
   }
 
-  fs.readFile(filePath, 'utf8', (err, text) => {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+  };
+  const isBinary = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+
+  fs.readFile(filePath, isBinary ? null : 'utf8', (err, data) => {
     if (err) {
       sendText(res, 404, 'not found');
       return;
     }
-    const ext = path.extname(filePath);
-    const types = {
-      '.html': 'text/html; charset=utf-8',
-      '.js': 'text/javascript; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.webp': 'image/webp',
-    };
-
-    if (urlPath === '/index.html') {
-      try {
-        const css = fs.readFileSync(path.join(PUBLIC_DIR, 'styles.css'), 'utf8');
-        const injected = text.replace('</head>', `<style data-inline-main-css="1">\n${css}\n</style>\n</head>`);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(injected);
-        return;
-      } catch {}
-    }
 
     res.writeHead(200, { 'Content-Type': types[ext] || 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(text);
+    res.end(data);
   });
 }
