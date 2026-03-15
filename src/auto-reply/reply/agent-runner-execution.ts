@@ -71,7 +71,7 @@ export type AgentRunLoopResult =
       /** Payload keys sent directly (not via pipeline) during tool flush. */
       directlySentBlockKeys?: Set<string>;
     }
-  | { kind: "final"; payload: ReplyPayload };
+  | { kind: "final"; runId: string; payload: ReplyPayload };
 
 export async function runAgentTurnWithFallback(params: {
   commandBody: string;
@@ -507,6 +507,7 @@ export async function runAgentTurnWithFallback(params: {
         didResetAfterCompactionFailure = true;
         return {
           kind: "final",
+          runId,
           payload: {
             text: "⚠️ Context limit exceeded. I've reset our conversation to start fresh - please try again.\n\nTo prevent this, increase your compaction buffer by setting `agents.defaults.compaction.reserveTokensFloor` to 20000 or higher in your config.",
           },
@@ -517,6 +518,7 @@ export async function runAgentTurnWithFallback(params: {
         if (didReset) {
           return {
             kind: "final",
+            runId,
             payload: {
               text: "⚠️ Message ordering conflict. I've reset the conversation - please try again.",
             },
@@ -542,6 +544,7 @@ export async function runAgentTurnWithFallback(params: {
         didResetAfterCompactionFailure = true;
         return {
           kind: "final",
+          runId,
           payload: {
             text: "⚠️ Context limit exceeded during compaction. I've reset our conversation to start fresh - please try again.\n\nTo prevent this, increase your compaction buffer by setting `agents.defaults.compaction.reserveTokensFloor` to 20000 or higher in your config.",
           },
@@ -552,6 +555,7 @@ export async function runAgentTurnWithFallback(params: {
         if (didReset) {
           return {
             kind: "final",
+            runId,
             payload: {
               text: "⚠️ Message ordering conflict. I've reset the conversation - please try again.",
             },
@@ -598,6 +602,7 @@ export async function runAgentTurnWithFallback(params: {
 
         return {
           kind: "final",
+          runId,
           payload: {
             text: "⚠️ Session history was corrupted. I've reset the conversation - please try again!",
           },
@@ -634,6 +639,7 @@ export async function runAgentTurnWithFallback(params: {
 
       return {
         kind: "final",
+        runId,
         payload: {
           text: fallbackText,
         },
@@ -651,6 +657,7 @@ export async function runAgentTurnWithFallback(params: {
   if (finalEmbeddedError && isContextOverflowError(finalEmbeddedError.message) && !hasPayloadText) {
     return {
       kind: "final",
+      runId,
       payload: {
         text: "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session.",
       },

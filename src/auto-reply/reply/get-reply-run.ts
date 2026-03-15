@@ -22,6 +22,7 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
+import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { clearCommandLane, getQueueSize } from "../../process/command-queue.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
@@ -465,6 +466,22 @@ export async function runPreparedReply(
     inlineMode: perMessageQueueMode,
     inlineOptions: perMessageQueueOptions,
   });
+  if (isDiagnosticsEnabled(cfg)) {
+    emitDiagnosticEvent({
+      type: "prompt.assembled",
+      runId: opts?.runId,
+      sessionKey,
+      sessionId: sessionIdFinal,
+      provider,
+      model,
+      queueMode: resolvedQueue.mode,
+      hasThreadContext: Boolean(threadContextNote),
+      hasSystemEvents: Boolean(eventsBlock),
+      summary: "Agent-facing prompt assembled",
+      bodyPreview: prefixedCommandBody.slice(0, 240),
+      sourceFile: "src/auto-reply/reply/get-reply-run.ts",
+    });
+  }
   const sessionLaneKey = resolveEmbeddedSessionLane(sessionKey ?? sessionIdFinal);
   const laneSize = getQueueSize(sessionLaneKey);
   if (resolvedQueue.mode === "interrupt" && laneSize > 0) {
