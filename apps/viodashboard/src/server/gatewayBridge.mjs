@@ -1,14 +1,14 @@
 import WebSocket from 'ws';
-import { OPENCLAW_DIST_ROOT, TOKEN_SAVER_DEBUG_ROOT, gatewayPort, gatewayToken, gatewayUrl, PROJECT_ROOT } from '../config.mjs';
+import { COMS_ROOT, OPENCLAW_DIST_ROOT, TOKEN_SAVER_DEBUG_ROOT, gatewayPort, gatewayToken, gatewayUrl } from '../config.mjs';
 import { randomId, parseMessageText, extractUsage } from './utils.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-const tokenSaverModule = await import(pathToFileURL(path.join(PROJECT_ROOT, 'coms', 'token-saver.mjs')).href);
+const tokenSaverModule = await import(pathToFileURL(path.join(COMS_ROOT, 'token-saver.mjs')).href);
 const { TokenSaver, sanitizeVisibleText, hasRoadmapBlock, simulateTokenSaverView, buildPhaseOneCompressedPrompt } = tokenSaverModule;
 import { onUserPrompt } from '../moodBridge.mjs';
 
-const TOKEN_SAVER_DEBUG_DIR = path.join(process.cwd(), 'data', 'token-saver-debug');
+const TOKEN_SAVER_DEBUG_DIR = TOKEN_SAVER_DEBUG_ROOT;
 
 function ensureTokenSaverDebugDir() {
   fs.mkdirSync(TOKEN_SAVER_DEBUG_DIR, { recursive: true });

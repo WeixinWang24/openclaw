@@ -11,10 +11,14 @@ export const PROJECT_ROOT = process.env.VIO_WRAPPER_PROJECT_ROOT || '/Volumes/2T
 
 // First-wave relocation fields.
 export const OPENCLAW_REPO_ROOT = process.env.VIO_OPENCLAW_REPO_ROOT || '/Users/visen24/MAS/openclaw_fork';
-export const DASHBOARD_APP_ROOT = process.env.VIO_DASHBOARD_APP_ROOT || path.join(PROJECT_ROOT, 'VioDashboard');
+export const DASHBOARD_APP_ROOT = process.env.VIO_DASHBOARD_APP_ROOT || path.resolve(__dirname, '..');
 export const DASHBOARD_DATA_ROOT = process.env.VIO_DASHBOARD_DATA_ROOT || path.join(DASHBOARD_APP_ROOT, 'data');
+export const DASHBOARD_CACHE_ROOT = process.env.VIO_DASHBOARD_CACHE_ROOT || path.join(PROJECT_ROOT, 'runtime-cache', 'viodashboard');
 export const TOKEN_SAVER_DEBUG_ROOT = process.env.VIO_TOKEN_SAVER_DEBUG_ROOT || path.join(DASHBOARD_DATA_ROOT, 'token-saver-debug');
 export const CLAUDE_RUNTIME_ROOT = process.env.VIO_CLAUDE_RUNTIME_ROOT || path.join(DASHBOARD_DATA_ROOT, 'claude');
+export const SAFE_EDIT_ROOT = process.env.VIO_SAFE_EDIT_ROOT || path.join(DASHBOARD_CACHE_ROOT, 'safe-edit');
+export const COMS_ROOT = process.env.VIO_COMS_ROOT || path.join(DASHBOARD_APP_ROOT, 'coms');
+export const MEMORY_SYSTEM_ROOT = process.env.VIO_MEMORY_SYSTEM_ROOT || path.join(DASHBOARD_APP_ROOT, 'memory_system');
 export const DEFAULT_CLAUDE_CWD = process.env.VIO_DEFAULT_CLAUDE_CWD || OPENCLAW_REPO_ROOT;
 export const DASHBOARD_LAUNCHD_ROOT = process.env.VIO_DASHBOARD_LAUNCHD_ROOT || path.join(DASHBOARD_APP_ROOT, 'launchd');
 export const OPENCLAW_DIST_ROOT = process.env.VIO_OPENCLAW_DIST_ROOT || path.join(OPENCLAW_REPO_ROOT, 'dist');

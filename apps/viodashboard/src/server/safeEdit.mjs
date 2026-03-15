@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { ROOT, PUBLIC_DIR, APP_DIR_NAME, appRel } from '../config.mjs';
+import { ROOT, PUBLIC_DIR, APP_DIR_NAME, SAFE_EDIT_ROOT, appRel } from '../config.mjs';
 import { safeProjectPath } from './filesystem.mjs';
 
 const SAFE_EDIT_DIR = path.join(ROOT, 'data', 'safe-edit');

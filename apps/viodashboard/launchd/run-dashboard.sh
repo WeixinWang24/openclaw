@@ -10,19 +10,16 @@ CFG="$(CONFIG_JS="$CONFIG_JS" /opt/homebrew/bin/node --input-type=module <<'NODE
 const mod = await import(process.env.CONFIG_JS);
 console.log(mod.APP_LOG_DIR);
 console.log(mod.APP_SUPPORT_RUNTIME_DIR);
-console.log(mod.PROJECT_ROOT);
-console.log(mod.APP_DIR_NAME);
+console.log(mod.DASHBOARD_APP_ROOT);
 console.log(mod.CONFIG_PATH);
 console.log(mod.gatewayPort);
 NODE
 )"
 LOG_DIR="$(printf '%s\n' "$CFG" | sed -n '1p')"
 RUNTIME_DIR="$(printf '%s\n' "$CFG" | sed -n '2p')"
-PROJECT_ROOT="$(printf '%s\n' "$CFG" | sed -n '3p')"
-APP_DIR_NAME="$(printf '%s\n' "$CFG" | sed -n '4p')"
-CONFIG_PATH="$(printf '%s\n' "$CFG" | sed -n '5p')"
-GATEWAY_PORT="$(printf '%s\n' "$CFG" | sed -n '6p')"
-SOURCE_DIR="$PROJECT_ROOT/$APP_DIR_NAME"
+SOURCE_DIR="$(printf '%s\n' "$CFG" | sed -n '3p')"
+CONFIG_PATH="$(printf '%s\n' "$CFG" | sed -n '4p')"
+GATEWAY_PORT="$(printf '%s\n' "$CFG" | sed -n '5p')"
 
 RUN_MODE="${VIO_DASHBOARD_RUN_MODE:-}"
 if [[ -z "$RUN_MODE" && -f "$MODE_FILE" ]]; then
@@ -47,7 +44,9 @@ esac
 
 mkdir -p "$LOG_DIR"
 cd "$TARGET_DIR"
-export VIO_WRAPPER_PROJECT_ROOT="$PROJECT_ROOT"
+export VIO_DASHBOARD_APP_ROOT="$SOURCE_DIR"
+export VIO_WRAPPER_PROJECT_ROOT="/Volumes/2TB/MAS"
+export VIO_OPENCLAW_REPO_ROOT="/Users/visen24/MAS/openclaw_fork"
 export VIO_WRAPPER_CONFIG_PATH="$CONFIG_PATH"
 export VIO_WRAPPER_GATEWAY_PORT="$GATEWAY_PORT"
 exec /opt/homebrew/bin/node src/server.mjs >> "$LOG_DIR/wrapper.out.log" 2>> "$LOG_DIR/wrapper.err.log"

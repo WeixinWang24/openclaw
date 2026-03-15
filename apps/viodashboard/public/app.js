@@ -877,10 +877,10 @@ async function refreshDistInfo() {
         ? `<span class="semantic-value">built ${formatDistBuiltAt(info.builtAt)} · ${info.version || 'unknown'} · ${String(info.commit || '').slice(0, 8) || 'no-commit'}</span>`
         : '<span class="semantic-value">build info unavailable</span>';
     }
-    if (distDotEl) {applyDotState(distDotEl, 'window', info?.builtAt ? 'safe' : 'danger');}
+    if (distDotEl) {applyDotState(distDotEl, 'link', info?.builtAt ? 'online' : 'offline');}
   } catch (error) {
     if (distDetailEl) {distDetailEl.innerHTML = `<span class="semantic-value">${error?.message || error}</span>`;}
-    if (distDotEl) {applyDotState(distDotEl, 'window', 'danger');}
+    if (distDotEl) {applyDotState(distDotEl, 'link', 'offline');}
   }
 }
 
