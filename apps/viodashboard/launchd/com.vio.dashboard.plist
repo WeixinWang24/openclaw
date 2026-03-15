@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.vio.dashboard</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>ROOT="/Volumes/2TB/MAS/VioDashboard"; MODE_FILE="$ROOT/launchd/.run-mode"; MODE="source"; if [ -f "$MODE_FILE" ]; then MODE="$(tr -d '[:space:]' &lt; "$MODE_FILE")"; fi; if [ "$MODE" = "runtime" ]; then TARGET="$HOME/Library/Application Support/VioDashboardRuntime"; else TARGET="$ROOT"; fi; mkdir -p "$HOME/Library/Logs/VioDashboard" &amp;&amp; cd "$TARGET" &amp;&amp; export VIO_WRAPPER_PROJECT_ROOT="/Volumes/2TB/MAS" &amp;&amp; export VIO_WRAPPER_CONFIG_PATH="/Users/visen24/MAS/openclaw_state_fork/openclaw.json" &amp;&amp; export VIO_WRAPPER_GATEWAY_PORT="19001" &amp;&amp; exec /opt/homebrew/bin/node src/server.mjs &gt;&gt; "$HOME/Library/Logs/VioDashboard/wrapper.out.log" 2&gt;&gt; "$HOME/Library/Logs/VioDashboard/wrapper.err.log"</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+  </dict>
+</plist>
