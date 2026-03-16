@@ -10,9 +10,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import WebSocket, { WebSocketServer } from 'ws';
-import { APP_DISPLAY_NAME, CLIENT_CONFIG, DASHBOARD_LAUNCHD_ROOT, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LEGACY_VIODASHBOARD_NODE_MODULES, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, appRel, wrapperPort } from './config.mjs';
+import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
-import { sendJson, sendText } from './server/httpUtils.mjs';
+import { sendJson } from './server/httpUtils.mjs';
 import { listProjectFiles, readProjectFile, writeProjectFile, safeProjectPath } from './server/filesystem.mjs';
 import { getSafeEditState, performStartupRecovery, runSafeEditSmokeSummary } from './server/safeEdit.mjs';
 import { getCameraTelemetry, getGestureRuntimeState, runCameraCapture, runGestureCycle, runGesturePipeline, updateGestureWatcher } from './server/gesture.mjs';
@@ -21,6 +21,7 @@ import { GatewayBridge } from './server/gatewayBridge.mjs';
 import { readJsonRequest } from './server/httpUtils.mjs';
 import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from './server/utils.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
+import { evaluateSetupState } from './server/setupState.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -558,6 +559,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === '/api/setup/state' && req.method === 'GET') {
+    const claudeState = getClaudeState();
+    sendJson(res, 200, evaluateSetupState({ bridgeConnected: bridge.connected, claudeState }));
+    return;
+  }
+
   if (requestUrl.pathname === '/api/dist-info' && req.method === 'GET') {
     const info = loadDistBuildInfo();
     sendJson(res, 200, { ok: true, info });
@@ -793,7 +800,7 @@ const server = http.createServer((req, res) => {
       .then(payload => {
         const targetDir = safeProjectPath(typeof payload.dir === 'string' && payload.dir ? payload.dir : '.');
         execFile('open', [targetDir], error => {
-          if (error) {sendJson(res, 500, { error: error?.message || String(error) });}
+          if (error) {sendJson(res, 500, { error: error?.message || error?.code || 'open failed' });}
           else {sendJson(res, 200, { ok: true, dir: targetDir });}
         });
       })
@@ -1118,7 +1125,9 @@ wss.on('connection', ws => {
   })));
   ws.on('message', async raw => {
     let msg;
-    try { msg = JSON.parse(String(raw)); } catch { return; }
+    // raw is RawData (Buffer | ArrayBuffer | Buffer[] | string) from ws
+    const rawStr = typeof raw === 'string' ? raw : Buffer.isBuffer(raw) ? raw.toString('utf8') : JSON.stringify(raw);
+    try { msg = JSON.parse(rawStr); } catch { return; }
     if (msg.type === 'send') {
       try {
         console.log('[wrapper] ui send received', JSON.stringify({ textLength: String(msg.text ?? '').length, preview: String(msg.text ?? '').slice(0, 120) }));

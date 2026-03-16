@@ -2,7 +2,13 @@
 
 ## Status
 
-Draft v1.
+Phase 2 + Phase 3 complete (as of 2026-03-16).
+
+- `GET /api/setup/state` is implemented in `src/server/setupState.mjs`.
+- Read-only setup UI is available at `/setup.html` (linked from the dashboard System panel).
+- Phases 4–5 (actionable buttons, expanded module readiness) remain future work.
+
+---
 
 This document defines the **first-version information architecture** for a VioDashboard migration / deployment setup wizard.
 
