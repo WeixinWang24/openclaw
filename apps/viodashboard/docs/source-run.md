@@ -22,6 +22,30 @@ The previous live setup always ran from a copied runtime directory. That caused 
 - `launchd/sync-runtime.sh`
 - `launchd/.run-mode`
 
+## Bootstrap local config first
+
+On a new machine or fresh checkout, generate `config/local.mjs` before launchd install so machine-specific paths are set intentionally:
+
+```bash
+cd apps/viodashboard
+node scripts/bootstrap-local-config.mjs
+```
+
+Useful variants:
+
+```bash
+# preview detected values without writing
+node scripts/bootstrap-local-config.mjs --print --yes
+
+# overwrite an existing local config only when you explicitly mean to replace it
+node scripts/bootstrap-local-config.mjs --force
+```
+
+Notes:
+- the bootstrap writes only the gitignored `config/local.mjs`
+- this is where per-machine values such as `configPath`, `defaultClaudeCwd`, and `claudeBin` belong
+- for launchd-managed runs, prefer an absolute `claudeBin` path when the CLI is not in `/usr/bin`, `/bin`, `/usr/sbin`, or `/sbin`
+
 ## Install / reload
 
 Install in source mode (default):

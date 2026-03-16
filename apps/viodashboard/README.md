@@ -12,6 +12,38 @@ A thin personal wrapper UI over OpenClaw gateway chat.
 - Default local URL: `http://127.0.0.1:8791`
 - Overrideable via local config / env (`src/config.mjs`)
 
+## Local machine bootstrap
+
+On a new machine or fresh checkout, generate the gitignored machine-local config before installing launchd:
+
+```bash
+cd apps/viodashboard
+node scripts/bootstrap-local-config.mjs
+```
+
+Preview detected values without writing:
+
+```bash
+cd apps/viodashboard
+node scripts/bootstrap-local-config.mjs --print --yes
+```
+
+Force overwrite an existing local config only when you explicitly want to replace it:
+
+```bash
+cd apps/viodashboard
+node scripts/bootstrap-local-config.mjs --force
+```
+
+What this writes:
+- `config/local.mjs` only
+- machine-specific paths such as repo root, workspace root, OpenClaw config path, default Claude cwd, and `claudeBin`
+- no repo defaults are modified
+
+Why it matters:
+- `config/local.mjs` is gitignored and is the intended home for machine-specific paths
+- launchd does not inherit your full interactive shell `PATH`, so `claudeBin` may need to be stored as an absolute path
+
 ## LaunchAgent
 Install:
 
