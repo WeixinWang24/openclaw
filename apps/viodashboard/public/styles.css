@@ -154,6 +154,42 @@ body::before {
   padding: 8px 12px;
 }
 
+.setup-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 230, 109, .35);
+  background: linear-gradient(180deg, rgba(255,230,109,.10), rgba(255,46,136,.06));
+  box-shadow: 0 0 0 1px rgba(255,230,109,.10), 0 0 18px rgba(255,230,109,.08);
+  color: #fff4b1;
+}
+
+.setup-banner-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.setup-banner-body,
+.setup-banner-meta {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.setup-banner-meta code {
+  color: #fff4b1;
+  background: rgba(5,5,16,.45);
+  border: 1px solid rgba(255,230,109,.18);
+  border-radius: 8px;
+  padding: 1px 6px;
+}
+
+.setup-banner[hidden] {
+  display: none !important;
+}
+
 .topbar.card {
   border-radius: 12px;
 }

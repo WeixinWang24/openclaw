@@ -6,9 +6,16 @@ const serverConfig = {
   projectRoot: '',
   openclawRepoRoot: '',
   appBaseUrl: '',
+  setup: {
+    hasLocalConfig: true,
+    localConfigPath: '',
+    bootstrapCommand: 'node scripts/bootstrap-local-config.mjs',
+    bootstrapPreviewCommand: 'node scripts/bootstrap-local-config.mjs --print --yes',
+  },
 };
 const statusEl = document.getElementById('status');
 const runModeChipEl = document.getElementById('runModeChip');
+const setupBannerEl = document.getElementById('setupBanner');
 const moodEl = document.getElementById('mood');
 const routingEl = document.getElementById('routing');
 const cameraTopbarEl = document.getElementById('cameraTopbar');
@@ -239,6 +246,27 @@ function addDebugLine(text, tone = 'cyan') {
   el.innerHTML = `<span class="log-bracket">[</span><span class="log-time">${stamp}</span><span class="log-bracket">]</span> <span class="log-text">${text.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</span>`;
   debugLogEl.prepend(el);
   while (debugLogEl.children.length > 12) {debugLogEl.removeChild(debugLogEl.lastElementChild);}
+}
+
+function renderSetupBanner() {
+  if (!setupBannerEl) {return;}
+  const setup = serverConfig.setup || {};
+  if (setup.hasLocalConfig !== false) {
+    setupBannerEl.hidden = true;
+    setupBannerEl.innerHTML = '';
+    return;
+  }
+  const localConfigPath = setup.localConfigPath || 'config/local.mjs';
+  const bootstrapCommand = setup.bootstrapCommand || 'node scripts/bootstrap-local-config.mjs';
+  const previewCommand = setup.bootstrapPreviewCommand || 'node scripts/bootstrap-local-config.mjs --print --yes';
+  setupBannerEl.hidden = false;
+  setupBannerEl.innerHTML = `
+    <div class="setup-banner-title">Setup required · local config missing</div>
+    <div class="setup-banner-body">This machine is still using repo defaults. Generate the gitignored local config before relying on launchd or machine-specific paths.</div>
+    <div class="setup-banner-meta">Missing: <code>${localConfigPath.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</code></div>
+    <div class="setup-banner-meta">Run in <code>apps/viodashboard</code>: <code>${bootstrapCommand.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</code></div>
+    <div class="setup-banner-meta">Preview only: <code>${previewCommand.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</code></div>
+  `;
 }
 
 function formatCompactTokens(value) {
@@ -1276,6 +1304,7 @@ async function fetchServerConfig() {
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'config fetch failed');}
     Object.assign(serverConfig, data?.config || {});
+    renderSetupBanner();
     const nextDefaultCwd = getDefaultClaudeCwd();
     const shouldRefreshClaudeState = isPlaceholderClaudeCwd(claude.cwd) || claude.cwd !== nextDefaultCwd;
     if (isPlaceholderClaudeCwd(claude.cwd)) {

@@ -21,6 +21,9 @@ async function loadLocalConfig() {
 
 const localConfig = await loadLocalConfig();
 
+export const LOCAL_CONFIG_PATH = localConfigPath;
+export const HAS_LOCAL_CONFIG = fs.existsSync(localConfigPath);
+
 function envOr(name, fallback) {
   return process.env[name] || fallback;
 }
@@ -123,4 +126,10 @@ export const CLIENT_CONFIG = {
   projectRoot: PROJECT_ROOT,
   openclawRepoRoot: OPENCLAW_REPO_ROOT,
   appBaseUrl: APP_BASE_URL,
+  setup: {
+    hasLocalConfig: HAS_LOCAL_CONFIG,
+    localConfigPath: LOCAL_CONFIG_PATH,
+    bootstrapCommand: 'node scripts/bootstrap-local-config.mjs',
+    bootstrapPreviewCommand: 'node scripts/bootstrap-local-config.mjs --print --yes',
+  },
 };
