@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Allow local overrides so secrets/paths do not need to be hard-coded in source.
-export const CONFIG_PATH = process.env.VIO_WRAPPER_CONFIG_PATH || '/Users/visen24/MAS/openclaw_state_fork/openclaw.json';
-export const PROJECT_ROOT = process.env.VIO_WRAPPER_PROJECT_ROOT || '/Volumes/2TB/MAS';
+export const CONFIG_PATH = process.env.VIO_WRAPPER_CONFIG_PATH || path.join(os.homedir(), '.openclaw', 'openclaw.json');
+export const PROJECT_ROOT = process.env.VIO_WRAPPER_PROJECT_ROOT || '/Users/visen24/MAS';
 
 // First-wave relocation fields.
 export const OPENCLAW_REPO_ROOT = process.env.VIO_OPENCLAW_REPO_ROOT || '/Users/visen24/MAS/openclaw_fork';

@@ -576,8 +576,6 @@ function formatStamp(date = new Date()) {
 
 function avatarLabel(role) { return role === 'user' ? 'X' : 'V'; }
 function avatarImageSrc(role) {
-  if (role === 'user') {return '/avatars/Xin.JPEG';}
-  if (role === 'assistant') {return '/avatars/vio.png';}
   return '';
 }
 
