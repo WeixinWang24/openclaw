@@ -117,6 +117,7 @@ dist/protocol.schema.json
 
 # Repo-internal VioDashboard runtime/app data (local only)
 apps/viodashboard/data/
+apps/viodashboard/public/avatars/
 
 # Eclipse
 **/.project

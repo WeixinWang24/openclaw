@@ -23,6 +23,7 @@ import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from './server/uti
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
 
 const terminalSessions = new Map();
+const MAX_TERMINAL_SESSIONS = 5;
 
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
@@ -37,6 +38,9 @@ function resolveInteractiveShell() {
 function getOrCreateTerminalSession(sessionId = 'default', cwdRel = '.') {
   const existing = terminalSessions.get(sessionId);
   if (existing && !existing.exited) {return existing;}
+  if (!terminalSessions.has(sessionId) && terminalSessions.size >= MAX_TERMINAL_SESSIONS) {
+    throw new Error(`Max terminal sessions (${MAX_TERMINAL_SESSIONS}) reached`);
+  }
   const cwd = safeProjectPath(cwdRel);
   const shellPath = resolveInteractiveShell();
   const shellArgs = shellPath.endsWith('/sh') ? ['-i'] : ['-i'];
@@ -830,6 +834,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === '/api/context/compact' && req.method === 'POST') {
+    readJsonRequest(req)
+      .then(async () => {
+        const result = await bridge.compactSession();
+        broadcast({ type: 'context.compacted', result });
+        sendJson(res, 200, { ok: true, result });
+      })
+      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return;
+  }
+
   if (requestUrl.pathname === '/api/gateway/restart' && req.method === 'POST') {
     readJsonRequest(req)
       .then(() => {
@@ -1070,11 +1085,25 @@ const server = http.createServer((req, res) => {
   servePublicFile(requestUrl, res);
 });
 
+// Push Claude terminal state to all connected clients when output changes.
+let lastBroadcastClaudeOutput = null;
+setInterval(() => {
+  if (clients.size === 0) {return;}
+  try {
+    const state = getClaudeState();
+    if (state.output !== lastBroadcastClaudeOutput) {
+      lastBroadcastClaudeOutput = state.output;
+      broadcast({ type: 'claude-state', ...state });
+    }
+  } catch {}
+}, 200);
+
 const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', ws => {
   clients.add(ws);
   ws.send(JSON.stringify({ type: 'status', connected: bridge.connected, sessionKey: bridge.sessionKey }));
   ws.send(JSON.stringify(buildTokensPacket()));
+  try { ws.send(JSON.stringify({ type: 'claude-state', ...getClaudeState() })); } catch {}
   ws.send(JSON.stringify(buildMoodPacket(lastRouting.mode, {
     state: null,
     detail: lastRouting.detail,

@@ -58,17 +58,18 @@ function readLogTail(logPath, maxBytes = LOG_TAIL_BYTES) {
     const stat = fs.statSync(logPath);
     const size = stat.size || 0;
     const start = Math.max(0, size - maxBytes);
+    const truncated = start > 0;
     const fd = fs.openSync(logPath, 'r');
     try {
       const length = size - start;
       const buffer = Buffer.alloc(length);
       fs.readSync(fd, buffer, 0, length, start);
-      return buffer.toString('utf8');
+      return { text: buffer.toString('utf8'), truncated };
     } finally {
       fs.closeSync(fd);
     }
   } catch {
-    return '';
+    return { text: '', truncated: false };
   }
 }
 
@@ -89,6 +90,7 @@ function getSessionPaths(sessionId = CLAUDE_SESSION_ID) {
     logPath: path.join(CLAUDE_DATA_DIR, `${sessionId}.log`),
     stdinPath: path.join(CLAUDE_DATA_DIR, `${sessionId}.stdin`),
     statusPath: path.join(CLAUDE_DATA_DIR, `${sessionId}.status.json`),
+    resizePath: path.join(CLAUDE_DATA_DIR, `${sessionId}.resize.json`),
   };
 }
 
@@ -104,6 +106,7 @@ function buildRegistryPayload(session) {
     logPath: session.logPath,
     stdinPath: session.stdinPath,
     statusPath: session.statusPath,
+    resizePath: session.resizePath ?? null,
     exitCode: session.exitCode ?? null,
     terminationRequestedAt: session.terminationRequestedAt || null,
     terminatedAt: session.terminatedAt || null,
@@ -121,15 +124,50 @@ function loadRegistry() {
   return readJsonFile(REGISTRY_PATH);
 }
 
+function createSessionBase(normalized, cwdAbs, paths, overrides = {}) {
+  return {
+    id: CLAUDE_SESSION_ID,
+    cwdRel: normalized,
+    cwdAbs,
+    claudeCommand: resolveClaudeCommand(),
+    logPath: paths.logPath,
+    stdinPath: paths.stdinPath,
+    statusPath: paths.statusPath,
+    resizePath: paths.resizePath,
+    output: '',
+    exited: false,
+    exitCode: null,
+    status: 'running',
+    bridgePid: null,
+    childPid: null,
+    terminationRequestedAt: null,
+    terminatedAt: null,
+    terminationError: null,
+    claudeStarted: false,
+    claudeStartedAt: null,
+    createdAt: new Date().toISOString(),
+    recoveredAt: null,
+    ...overrides,
+  };
+}
+
 function appendSyntheticOutput(logPath, text) {
   ensureClaudeDataDir();
   fs.appendFileSync(logPath, String(text || ''), 'utf8');
+}
+
+function cleanupSessionFiles(session) {
+  for (const key of ['stdinPath', 'resizePath']) {
+    const p = session[key];
+    if (p) {try {fs.rmSync(p, { force: true });} catch {}}
+  }
 }
 
 function enrichSessionFromStatus(session) {
   const status = readJsonFile(session.statusPath);
   if (!status || typeof status !== 'object') {return session;}
   const bridgeAlive = isPidAlive(status.bridgePid ?? session.bridgePid);
+  const wasExited = session.exited;
   session.bridgePid = status.bridgePid ?? session.bridgePid;
   session.childPid = status.childPid ?? session.childPid;
   session.exitCode = status.exitCode ?? session.exitCode ?? null;
@@ -137,6 +175,8 @@ function enrichSessionFromStatus(session) {
   session.status = bridgeAlive ? (status.status || 'running') : (status.status || session.status || 'exited');
   session.exited = !bridgeAlive && ['terminated', 'exited', 'failed'].includes(session.status);
   if (session.exited && !session.terminatedAt) {session.terminatedAt = status.updatedAt || new Date().toISOString();}
+  // Clean up leftover FIFO/resize files the first time we detect exit.
+  if (session.exited && !wasExited) {cleanupSessionFiles(session);}
   return session;
 }
 
@@ -153,6 +193,7 @@ function materializeSessionFromRegistry(registry, cwdRel) {
     logPath: registry.logPath || paths.logPath,
     stdinPath: registry.stdinPath || paths.stdinPath,
     statusPath: registry.statusPath || paths.statusPath,
+    resizePath: registry.resizePath || paths.resizePath,
     createdAt: registry.startedAt || registry.createdAt || null,
     recoveredAt: new Date().toISOString(),
     claudeStarted: true,
@@ -166,7 +207,7 @@ function materializeSessionFromRegistry(registry, cwdRel) {
     status: registry.status || 'running',
   };
   enrichSessionFromStatus(session);
-  session.output = readLogTail(session.logPath);
+  session.output = readLogTail(session.logPath).text;
   return session;
 }
 
@@ -200,7 +241,8 @@ function buildIdleState(cwdRel = DEFAULT_CLAUDE_CWD) {
 
 function buildClaudeState(session, cwdRel = DEFAULT_CLAUDE_CWD) {
   if (!session) {return buildIdleState(cwdRel);}
-  session.output = readLogTail(session.logPath);
+  const { text: outputText, truncated: outputTruncated } = readLogTail(session.logPath);
+  session.output = outputText;
   const bridgeAlive = isPidAlive(session.bridgePid);
   if (!bridgeAlive && !session.exited) {
     enrichSessionFromStatus(session);
@@ -218,6 +260,7 @@ function buildClaudeState(session, cwdRel = DEFAULT_CLAUDE_CWD) {
     running: bridgeAlive && !session.exited,
     status: session.status || (session.exited ? 'exited' : 'running'),
     output: session.output || '',
+    outputTruncated,
     exited: !!session.exited,
     exitCode: session.exitCode ?? null,
     started: !!session.claudeStarted,
@@ -236,25 +279,12 @@ function createFailedSession(cwdRel, errorText) {
   const normalized = normalizeClaudeCwd(cwdRel);
   const cwdAbs = safeProjectPath(normalized);
   const paths = getSessionPaths();
-  const session = {
-    id: CLAUDE_SESSION_ID,
-    cwdRel: normalized,
-    cwdAbs,
-    claudeCommand: resolveClaudeCommand(),
-    logPath: paths.logPath,
-    stdinPath: paths.stdinPath,
-    statusPath: paths.statusPath,
-    output: '',
+  const session = createSessionBase(normalized, cwdAbs, paths, {
     exited: true,
-    exitCode: null,
     status: 'failed',
-    claudeStarted: false,
-    createdAt: new Date().toISOString(),
-    terminationRequestedAt: null,
     terminatedAt: new Date().toISOString(),
     terminationError: errorText,
-    bridgePid: null,
-  };
+  });
   appendSyntheticOutput(session.logPath, `[dashboard] starting claude\n${errorText}\n`);
   return persistAndCacheSession(session);
 }
@@ -266,15 +296,9 @@ function startDetachedClaudeSession(cwdRel) {
   if (claudeCommand === 'claude') {return createFailedSession(normalized, 'claude: command not found');}
 
   const paths = getSessionPaths();
-  try {
-    fs.rmSync(paths.logPath, { force: true });
-  } catch {}
-  try {
-    fs.rmSync(paths.statusPath, { force: true });
-  } catch {}
-  try {
-    fs.rmSync(paths.stdinPath, { force: true });
-  } catch {}
+  for (const p of [paths.logPath, paths.statusPath, paths.stdinPath]) {
+    try {fs.rmSync(p, { force: true });} catch {}
+  }
 
   const child = spawn('python3', [
     PTY_BRIDGE_PATH,
@@ -282,6 +306,7 @@ function startDetachedClaudeSession(cwdRel) {
     '--log', paths.logPath,
     '--stdin', paths.stdinPath,
     '--status', paths.statusPath,
+    '--resize', paths.resizePath,
     '--',
     claudeCommand,
   ], {
@@ -297,26 +322,12 @@ function startDetachedClaudeSession(cwdRel) {
   });
   child.unref();
 
-  const session = {
-    id: CLAUDE_SESSION_ID,
-    cwdRel: normalized,
-    cwdAbs,
+  const session = createSessionBase(normalized, cwdAbs, paths, {
     claudeCommand,
-    logPath: paths.logPath,
-    stdinPath: paths.stdinPath,
-    statusPath: paths.statusPath,
-    output: '',
-    exited: false,
-    exitCode: null,
-    status: 'running',
     claudeStarted: true,
     claudeStartedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    terminationRequestedAt: null,
-    terminatedAt: null,
-    terminationError: null,
     bridgePid: child.pid,
-  };
+  });
   appendSyntheticOutput(session.logPath, `[dashboard] starting claude\n[cwd] ${cwdAbs}\n`);
   return persistAndCacheSession(session);
 }
@@ -398,7 +409,15 @@ export async function restartClaudeSession({ cwdRel, waitMs = 300 } = {}) {
   return startClaudeSession({ cwdRel });
 }
 
-export function resizeClaudeSession() {
+export function resizeClaudeSession({ cols, rows } = {}) {
   const session = rehydrateClaudeSession();
+  if (session && isPidAlive(session.bridgePid) && !session.exited) {
+    const c = Math.max(1, Math.min(500, Number(cols) || 80));
+    const r = Math.max(1, Math.min(200, Number(rows) || 24));
+    const resizePath = session.resizePath || getSessionPaths().resizePath;
+    try {
+      fs.writeFileSync(resizePath, JSON.stringify({ cols: c, rows: r }), 'utf8');
+    } catch {}
+  }
   return buildClaudeState(session, session?.cwdRel);
 }

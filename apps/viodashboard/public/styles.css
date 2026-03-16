@@ -701,6 +701,12 @@ button.chip:disabled {
   box-shadow: 0 0 16px rgba(255,107,138,.58);
 }
 
+.dot.window-alert {
+  background: #FF3B30;
+  box-shadow: 0 0 18px rgba(255,59,48,.72);
+  animation: contextAlertBlink 1s ease-in-out infinite;
+}
+
 .file-browser-panel {
   min-height: 0;
   overflow: hidden;
@@ -1426,6 +1432,19 @@ button.chip:disabled {
   }
 }
 
+@keyframes contextAlertBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 16px rgba(255,59,48,.55);
+  }
+  50% {
+    opacity: .25;
+    transform: scale(1.18);
+    box-shadow: 0 0 26px rgba(255,59,48,.9);
+  }
+}
+
 /* 超宽屏：继续压制两侧，让中央聊天区扩张 */
 @media (min-width: 2200px) {
   :root {
@@ -1806,7 +1825,7 @@ body.animations-off *::after {
 
 .claude-output {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;

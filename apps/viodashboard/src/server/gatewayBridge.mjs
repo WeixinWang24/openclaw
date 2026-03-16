@@ -379,6 +379,13 @@ export class GatewayBridge {
     }
   }
 
+  async compactSession() {
+    if (!this.connected) {throw new Error('gateway not connected');}
+    return gatewayCall('sessions.compact', {
+      key: this.sessionKey,
+    });
+  }
+
   async fetchSessionUsage() {
     if (!this.connected) {throw new Error('gateway not connected');}
     const res = await gatewayCall('sessions.usage', {

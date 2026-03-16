@@ -1,4 +1,6 @@
 // Main browser UI for VioDashboard: chat, telemetry, camera controls, and file browser.
+const DEFAULT_CLAUDE_CWD = '/Users/visen24/MAS/openclaw_fork';
+const CLAUDE_TERMINAL_INIT_ERROR = 'Claude terminal failed to initialize; PTY text fallback has been removed.';
 const statusEl = document.getElementById('status');
 const runModeChipEl = document.getElementById('runModeChip');
 const moodEl = document.getElementById('mood');
@@ -48,6 +50,7 @@ const tokenSaverDetailEl = document.getElementById('tokenSaverDetail');
 const tokenSaverDotEl = document.getElementById('tokenSaverDot');
 const contextDetailEl = document.getElementById('contextDetail');
 const contextDotEl = document.getElementById('contextDot');
+const contextCompactBtnEl = document.getElementById('contextCompactBtn');
 const wrapperRestartBtnEl = document.getElementById('wrapperRestartBtn');
 const gatewayRestartBtnEl = document.getElementById('gatewayRestartBtn');
 const tokenSaverToggleBtnEl = document.getElementById('tokenSaverToggleBtn');
@@ -132,7 +135,7 @@ const runModeState = {
 
 const claude = {
   sessionId: 'claude-default',
-  cwd: '/Users/visen24/MAS/openclaw_fork',
+  cwd: DEFAULT_CLAUDE_CWD,
   status: 'idle',
   running: false,
   started: false,
@@ -142,7 +145,8 @@ const claude = {
   loading: false,
   polling: false,
   pollTimer: null,
-  pollIntervalMs: 1000,
+  pollIntervalMs: 5000,
+  outputTruncated: false,
   autoScroll: true,
   lastOutputLength: 0,
   renderedLength: 0,
@@ -250,11 +254,11 @@ function renderContextTelemetry(msg = {}) {
     formatContextSource('diag', diagnostic),
   ].join(' · ');
 
-  const pctCandidates = [snapshot?.pct, diagnostic?.pct]
+  const usedCandidates = [snapshot?.used, snapshot?.totalTokens, snapshot?.contextTokens, diagnostic?.used, diagnostic?.totalTokens, diagnostic?.contextTokens]
     .map(value => Number(value))
-    .filter(value => Number.isFinite(value));
-  const worstPct = pctCandidates.length ? Math.max(...pctCandidates) : null;
-  const dotState = worstPct == null ? 'safe' : worstPct >= 90 ? 'danger' : worstPct >= 75 ? 'high' : worstPct >= 50 ? 'mid' : 'safe';
+    .filter(value => Number.isFinite(value) && value >= 0);
+  const worstUsed = usedCandidates.length ? Math.max(...usedCandidates) : null;
+  const dotState = worstUsed == null ? 'safe' : worstUsed > 200_000 ? 'alert' : worstUsed >= 100_000 ? 'mid' : 'safe';
   applyDotState(contextDotEl, 'window', dotState);
 }
 
@@ -572,8 +576,8 @@ function formatStamp(date = new Date()) {
 
 function avatarLabel(role) { return role === 'user' ? 'X' : 'V'; }
 function avatarImageSrc(role) {
-  if (role === 'user') {return '/avatars/xin-headshot-avatar.jpg';}
-  if (role === 'assistant') {return '/vio.png';}
+  if (role === 'user') {return '/avatars/Xin.JPEG';}
+  if (role === 'assistant') {return '/avatars/vio.png';}
   return '';
 }
 
@@ -1099,7 +1103,7 @@ function ensureClaudeTerminal() {
     convertEol: false,
     cursorBlink: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 15,
+    fontSize: 17,
     theme: {
       background: '#0b1020',
       foreground: '#d7f8ff',
@@ -1121,7 +1125,7 @@ function ensureClaudeTerminal() {
     updateClaudeFocusState();
   });
   claude.term.onData(data => {
-    if (claude.suppressInput || !claude.running) {return;}
+    if (!claude.running) {return;}
     if (shouldSendClaudeInputImmediately(data)) {
       flushClaudeInputBuffer().finally(() => {
         sendClaudeRawInput(data).catch(() => {});
@@ -1131,6 +1135,17 @@ function ensureClaudeTerminal() {
     claude.inputBuffer += data;
     scheduleClaudeInputFlush();
   });
+  claude.term.onFocus?.(() => {
+    claude.focused = true;
+    updateClaudeFocusState();
+  });
+  claude.term.onBlur?.(() => {
+    claude.focused = false;
+    updateClaudeFocusState();
+  });
+  claudeTerminalHostEl?.addEventListener('pointerdown', () => {
+    requestAnimationFrame(() => claude.term?.focus());
+  });
   claude.terminalReady = true;
 }
 
@@ -1138,19 +1153,12 @@ function syncClaudeTerminalOutput() {
   ensureClaudeTerminal();
   const text = claude.output || '';
   if (!claude.term) {
-    if (claudeOutputEl) {
-      claudeOutputEl.textContent = text;
-      if (claude.autoScroll) {claudeOutputEl.scrollTop = claudeOutputEl.scrollHeight;}
-    }
-    claude.renderedLength = text.length;
-    claude.lastOutputLength = text.length;
+    claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
     return;
   }
   const nextChunk = text.slice(claude.renderedLength);
   if (!nextChunk) {return;}
-  claude.suppressInput = true;
   claude.term.write(nextChunk, () => {
-    claude.suppressInput = false;
     if (claude.autoScroll) {claude.term.scrollToBottom();}
   });
   claude.renderedLength = text.length;
@@ -1159,9 +1167,17 @@ function syncClaudeTerminalOutput() {
 
 function resetClaudeTerminalOutput() {
   ensureClaudeTerminal();
-  if (claude.term) {claude.term.reset();}
-  if (claudeOutputEl) {claudeOutputEl.textContent = '';}
+  if (!claude.term) {
+    claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
+    claude.renderedLength = 0;
+    return;
+  }
+  claude.term.reset();
   claude.renderedLength = 0;
+  if (claude.outputTruncated) {
+    const notice = '\x1b[2m[... earlier output not shown — log exceeded 50 KB limit ...]\x1b[0m\r\n';
+    claude.term.write(notice);
+  }
 }
 
 function setClaudeComposerStatus(message, tone = 'hint') {
@@ -1195,6 +1211,7 @@ async function submitClaudeComposer() {
   setClaudeComposerStatus('Sending to Claude…', 'busy');
   renderClaudeComposer();
   setConsoleTab('claude');
+  addDebugLine(`Claude composer send len=${value.length}`, 'cyan');
   try {
     await flushClaudeInputBuffer();
     const res = await fetch('/api/claude/input', {
@@ -1205,31 +1222,29 @@ async function submitClaudeComposer() {
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to send to Claude');}
     await sendClaudeRawInput('\r');
-    claude.sessionId = data.sessionId || claude.sessionId || 'claude-default';
-    claude.cwd = data.cwd || claude.cwd;
-    claude.status = data.status || (data.running ? 'running' : claude.status || 'idle');
-    claude.running = !!data.running;
-    claude.started = !!data.started;
-    claude.exited = !!data.exited;
-    claude.exitCode = data.exitCode ?? null;
-    const prevOutput = claude.output || '';
-    const nextOutput = data.output || prevOutput;
-    if (!nextOutput.startsWith(prevOutput)) {resetClaudeTerminalOutput();}
-    claude.output = nextOutput;
-    claude.error = '';
+    applyClaudeStateData(data);
     claude.composerDraft = '';
     if (claudeComposerInputEl) {claudeComposerInputEl.value = '';}
     resizeClaudeComposer();
-    ensureClaudePolling();
-    renderClaudePanel();
-    setClaudeComposerStatus('Sent. Enter 继续发送 · Shift+Enter 换行', 'success');
+    renderClaudeComposer();
+    addDebugLine('Claude composer send accepted.', 'cyan');
+    setClaudeComposerStatus('Sent to Claude. Waiting for PTY output…', 'success');
+    window.setTimeout(() => {
+      fetchClaudeState().catch(error => {
+        addDebugLine(`Claude post-send refresh failed: ${error?.message || error}`, 'pink');
+      });
+    }, 120);
+    window.setTimeout(() => {
+      fetchClaudeState().catch(() => {});
+    }, 600);
     window.setTimeout(() => {
       if (!claude.composerDraft && !claude.composerSending) {setClaudeComposerStatus('Enter 发送 · Shift+Enter 换行', 'hint');}
-    }, 1600);
-    window.setTimeout(() => fetchClaudeState().catch(() => {}), 120);
+    }, 2200);
+    claude.term?.focus();
     claudeComposerInputEl?.focus();
   } catch (error) {
     claude.error = error?.message || String(error);
+    addDebugLine(`Claude composer send failed: ${claude.error}`, 'pink');
     setClaudeComposerStatus(claude.error || 'Send failed, retry', 'error');
     renderClaudeChrome();
     claudeComposerInputEl?.focus();
@@ -1246,7 +1261,7 @@ function renderClaudeChrome() {
     if (claudeStatusBadgeEl.dataset.status !== nextStatus) {claudeStatusBadgeEl.dataset.status = nextStatus;}
   }
   if (claudeCwdInputEl && document.activeElement !== claudeCwdInputEl) {
-    const nextCwd = claude.cwd || '/Users/visen24/MAS/openclaw_fork';
+    const nextCwd = claude.cwd || DEFAULT_CLAUDE_CWD;
     if (claudeCwdInputEl.value !== nextCwd) {claudeCwdInputEl.value = nextCwd;}
   }
   if (claudeMetaEl) {
@@ -1265,33 +1280,29 @@ function renderClaudeChrome() {
 
 function renderClaudePanel() {
   ensureClaudeTerminal();
-  const useTerminal = !!claude.term;
-  if (claudeOutputEl) {claudeOutputEl.hidden = useTerminal;}
-  if (claudeTerminalHostEl) {claudeTerminalHostEl.hidden = !useTerminal;}
+  if (claudeOutputEl) {claudeOutputEl.hidden = true;}
+  if (claudeTerminalHostEl) {claudeTerminalHostEl.hidden = !claude.term;}
+  if (!claude.term) {
+    claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
+  }
   renderClaudeChrome();
   renderClaudeComposer();
-  if (claudeOutputEl && !useTerminal) {claudeOutputEl.textContent = claude.output || '';}
   syncClaudeTerminalOutput();
 }
 
 function maybeScrollClaudeOutput() {
-  if (claude.term && claude.autoScroll) {
-    claude.term.scrollToBottom();
-    return;
-  }
-  if (!claudeOutputEl || !claude.autoScroll) {return;}
-  const currentLength = (claude.output || '').length;
-  if (currentLength >= claude.lastOutputLength) {claudeOutputEl.scrollTop = claudeOutputEl.scrollHeight;}
-  claude.lastOutputLength = currentLength;
+  if (!claude.term || !claude.autoScroll) {return;}
+  claude.term.scrollToBottom();
 }
 
 async function resizeClaudeSession() {
   ensureClaudeTerminal();
+  if (!claude.term) {return;}
   if (claude.fitAddon) {claude.fitAddon.fit();}
-  const hostWidth = claudeTerminalHostEl?.clientWidth || claudeOutputEl?.clientWidth || 0;
-  const hostHeight = claudeTerminalHostEl?.clientHeight || claudeOutputEl?.clientHeight || 0;
-  const cols = claude.term?.cols || Math.max(40, Math.floor(hostWidth / 8));
-  const rows = claude.term?.rows || Math.max(12, Math.floor(hostHeight / 18));
+  const hostWidth = claudeTerminalHostEl?.clientWidth || 0;
+  const hostHeight = claudeTerminalHostEl?.clientHeight || 0;
+  const cols = claude.term.cols || Math.max(40, Math.floor(hostWidth / 8));
+  const rows = claude.term.rows || Math.max(12, Math.floor(hostHeight / 18));
   try {
     await fetch('/api/claude/resize', {
       method: 'POST',
@@ -1301,10 +1312,7 @@ async function resizeClaudeSession() {
   } catch {}
 }
 
-async function fetchClaudeState() {
-  const res = await fetch(`/api/claude/state?cwd=${encodeURIComponent(claude.cwd || '/Users/visen24/MAS/openclaw_fork')}`, { cache: 'no-store' });
-  const data = await res.json();
-  if (!res.ok) {throw new Error(data?.error || 'Failed to fetch Claude state');}
+function applyClaudeStateData(data) {
   const prevOutput = claude.output || '';
   const prevStatus = claude.status;
   const prevRunning = claude.running;
@@ -1317,6 +1325,7 @@ async function fetchClaudeState() {
   claude.started = !!data.started;
   claude.exited = !!data.exited;
   claude.exitCode = data.exitCode ?? null;
+  claude.outputTruncated = !!data.outputTruncated;
   const nextOutput = data.output || '';
   if (!nextOutput.startsWith(prevOutput)) {resetClaudeTerminalOutput();}
   claude.output = nextOutput;
@@ -1326,6 +1335,13 @@ async function fetchClaudeState() {
   if (nextOutput !== prevOutput) {syncClaudeTerminalOutput();}
   if (claude.running) {ensureClaudePolling();}
   else {stopClaudePolling();}
+}
+
+async function fetchClaudeState() {
+  const res = await fetch(`/api/claude/state?cwd=${encodeURIComponent(claude.cwd || DEFAULT_CLAUDE_CWD)}`, { cache: 'no-store' });
+  const data = await res.json();
+  if (!res.ok) {throw new Error(data?.error || 'Failed to fetch Claude state');}
+  applyClaudeStateData(data);
 }
 
 function ensureClaudePolling() {
@@ -1360,7 +1376,7 @@ async function startClaude() {
   claude.loading = true;
   claude.error = '';
   claude.status = 'starting';
-  claude.cwd = (claudeCwdInputEl?.value || '/Users/visen24/MAS/openclaw_fork').trim() || '/Users/visen24/MAS/openclaw_fork';
+  claude.cwd = (claudeCwdInputEl?.value || DEFAULT_CLAUDE_CWD).trim() || DEFAULT_CLAUDE_CWD;
   renderClaudePanel();
   try {
     const res = await fetch('/api/claude/start', {
@@ -1370,15 +1386,7 @@ async function startClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to start Claude');}
-    claude.sessionId = data.sessionId || 'claude-default';
-    claude.status = data.status || 'running';
-    claude.running = !!data.running;
-    claude.started = !!data.started;
-    claude.exited = !!data.exited;
-    claude.exitCode = data.exitCode ?? null;
-    resetClaudeTerminalOutput();
-    claude.output = data.output || '';
-    ensureClaudePolling();
+    applyClaudeStateData(data);
     window.setTimeout(() => fetchClaudeState().catch(() => {}), 250);
   } catch (error) {
     claude.error = error?.message || String(error);
@@ -1403,13 +1411,7 @@ async function stopClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to stop Claude');}
-    claude.status = data.status || 'terminated';
-    claude.running = !!data.running;
-    claude.started = !!data.started;
-    claude.exited = !!data.exited;
-    claude.exitCode = data.exitCode ?? null;
-    claude.output = data.output || claude.output || '';
-    if (!claude.running) {stopClaudePolling();}
+    applyClaudeStateData(data);
   } catch (error) {
     claude.error = error?.message || String(error);
   } finally {
@@ -1419,9 +1421,11 @@ async function stopClaude() {
 }
 
 async function restartClaude() {
+  claude.inputBuffer = '';
+  if (claude.inputFlushTimer) {clearTimeout(claude.inputFlushTimer); claude.inputFlushTimer = null;}
   claude.loading = true;
   claude.error = '';
-  claude.cwd = (claudeCwdInputEl?.value || '/Users/visen24/MAS/openclaw_fork').trim() || '/Users/visen24/MAS/openclaw_fork';
+  claude.cwd = (claudeCwdInputEl?.value || DEFAULT_CLAUDE_CWD).trim() || DEFAULT_CLAUDE_CWD;
   renderClaudePanel();
   try {
     const res = await fetch('/api/claude/restart', {
@@ -1431,15 +1435,7 @@ async function restartClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to restart Claude');}
-    claude.sessionId = data.sessionId || 'claude-default';
-    claude.status = data.status || 'running';
-    claude.running = !!data.running;
-    claude.started = !!data.started;
-    claude.exited = !!data.exited;
-    claude.exitCode = data.exitCode ?? null;
-    resetClaudeTerminalOutput();
-    claude.output = data.output || '';
-    ensureClaudePolling();
+    applyClaudeStateData(data);
   } catch (error) {
     claude.error = error?.message || String(error);
   } finally {
@@ -1496,6 +1492,37 @@ async function restartGateway() {
   }
 }
 
+async function compactContext() {
+  if (!contextCompactBtnEl || contextCompactBtnEl.disabled) {return;}
+  const prevText = contextCompactBtnEl.textContent;
+  contextCompactBtnEl.disabled = true;
+  contextCompactBtnEl.textContent = 'Compacting…';
+  addDebugLine('Context compaction requested.', 'cyan');
+  try {
+    const res = await fetch('/api/context/compact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {throw new Error(data?.error || 'Failed to compact context');}
+    const compacted = data?.result?.compacted;
+    const reason = data?.result?.reason ? ` (${data.result.reason})` : '';
+    addDebugLine(compacted === false ? `Context compaction skipped${reason}.` : 'Context compaction finished.', compacted === false ? 'pink' : 'cyan');
+    contextCompactBtnEl.textContent = compacted === false ? 'Skipped' : 'Done';
+    setTimeout(() => {
+      if (contextCompactBtnEl) {
+        contextCompactBtnEl.disabled = false;
+        contextCompactBtnEl.textContent = prevText || 'Compact';
+      }
+    }, 2200);
+  } catch (error) {
+    addDebugLine(`Context compaction failed: ${error?.message || error}`, 'pink');
+    contextCompactBtnEl.disabled = false;
+    contextCompactBtnEl.textContent = prevText || 'Compact';
+  }
+}
+
 function setConsoleTab(tab) {
   consoleTabs.active = tab === 'claude' ? 'claude' : 'terminal';
   const isTerminal = consoleTabs.active === 'terminal';
@@ -1511,6 +1538,7 @@ function setConsoleTab(tab) {
       maybeScrollClaudeOutput();
       resizeClaudeSession();
       claude.term?.focus();
+      if (!claude.term && claudeComposerInputEl) {claudeComposerInputEl.focus();}
     });
   }
 }
@@ -1528,7 +1556,7 @@ function bindClaudeEvents() {
   if (claudeStopBtnEl) {claudeStopBtnEl.onclick = stopClaude;}
   if (claudeRestartBtnEl) {claudeRestartBtnEl.onclick = restartClaude;}
   claudeCwdInputEl?.addEventListener('change', event => {
-    claude.cwd = (event.target.value || '/Users/visen24/MAS/openclaw_fork').trim() || '/Users/visen24/MAS/openclaw_fork';
+    claude.cwd = String(event.target.value || '').trim() || DEFAULT_CLAUDE_CWD;
   });
   claudeAutoScrollEl?.addEventListener('change', event => {
     claude.autoScroll = !!event.target.checked;
@@ -1858,6 +1886,10 @@ function addMessage(role, text, extraClass = '', options = {}) {
     const img = document.createElement('img');
     img.className = 'avatar-img';
     img.alt = role === 'user' ? 'Xin avatar' : 'avatar';
+    img.onerror = () => {
+      img.remove();
+      avatar.textContent = avatarLabel(role);
+    };
     img.src = `${avatarSrc}?v=1`;
     avatar.appendChild(img);
   } else {avatar.textContent = avatarLabel(role);}
@@ -2011,6 +2043,10 @@ function connect() {
     if (msg.type === 'token-saver') {
       renderTokenSaverState(msg.tokenSaver || {});
       addDebugLine(`Token saver ${msg.tokenSaver?.enabled ? 'enabled' : 'disabled'}.`, 'cyan');
+      return;
+    }
+    if (msg.type === 'claude-state') {
+      try {applyClaudeStateData(msg);} catch (error) {addDebugLine(`ws claude-state apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
     if (msg.type === 'chat') {
@@ -2287,10 +2323,13 @@ setInterval(refreshSafeEditState, 5000);
 syncFileNavButtons();
 loadFileTree();
 ensureTerminalSession().catch(() => {});
-initClaudePanel();
-renderRunModeChip();
-fetchRunMode().catch(() => renderRunModeChip());
-runModeChipEl?.addEventListener('click', toggleRunMode);
+try { initClaudePanel(); } catch (error) { addDebugLine(`initClaudePanel failed: ${error?.message || error}`, 'pink'); }
+try { renderRunModeChip(); } catch (error) { addDebugLine(`renderRunModeChip failed: ${error?.message || error}`, 'pink'); }
+try { fetchRunMode().catch(() => renderRunModeChip()); } catch (error) { addDebugLine(`fetchRunMode failed: ${error?.message || error}`, 'pink'); }
+try { runModeChipEl?.addEventListener('click', toggleRunMode); } catch (error) { addDebugLine(`runModeChip bind failed: ${error?.message || error}`, 'pink'); }
+distRebuildBtnEl?.addEventListener('click', rebuildDist);
+wrapperRestartBtnEl?.addEventListener('click', restartWrapper);
+gatewayRestartBtnEl?.addEventListener('click', restartGateway);
+contextCompactBtnEl?.addEventListener('click', compactContext);
 window.__VIO_APP_LOADED__ = true;
-connect();
-onnect();
+try { connect(); } catch (error) { addDebugLine(`connect failed: ${error?.message || error}`, 'pink'); }
