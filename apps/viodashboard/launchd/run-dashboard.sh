@@ -11,6 +11,8 @@ const mod = await import(process.env.CONFIG_JS);
 console.log(mod.APP_LOG_DIR);
 console.log(mod.APP_SUPPORT_RUNTIME_DIR);
 console.log(mod.DASHBOARD_APP_ROOT);
+console.log(mod.PROJECT_ROOT);
+console.log(mod.OPENCLAW_REPO_ROOT);
 console.log(mod.CONFIG_PATH);
 console.log(mod.gatewayPort);
 NODE
@@ -18,8 +20,10 @@ NODE
 LOG_DIR="$(printf '%s\n' "$CFG" | sed -n '1p')"
 RUNTIME_DIR="$(printf '%s\n' "$CFG" | sed -n '2p')"
 SOURCE_DIR="$(printf '%s\n' "$CFG" | sed -n '3p')"
-CONFIG_PATH="$(printf '%s\n' "$CFG" | sed -n '4p')"
-GATEWAY_PORT="$(printf '%s\n' "$CFG" | sed -n '5p')"
+PROJECT_ROOT="$(printf '%s\n' "$CFG" | sed -n '4p')"
+OPENCLAW_REPO_ROOT="$(printf '%s\n' "$CFG" | sed -n '5p')"
+CONFIG_PATH="$(printf '%s\n' "$CFG" | sed -n '6p')"
+GATEWAY_PORT="$(printf '%s\n' "$CFG" | sed -n '7p')"
 
 RUN_MODE="${VIO_DASHBOARD_RUN_MODE:-}"
 if [[ -z "$RUN_MODE" && -f "$MODE_FILE" ]]; then
@@ -48,8 +52,5 @@ export VIO_DASHBOARD_APP_ROOT="$SOURCE_DIR"
 export VIO_WRAPPER_PROJECT_ROOT="$PROJECT_ROOT"
 export VIO_OPENCLAW_REPO_ROOT="$OPENCLAW_REPO_ROOT"
 export VIO_WRAPPER_CONFIG_PATH="$CONFIG_PATH"
-export VIO_WRAPPER_GATEWAY_PORT="$GATEWAY_PORT"
-exec /opt/homebrew/bin/node src/server.mjs >> "$LOG_DIR/wrapper.out.log" 2>> "$LOG_DIR/wrapper.err.log"
-port VIO_WRAPPER_CONFIG_PATH="$CONFIG_PATH"
 export VIO_WRAPPER_GATEWAY_PORT="$GATEWAY_PORT"
 exec /opt/homebrew/bin/node src/server.mjs >> "$LOG_DIR/wrapper.out.log" 2>> "$LOG_DIR/wrapper.err.log"
