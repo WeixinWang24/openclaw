@@ -178,6 +178,7 @@ const claude = {
   composerSending: false,
   composerStatus: 'Enter 发送 · Shift+Enter 换行',
   composerStatusTone: 'hint',
+  autoStartAttempted: false,
 };
 
 function renderRunModeChip() {
@@ -1286,7 +1287,11 @@ async function fetchServerConfig() {
       fetchClaudeState().catch(error => {
         claude.error = error?.message || String(error);
         renderClaudeChrome();
+      }).finally(() => {
+        queueClaudeAutoStart();
       });
+    } else {
+      queueClaudeAutoStart();
     }
   } catch (error) {
     addDebugLine(`config fetch failed: ${error?.message || error}`, 'pink');
@@ -1404,6 +1409,29 @@ function stopClaudePolling() {
     clearInterval(claude.pollTimer);
     claude.pollTimer = null;
   }
+}
+
+function shouldAutoStartClaude() {
+  const cwd = (claude.cwd || getDefaultClaudeCwd()).trim();
+  return !isPlaceholderClaudeCwd(cwd)
+    && consoleTabs.active === 'claude'
+    && !claude.running
+    && !claude.loading
+    && claude.status !== 'starting'
+    && !claude.autoStartAttempted;
+}
+
+function queueClaudeAutoStart() {
+  if (!shouldAutoStartClaude()) {return;}
+  claude.autoStartAttempted = true;
+  window.setTimeout(() => {
+    const cwd = (claude.cwd || getDefaultClaudeCwd()).trim();
+    if (isPlaceholderClaudeCwd(cwd) || claude.running || claude.loading || claude.status === 'starting') {return;}
+    startClaude().catch(error => {
+      claude.error = error?.message || String(error);
+      renderClaudePanel();
+    });
+  }, 120);
 }
 
 async function startClaude() {
@@ -1573,6 +1601,7 @@ function setConsoleTab(tab) {
   if (isClaude) {
     renderClaudePanel();
     if (claude.running) {ensureClaudePolling();}
+    queueClaudeAutoStart();
     requestAnimationFrame(() => {
       maybeScrollClaudeOutput();
       resizeClaudeSession();
