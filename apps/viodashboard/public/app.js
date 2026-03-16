@@ -143,6 +143,11 @@ function getDefaultClaudeCwd() {
   return serverConfig.defaultClaudeCwd || serverConfig.openclawRepoRoot || serverConfig.projectRoot || DEFAULT_CLAUDE_CWD || '.';
 }
 
+function isPlaceholderClaudeCwd(value) {
+  const cwd = String(value || '').trim();
+  return !cwd || cwd === '.';
+}
+
 const claude = {
   sessionId: 'claude-default',
   cwd: getDefaultClaudeCwd(),
@@ -1270,8 +1275,19 @@ async function fetchServerConfig() {
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'config fetch failed');}
     Object.assign(serverConfig, data?.config || {});
-    claude.cwd = claude.cwd || getDefaultClaudeCwd();
+    const nextDefaultCwd = getDefaultClaudeCwd();
+    const shouldRefreshClaudeState = isPlaceholderClaudeCwd(claude.cwd) || claude.cwd !== nextDefaultCwd;
+    if (isPlaceholderClaudeCwd(claude.cwd)) {
+      claude.cwd = nextDefaultCwd;
+    }
     if (fileBrowserRootEl && serverConfig.projectRoot) {fileBrowserRootEl.textContent = serverConfig.projectRoot;}
+    renderClaudeChrome();
+    if (shouldRefreshClaudeState) {
+      fetchClaudeState().catch(error => {
+        claude.error = error?.message || String(error);
+        renderClaudeChrome();
+      });
+    }
   } catch (error) {
     addDebugLine(`config fetch failed: ${error?.message || error}`, 'pink');
   }
