@@ -25,6 +25,23 @@ OPENCLAW_REPO_ROOT="$(printf '%s\n' "$CFG" | sed -n '5p')"
 CONFIG_PATH="$(printf '%s\n' "$CFG" | sed -n '6p')"
 GATEWAY_PORT="$(printf '%s\n' "$CFG" | sed -n '7p')"
 
+require_value() {
+  local name="$1"
+  local value="${2:-}"
+  if [[ -z "$value" ]]; then
+    echo "[viodashboard] missing required startup value: $name" >&2
+    exit 1
+  fi
+}
+
+require_value LOG_DIR "$LOG_DIR"
+require_value RUNTIME_DIR "$RUNTIME_DIR"
+require_value SOURCE_DIR "$SOURCE_DIR"
+require_value PROJECT_ROOT "$PROJECT_ROOT"
+require_value OPENCLAW_REPO_ROOT "$OPENCLAW_REPO_ROOT"
+require_value CONFIG_PATH "$CONFIG_PATH"
+require_value GATEWAY_PORT "$GATEWAY_PORT"
+
 RUN_MODE="${VIO_DASHBOARD_RUN_MODE:-}"
 if [[ -z "$RUN_MODE" && -f "$MODE_FILE" ]]; then
   RUN_MODE="$(tr -d '[:space:]' < "$MODE_FILE")"
