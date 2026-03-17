@@ -920,25 +920,22 @@ function formatDistShortPath(value) {
 }
 
 function formatDistSummary(info = {}, runtime = null) {
-  const version = info?.version || 'unknown';
-  const commit = String(info?.commit || '').slice(0, 8) || 'no-commit';
   const touched = info?.distMtime || info?.buildInfoMtime || runtime?.distMtime || runtime?.buildInfoMtime || null;
   const touchedLabel = touched ? formatDistBuiltAt(touched) : 'unknown';
-  return `last build ${touchedLabel} · ${version} · ${commit}`;
+  return `last build ${touchedLabel}`;
 }
 
-function formatDistBuiltMeta(info = {}) {
-  if (!info?.builtAt) {return 'build metadata time unknown';}
-  return `metadata built ${formatDistBuiltAt(info.builtAt)}`;
-}
-
-function formatDistSync(info = {}, configured = null, runtime = null) {
+function formatDistSync(info = {}, runtime = null) {
   if (info?.mismatch) {
-    const runtimePath = runtime?.entry ? ` · run ${formatDistShortPath(runtime.entry)}` : '';
-    return `mismatch${runtimePath}`;
+    const runtimePath = runtime?.entry ? ` · ${formatDistShortPath(runtime.entry)}` : '';
+    return `sync mismatch${runtimePath}`;
   }
-  const configuredPath = configured?.distRoot ? ` · ${formatDistShortPath(configured.distRoot)}` : '';
-  return `in sync${configuredPath}`;
+  return 'sync in sync';
+}
+
+function formatDistDirectory(configured = null, runtime = null) {
+  const normalized = configured?.distRoot || (runtime?.entry ? runtime.entry.replace(/\/index\.js$/, '') : null) || 'unknown';
+  return `dist ${formatDistShortPath(normalized)}`;
 }
 
 async function refreshDistInfo() {
@@ -956,8 +953,8 @@ async function refreshDistInfo() {
         const tone = info?.mismatch ? 'var(--accent-warn,#ffd166)' : 'var(--text-system-soft,#6FE7D2)';
         distDetailEl.innerHTML = [
           `<span class="semantic-value">${formatDistSummary(configured || runtime || {}, runtime)}</span>`,
-          `<span class="semantic-value">${formatDistBuiltMeta(runtime || configured || {})}</span>`,
-          `<span class="semantic-value" style="color:${tone}">${formatDistSync(info, configured, runtime)}</span>`
+          `<span class="semantic-value" style="color:${tone}">${formatDistSync(info, runtime)}</span>`,
+          `<span class="semantic-value">${formatDistDirectory(configured, runtime)}</span>`
         ].join('<br>');
       }
     }
