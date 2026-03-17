@@ -251,7 +251,7 @@ function addDebugLine(text, tone = 'cyan') {
 function renderSetupBanner() {
   if (!setupBannerEl) {return;}
   const setup = serverConfig.setup || {};
-  if (setup.hasLocalConfig !== false) {
+  if (setup.hasLocalConfig) {
     setupBannerEl.hidden = true;
     setupBannerEl.innerHTML = '';
     return;
@@ -914,18 +914,40 @@ function formatDistBuiltAt(value) {
   return d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function formatDistShortPath(value) {
+  if (!value) {return 'unknown';}
+  return String(value).replace(/^\/Users\/visen24\//, '~/');
+}
+
+function formatDistLine(label, info = {}) {
+  const version = info?.version || 'unknown';
+  const commit = String(info?.commit || '').slice(0, 8) || 'no-commit';
+  const built = formatDistBuiltAt(info?.builtAt);
+  const extra = info?.distMtime ? ` · mtime ${formatDistBuiltAt(info.distMtime)}` : '';
+  const entry = info?.entry ? ` · ${formatDistShortPath(info.entry)}` : '';
+  return `<span class="semantic-value">${label} ${version} · ${commit} · built ${built}${extra}${entry}</span>`;
+}
+
 async function refreshDistInfo() {
   try {
     const res = await fetch('/api/dist-info');
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'dist info unavailable');}
     const info = data?.info || null;
+    const configured = info?.configured || null;
+    const runtime = info?.runtime || null;
     if (distDetailEl) {
-      distDetailEl.innerHTML = info
-        ? `<span class="semantic-value">built ${formatDistBuiltAt(info.builtAt)} · ${info.version || 'unknown'} · ${String(info.commit || '').slice(0, 8) || 'no-commit'}</span>`
-        : '<span class="semantic-value">build info unavailable</span>';
+      if (!configured && !runtime) {
+        distDetailEl.innerHTML = '<span class="semantic-value">build info unavailable</span>';
+      } else {
+        const lines = [];
+        if (configured) {lines.push(formatDistLine('cfg', configured));}
+        if (runtime) {lines.push(formatDistLine('run', runtime));}
+        if (info?.mismatch) {lines.push('<span class="semantic-value" style="color:var(--accent-warn,#ffd166)">cfg/run mismatch</span>');}
+        distDetailEl.innerHTML = lines.join('<br>');
+      }
     }
-    if (distDotEl) {applyDotState(distDotEl, 'link', info?.builtAt ? 'online' : 'offline');}
+    if (distDotEl) {applyDotState(distDotEl, 'link', info?.mismatch ? 'danger' : ((configured || runtime) ? 'online' : 'offline'));}
   } catch (error) {
     if (distDetailEl) {distDetailEl.innerHTML = `<span class="semantic-value">${error?.message || error}</span>`;}
     if (distDotEl) {applyDotState(distDotEl, 'link', 'offline');}

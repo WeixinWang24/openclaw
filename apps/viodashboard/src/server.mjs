@@ -8,7 +8,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import os from 'node:os';
+import { execFile, execFileSync } from 'node:child_process';
 import WebSocket, { WebSocketServer } from 'ws';
 import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
@@ -89,13 +90,105 @@ function getOrCreateTerminalSession(sessionId = 'default', cwdRel = '.') {
 }
 
 
-function loadDistBuildInfo() {
+function safeStat(filePath) {
   try {
-    if (!fs.existsSync(OPENCLAW_DIST_BUILD_INFO)) {return null;}
-    return JSON.parse(fs.readFileSync(OPENCLAW_DIST_BUILD_INFO, 'utf8'));
+    return fs.statSync(filePath);
   } catch {
     return null;
   }
+}
+
+function fileMtimeIso(filePath) {
+  const stat = safeStat(filePath);
+  return stat?.mtime?.toISOString?.() || null;
+}
+
+function readJsonFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {return null;}
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function getNewestDistMtime(distRoot) {
+  try {
+    if (!distRoot || !fs.existsSync(distRoot)) {return null;}
+    const stack = [distRoot];
+    let newest = 0;
+    while (stack.length) {
+      const current = stack.pop();
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        const stat = safeStat(fullPath);
+        const mtimeMs = stat?.mtimeMs || 0;
+        if (mtimeMs > newest) {newest = mtimeMs;}
+      }
+    }
+    return newest ? new Date(newest).toISOString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadLaunchAgentProgramArguments(plistPath) {
+  try {
+    if (!fs.existsSync(plistPath)) {return null;}
+    const raw = execFileSync('plutil', ['-convert', 'json', '-o', '-', plistPath], { encoding: 'utf8' });
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.ProgramArguments) ? parsed.ProgramArguments.map(String) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGatewayRuntimeInfo() {
+  try {
+    const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', 'ai.openclaw.gateway.plist');
+    const programArguments = loadLaunchAgentProgramArguments(plistPath);
+    const entry = Array.isArray(programArguments) ? programArguments.find(arg => arg.endsWith('/dist/index.js')) || null : null;
+    const packageRoot = entry ? path.dirname(path.dirname(entry)) : null;
+    const pkg = readJsonFile(packageRoot ? path.join(packageRoot, 'package.json') : null);
+    const buildInfoPath = packageRoot ? path.join(packageRoot, 'dist', 'build-info.json') : null;
+    const buildInfo = readJsonFile(buildInfoPath);
+    return {
+      plistPath,
+      programArguments,
+      entry,
+      packageRoot,
+      version: buildInfo?.version || pkg?.version || null,
+      commit: buildInfo?.commit || null,
+      builtAt: buildInfo?.builtAt || null,
+      buildInfoPath,
+      buildInfoMtime: fileMtimeIso(buildInfoPath),
+      source: entry?.startsWith(OPENCLAW_REPO_ROOT) ? 'repo' : (entry ? 'external' : 'unknown'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function loadDistBuildInfo() {
+  const configuredBuildInfo = readJsonFile(OPENCLAW_DIST_BUILD_INFO);
+  const configuredDistRoot = path.dirname(OPENCLAW_DIST_BUILD_INFO);
+  const runtime = resolveGatewayRuntimeInfo();
+  return {
+    configured: configuredBuildInfo ? {
+      ...configuredBuildInfo,
+      buildInfoPath: OPENCLAW_DIST_BUILD_INFO,
+      buildInfoMtime: fileMtimeIso(OPENCLAW_DIST_BUILD_INFO),
+      distRoot: configuredDistRoot,
+      distMtime: getNewestDistMtime(configuredDistRoot),
+    } : null,
+    runtime,
+    mismatch: Boolean(runtime?.entry && !runtime.entry.startsWith(OPENCLAW_REPO_ROOT)),
+  };
 }
 
 function loadRoadmapData() {
