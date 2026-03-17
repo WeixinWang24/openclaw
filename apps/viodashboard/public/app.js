@@ -921,21 +921,16 @@ function formatDistShortPath(value) {
 
 function formatDistSummary(info = {}, runtime = null) {
   const touched = info?.distMtime || info?.buildInfoMtime || runtime?.distMtime || runtime?.buildInfoMtime || null;
-  const touchedLabel = touched ? formatDistBuiltAt(touched) : 'unknown';
-  return `last build ${touchedLabel}`;
+  return touched ? formatDistBuiltAt(touched) : 'unknown';
 }
 
-function formatDistSync(info = {}, runtime = null) {
-  if (info?.mismatch) {
-    const runtimePath = runtime?.entry ? ` · ${formatDistShortPath(runtime.entry)}` : '';
-    return `sync mismatch${runtimePath}`;
-  }
-  return 'sync in sync';
+function formatDistSync(info = {}) {
+  return info?.mismatch ? 'sync mismatch' : 'sync ok';
 }
 
 function formatDistDirectory(configured = null, runtime = null) {
   const normalized = configured?.distRoot || (runtime?.entry ? runtime.entry.replace(/\/index\.js$/, '') : null) || 'unknown';
-  return `dist ${formatDistShortPath(normalized)}`;
+  return formatDistShortPath(normalized);
 }
 
 async function refreshDistInfo() {
@@ -953,7 +948,7 @@ async function refreshDistInfo() {
         const tone = info?.mismatch ? 'var(--accent-warn,#ffd166)' : 'var(--text-system-soft,#6FE7D2)';
         distDetailEl.innerHTML = [
           `<span class="semantic-value">${formatDistSummary(configured || runtime || {}, runtime)}</span>`,
-          `<span class="semantic-value" style="color:${tone}">${formatDistSync(info, runtime)}</span>`,
+          `<span class="semantic-value" style="color:${tone}">${formatDistSync(info)}</span>`,
           `<span class="semantic-value">${formatDistDirectory(configured, runtime)}</span>`
         ].join('<br>');
       }
