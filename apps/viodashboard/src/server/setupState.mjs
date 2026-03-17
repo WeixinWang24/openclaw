@@ -23,6 +23,9 @@ import {
   APP_BASE_URL,
 } from '../config.mjs';
 
+const BOOTSTRAP_COMMAND = 'cd apps/viodashboard && node scripts/bootstrap-local-config.mjs';
+const BOOTSTRAP_PREVIEW_COMMAND = 'cd apps/viodashboard && node scripts/bootstrap-local-config.mjs --print --yes';
+
 // ---------------------------------------------------------------------------
 // Small filesystem helpers
 // ---------------------------------------------------------------------------
@@ -71,13 +74,13 @@ function evaluateLocalConfig() {
           id: 'bootstrap-generate',
           label: 'Generate local config',
           kind: 'command',
-          command: 'node scripts/bootstrap-local-config.mjs',
+          command: BOOTSTRAP_COMMAND,
         },
         {
           id: 'bootstrap-preview',
           label: 'Preview detected values (dry run)',
           kind: 'command',
-          command: 'node scripts/bootstrap-local-config.mjs --print --yes',
+          command: BOOTSTRAP_PREVIEW_COMMAND,
         },
       ],
     };
@@ -95,7 +98,7 @@ function evaluateLocalConfig() {
         id: 'bootstrap-preview',
         label: 'Preview current detected values',
         kind: 'command',
-        command: 'node scripts/bootstrap-local-config.mjs --print --yes',
+        command: BOOTSTRAP_PREVIEW_COMMAND,
       },
     ],
   };
@@ -137,13 +140,13 @@ function evaluateCorePathSanity() {
           id: 'review-config',
           label: 'Preview detected values',
           kind: 'command',
-          command: 'node scripts/bootstrap-local-config.mjs --print --yes',
+          command: BOOTSTRAP_PREVIEW_COMMAND,
         },
         {
           id: 'rerun-bootstrap',
           label: 'Regenerate local config',
           kind: 'command',
-          command: 'node scripts/bootstrap-local-config.mjs',
+          command: BOOTSTRAP_COMMAND,
         },
       ],
     };
@@ -221,7 +224,7 @@ function evaluateDependencyChecks() {
           id: 'fix-local-config',
           label: 'Preview and fix local config',
           kind: 'command',
-          command: 'node scripts/bootstrap-local-config.mjs --print --yes',
+          command: BOOTSTRAP_PREVIEW_COMMAND,
         },
       ],
     };

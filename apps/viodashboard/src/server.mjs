@@ -9,7 +9,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import WebSocket, { WebSocketServer } from 'ws';
 import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';

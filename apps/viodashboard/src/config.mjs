@@ -121,6 +121,9 @@ export const CLAUDE_BIN = envOr('CLAUDE_CLI_PATH', mergedConfig.claudeBin || 'cl
 export const ROADMAP_DATA_PATH = path.join(DASHBOARD_DATA_ROOT, 'roadmap.json');
 export const ROADMAP_HISTORY_DATA_PATH = path.join(DASHBOARD_DATA_ROOT, 'roadmap-history.json');
 
+const BOOTSTRAP_COMMAND = 'cd apps/viodashboard && node scripts/bootstrap-local-config.mjs';
+const BOOTSTRAP_PREVIEW_COMMAND = 'cd apps/viodashboard && node scripts/bootstrap-local-config.mjs --print --yes';
+
 export const CLIENT_CONFIG = {
   defaultClaudeCwd: DEFAULT_CLAUDE_CWD,
   projectRoot: PROJECT_ROOT,
@@ -129,7 +132,7 @@ export const CLIENT_CONFIG = {
   setup: {
     hasLocalConfig: HAS_LOCAL_CONFIG,
     localConfigPath: LOCAL_CONFIG_PATH,
-    bootstrapCommand: 'node scripts/bootstrap-local-config.mjs',
-    bootstrapPreviewCommand: 'node scripts/bootstrap-local-config.mjs --print --yes',
+    bootstrapCommand: BOOTSTRAP_COMMAND,
+    bootstrapPreviewCommand: BOOTSTRAP_PREVIEW_COMMAND,
   },
 };
