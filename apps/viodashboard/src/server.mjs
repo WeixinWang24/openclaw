@@ -8,9 +8,9 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, execFile } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import WebSocket, { WebSocketServer } from 'ws';
-import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
+import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
 import { sendJson } from './server/httpUtils.mjs';
 import { listProjectFiles, readProjectFile, writeProjectFile, safeProjectPath } from './server/filesystem.mjs';
@@ -585,7 +585,12 @@ const server = http.createServer((req, res) => {
         sendJson(res, shouldReload ? 202 : 200, safeResult);
         if (shouldReload) {
           setTimeout(() => {
-            execFile('/bin/bash', [path.join(ROOT, 'launchd', 'reload.sh')], { cwd: ROOT }, () => {});
+            // Setup wizard reload only needs a service restart, not a full
+            // bootout/bootstrap cycle. Running reload.sh from inside the
+            // launchd-managed wrapper can unload the current job before the
+            // helper finishes, leaving the dashboard down. `kickstart -k`
+            // restarts the existing job in place and is safe to trigger here.
+            execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
           }, 120);
         }
       })
