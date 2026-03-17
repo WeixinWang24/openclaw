@@ -124,7 +124,7 @@ function appendRoadmapContract(text = '') {
   return `${source}\n${ROADMAP_REPLY_CONTRACT}`;
 }
 
-const OPENCLAW_DIST_DIR = '/opt/homebrew/lib/node_modules/openclaw/dist';
+const OPENCLAW_DIST_DIR = OPENCLAW_DIST_ROOT;
 let gatewayCallerPromise = null;
 
 function parseExportAlias(source, symbolName) {
