@@ -919,13 +919,26 @@ function formatDistShortPath(value) {
   return String(value).replace(/^\/Users\/visen24\//, '~/');
 }
 
-function formatDistLine(label, info = {}) {
+function formatDistSummary(info = {}) {
   const version = info?.version || 'unknown';
   const commit = String(info?.commit || '').slice(0, 8) || 'no-commit';
   const built = formatDistBuiltAt(info?.builtAt);
-  const extra = info?.distMtime ? ` · mtime ${formatDistBuiltAt(info.distMtime)}` : '';
-  const entry = info?.entry ? ` · ${formatDistShortPath(info.entry)}` : '';
-  return `<span class="semantic-value">${label} ${version} · ${commit} · built ${built}${extra}${entry}</span>`;
+  return `run ${version} · ${commit} · built ${built}`;
+}
+
+function formatDistTouched(info = {}) {
+  const touched = info?.distMtime || info?.buildInfoMtime || null;
+  if (!touched) {return 'files touched unknown';}
+  return `files touched ${formatDistBuiltAt(touched)}`;
+}
+
+function formatDistSync(info = {}, configured = null, runtime = null) {
+  if (info?.mismatch) {
+    const runtimePath = runtime?.entry ? ` · ${formatDistShortPath(runtime.entry)}` : '';
+    return `mismatch${runtimePath}`;
+  }
+  const configuredPath = configured?.distRoot ? ` · ${formatDistShortPath(configured.distRoot)}` : '';
+  return `in sync${configuredPath}`;
 }
 
 async function refreshDistInfo() {
@@ -935,16 +948,17 @@ async function refreshDistInfo() {
     if (!res.ok) {throw new Error(data?.error || 'dist info unavailable');}
     const info = data?.info || null;
     const configured = info?.configured || null;
-    const runtime = info?.runtime || null;
+    const runtime = info?.runtime || configured || null;
     if (distDetailEl) {
       if (!configured && !runtime) {
         distDetailEl.innerHTML = '<span class="semantic-value">build info unavailable</span>';
       } else {
-        const lines = [];
-        if (configured) {lines.push(formatDistLine('cfg', configured));}
-        if (runtime) {lines.push(formatDistLine('run', runtime));}
-        if (info?.mismatch) {lines.push('<span class="semantic-value" style="color:var(--accent-warn,#ffd166)">cfg/run mismatch</span>');}
-        distDetailEl.innerHTML = lines.join('<br>');
+        const tone = info?.mismatch ? 'var(--accent-warn,#ffd166)' : 'var(--text-system-soft,#6FE7D2)';
+        distDetailEl.innerHTML = [
+          `<span class="semantic-value">${formatDistSummary(runtime || configured || {})}</span>`,
+          `<span class="semantic-value">${formatDistTouched(configured || runtime || {})}</span>`,
+          `<span class="semantic-value" style="color:${tone}">${formatDistSync(info, configured, runtime)}</span>`
+        ].join('<br>');
       }
     }
     if (distDotEl) {applyDotState(distDotEl, 'link', info?.mismatch ? 'danger' : ((configured || runtime) ? 'online' : 'offline'));}
