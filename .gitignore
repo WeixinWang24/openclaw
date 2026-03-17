@@ -4,6 +4,7 @@ node_modules
 docker-compose.override.yml
 docker-compose.extra.yml
 dist
+dist-runtime
 pnpm-lock.yaml
 bun.lock
 bun.lockb
@@ -114,6 +115,10 @@ Swabble/build/
 # Generated protocol schema (produced via pnpm protocol:gen)
 dist/protocol.schema.json
 .ant-colony/
+
+# Repo-internal VioDashboard runtime/app data (local only)
+apps/viodashboard/data/
+apps/viodashboard/public/avatars/
 
 # Eclipse
 **/.project

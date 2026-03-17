@@ -271,10 +271,7 @@ export function buildWorkflowPlanningGateText(result: WorkflowSelectionResult): 
     ? result.touchedPaths.map((p) => `\`${p}\``).join(", ")
     : "none detected";
   return [
-    "Workflow-aware planning gate is active for this task.",
-    "Before any implementation work, first output the workflow selection result explicitly and stop at reviewable planning.",
-    "Do not start coding, editing files, or proposing concrete implementation steps beyond the planning gate until the selection result is shown.",
-    "Use exactly this structure:",
+    "<!-- workflow-selection-result (informational only; does not block execution)",
     "- **任务分类**: " + result.taskType,
     "- **repo 区域**: " + result.repoArea,
     "- **风险等级**: " + result.riskLevel,
@@ -283,6 +280,6 @@ export function buildWorkflowPlanningGateText(result: WorkflowSelectionResult): 
     candidateLines,
     selected,
     "- **review 状态**: pending",
-    "- **下一步动作**: review 后再进入 workflow instantiation；此回复先停在 selection result，不进入实现。",
+    "-->",
   ].join("\n");
 }
