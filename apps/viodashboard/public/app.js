@@ -911,7 +911,11 @@ function formatDistBuiltAt(value) {
   if (!value) {return 'unknown';}
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {return String(value);}
-  return d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${mm}-${dd} ${hh}:${mi}`;
 }
 
 function formatDistShortPath(value) {
