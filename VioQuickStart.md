@@ -1,8 +1,8 @@
-# VioDashboard
+# VioDashboard + OpenClaw Quick Start
 
-Beginner-first local dashboard for an OpenClaw source checkout.
+Beginner-first local setup guide for this `openclaw_fork` checkout.
 
-This README is written for the exact situation below:
+This file is for the exact situation below:
 
 - you downloaded / cloned `openclaw_fork`
 - you want to run **OpenClaw Gateway** from this repo
@@ -109,12 +109,6 @@ pnpm install
 pnpm build
 ```
 
-What this does:
-
-- installs repo dependencies
-- builds OpenClaw `dist/`
-- gives the Gateway a runnable compiled output
-
 If you later pull new code, do this again:
 
 ```bash
@@ -140,8 +134,7 @@ Key things to verify:
 - the Gateway port is what you expect
 - auth is configured
 
-If you're not set up yet, use the normal OpenClaw onboarding flow first.
-For source users, the simplest route is usually:
+If you're not set up yet, use the normal OpenClaw onboarding flow first:
 
 ```bash
 openclaw onboard --install-daemon
@@ -152,8 +145,6 @@ If you already have a migrated working machine, your existing `~/.openclaw/openc
 ---
 
 ## 3) Generate VioDashboard local machine config
-
-This is the most important step for cross-device friendliness.
 
 From the **repo root**, run:
 
@@ -193,17 +184,6 @@ Typical fields include:
 - `claudeBin`
 - `extraAllowedRoots`
 
-### Why this matters
-
-Without `config/local.mjs`, VioDashboard has to guess machine-local paths.
-That is exactly the kind of thing that breaks on a new device.
-
-This file is the intended place for:
-
-- where this repo lives on **this machine**
-- where your OpenClaw config lives on **this machine**
-- where Claude CLI lives on **this machine**
-
 ---
 
 ## 4) Start or restart the OpenClaw Gateway
@@ -221,19 +201,10 @@ openclaw gateway status
 openclaw status
 ```
 
-### Expected result
+Expected result:
 
-You should see a local gateway listening on something like:
-
-```text
-ws://127.0.0.1:19011
-```
-
-And the Control UI should be reachable at:
-
-```text
-http://127.0.0.1:19011/
-```
+- local gateway reachable
+- Control UI opens at `http://127.0.0.1:19011/`
 
 > Note: your port may differ if your `~/.openclaw/openclaw.json` says otherwise.
 > VioDashboard reads the actual port from that config file.
@@ -278,49 +249,38 @@ Open:
 - <http://127.0.0.1:8791/setup.html>
 
 This page is your local readiness check.
-It is designed to answer:
+It helps answer:
 
 - what is missing
 - what is blocked
 - what looks healthy
 - what action to take next
 
-The setup page is especially useful after:
-
-- moving to a new machine
-- pulling a large repo update
-- changing local install paths
-- reinstalling Claude or OpenClaw services
+Important: this setup page is currently a **readiness / diagnostics wizard**, not a full auto-installer.
 
 ---
 
 ## Checks after startup
 
-## Check A — OpenClaw is alive
+### Check A — OpenClaw is alive
 
 ```bash
 openclaw status
 ```
 
-You want to see:
-
-- gateway reachable
-- repo branch/commit shown correctly
-- service running
-
-## Check B — VioDashboard is alive
+### Check B — VioDashboard is alive
 
 Open:
 
 - <http://127.0.0.1:8791/>
 
-## Check C — setup page works
+### Check C — setup page works
 
 Open:
 
 - <http://127.0.0.1:8791/setup.html>
 
-## Check D — setup API works
+### Check D — setup API works
 
 ```bash
 python3 - <<'PY'
@@ -337,54 +297,24 @@ Expected result:
 
 ---
 
-## What the setup wizard currently checks
-
-Current first-pass checks include things like:
-
-- whether `config/local.mjs` exists
-- whether key local paths resolve
-- whether Claude CLI can be found
-- whether launchd/runtime wiring looks valid
-- whether the dashboard service is up
-- whether the Gateway bridge is connected
-
-Important: this setup page is currently a **readiness / diagnostics wizard**, not a full auto-installer.
-It helps you see what's wrong quickly, but it does not silently fix everything for you.
-
----
-
 ## Common problems
 
-## Problem: `config/local.mjs` is missing
-
-Symptom in setup page:
-
-- `Local machine config` = missing
+### Problem: `config/local.mjs` is missing
 
 Fix:
 
 ```bash
 cd apps/viodashboard
 node scripts/bootstrap-local-config.mjs
-```
-
-Then restart dashboard:
-
-```bash
 cd ../..
 bash apps/viodashboard/launchd/reload.sh
 ```
 
 ---
 
-## Problem: wizard says Claude CLI is missing
+### Problem: wizard says Claude CLI is missing
 
-Symptom in setup page:
-
-- `Dependency checks` = missing
-- message mentions `claudeBin`
-
-What to check:
+Check:
 
 ```bash
 which claude
@@ -395,24 +325,13 @@ If `claude` exists but launchd still cannot find it, regenerate local config so 
 ```bash
 cd apps/viodashboard
 node scripts/bootstrap-local-config.mjs --force
-```
-
-Then restart dashboard:
-
-```bash
 cd ../..
 bash apps/viodashboard/launchd/reload.sh
 ```
 
 ---
 
-## Problem: VioDashboard cannot connect to Gateway
-
-Symptoms:
-
-- setup page says Gateway bridge is blocked/disconnected
-- logs show connection refused
-- dashboard health is bad
+### Problem: VioDashboard cannot connect to Gateway
 
 Check:
 
@@ -421,19 +340,12 @@ openclaw gateway status
 openclaw status
 ```
 
-Common cause:
+Common causes:
 
 - VioDashboard is reading the wrong `configPath`
 - Gateway is on a different port than VioDashboard expects
 
-Fix:
-
-- verify `~/.openclaw/openclaw.json` exists
-- verify the port inside that config matches the running Gateway
-- regenerate `config/local.mjs` if this machine moved paths
-- restart both services
-
-Recommended sequence:
+Recommended recovery:
 
 ```bash
 openclaw gateway restart
@@ -442,7 +354,7 @@ bash apps/viodashboard/launchd/reload.sh
 
 ---
 
-## Problem: `node scripts/bootstrap-local-config.mjs` says module not found
+### Problem: `node scripts/bootstrap-local-config.mjs` says module not found
 
 If you run this from the **repo root**:
 
@@ -467,7 +379,7 @@ node apps/viodashboard/scripts/bootstrap-local-config.mjs
 
 ---
 
-## Problem: dashboard crashes right after startup
+### Problem: dashboard crashes right after startup
 
 Check logs:
 
@@ -482,15 +394,13 @@ Also check service status:
 bash apps/viodashboard/launchd/status.sh
 ```
 
-If the launch agent is not loaded or `/` returns connection refused, reload it:
+If needed, reload it:
 
 ```bash
 bash apps/viodashboard/launchd/reload.sh
 ```
 
 ---
-
-## Day-2 operations
 
 ## After pulling new code
 
@@ -517,23 +427,6 @@ In that case the setup page should tell you what is missing.
 
 ## Moving to a new machine
 
-The current design is reasonably cross-device friendly **as long as the initialization contract stays compatible**.
-
-What usually transfers well:
-
-- repo code
-- OpenClaw source build process
-- dashboard source code
-
-What must be rechecked per machine:
-
-- `apps/viodashboard/config/local.mjs`
-- `~/.openclaw/openclaw.json`
-- actual Gateway port
-- `claudeBin`
-- launchd service state
-- filesystem paths
-
 The intended migration pattern is:
 
 1. clone or copy repo
@@ -546,68 +439,9 @@ The intended migration pattern is:
 
 ---
 
-## Recommended command reference
-
-From the repo root:
-
-### Build OpenClaw
-
-```bash
-pnpm install
-pnpm build
-```
-
-### Check Gateway
-
-```bash
-openclaw status
-openclaw gateway status
-```
-
-### Restart Gateway
-
-```bash
-openclaw gateway restart
-```
-
-### Generate VioDashboard local config
-
-```bash
-cd apps/viodashboard
-node scripts/bootstrap-local-config.mjs
-```
-
-### Preview VioDashboard local config
-
-```bash
-cd apps/viodashboard
-node scripts/bootstrap-local-config.mjs --print --yes
-```
-
-### Restart VioDashboard
-
-```bash
-bash apps/viodashboard/launchd/reload.sh
-```
-
-### Check VioDashboard status
-
-```bash
-bash apps/viodashboard/launchd/status.sh
-```
-
-### Check VioDashboard logs
-
-```bash
-tail -n 80 ~/Library/Logs/VioDashboard/wrapper.out.log
-tail -n 80 ~/Library/Logs/VioDashboard/wrapper.err.log
-```
-
----
-
 ## Minimal file map
 
-If you are debugging setup, these are the only files most people need to know first:
+If you are debugging setup, these are the first files to know:
 
 - `apps/viodashboard/config/local.mjs` — machine-local dashboard config
 - `apps/viodashboard/config/default.mjs` — repo defaults
