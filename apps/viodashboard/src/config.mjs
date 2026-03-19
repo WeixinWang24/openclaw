@@ -109,7 +109,20 @@ export const MAX_JSON_BODY_BYTES = 256 * 1024;
 export const EDITABLE_TEXT_FILE_RE = /\.(md|txt|json|js|mjs|cjs|ts|tsx|jsx|py|sh|css|html)$/i;
 export const wrapperPort = Number(process.env.VIO_WRAPPER_PORT || mergedConfig.wrapperPort || 8791);
 
-const gatewayConfig = fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) : {};
+const resolvedGatewayConfigPath = (() => {
+  if (!CONFIG_PATH || !fs.existsSync(CONFIG_PATH)) {return null;}
+  try {
+    const stat = fs.statSync(CONFIG_PATH);
+    if (stat.isDirectory()) {
+      const nested = path.join(CONFIG_PATH, 'openclaw.json');
+      return fs.existsSync(nested) ? nested : null;
+    }
+    return CONFIG_PATH;
+  } catch {
+    return null;
+  }
+})();
+const gatewayConfig = resolvedGatewayConfigPath ? JSON.parse(fs.readFileSync(resolvedGatewayConfigPath, 'utf8')) : {};
 export const gatewayPort = Number(process.env.VIO_WRAPPER_GATEWAY_PORT || gatewayConfig?.gateway?.port || 19001);
 export const gatewayToken = process.env.VIO_WRAPPER_GATEWAY_TOKEN || gatewayConfig?.gateway?.auth?.token || '';
 export const gatewayUrl = process.env.VIO_WRAPPER_GATEWAY_URL || `ws://127.0.0.1:${gatewayPort}`;
