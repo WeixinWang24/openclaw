@@ -9,6 +9,10 @@ function toRel(targetPath) {
   return path.relative(PROJECT_ROOT, targetPath) || '.';
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 export function resolveProjectRoot(projectRoot = null) {
   const candidate = typeof projectRoot === 'string' && projectRoot.trim()
     ? projectRoot.trim()
@@ -22,26 +26,78 @@ export function getProjectRoadmapPath(projectRoot = null) {
 
 function buildInitialRoadmap({ projectRoot, title = null, context = null } = {}) {
   const name = title || path.basename(projectRoot) || 'Project';
-  const now = new Date().toISOString();
-  const contextLine = context ? `
-Initial context: ${String(context).trim()}
-` : '';
-  return `# Roadmap — ${name}
+  const now = nowIso();
+  return `# Project Roadmap — ${name}
 
 _Last updated: ${now}_
 
 ## Project Design
-- Purpose: pending definition
-- Architecture notes: pending
-- Constraints: pending
-${contextLine}
-## Implemented Changes
-- ${now} — Roadmap created.
+- Goal:
+- Architecture approach:
+- Constraints:
+- Rules already in effect:
+
+## Current State
+- Current focus:
+- Current phase:
+- Blockers:
+
+## Implemented
+- ${now} — Recovery-first roadmap created.
 
 ## Next Steps
-- Define or refine the project design.
-- Record each completed development or modification step here.
-`;
+- Confirm the current project design.
+- Record only state-relevant completed changes.
+
+## Recovery Notes
+- Resume from:
+- Key files to read first:
+- Active assumptions:
+${context ? `- Initial context: ${String(context).trim()}
+` : ''}`;
+}
+
+function updateLastUpdated(text, timestamp) {
+  if (/_Last updated: .*_/i.test(text)) {
+    return text.replace(/_Last updated: .*_/i, `_Last updated: ${timestamp}_`);
+  }
+  return text;
+}
+
+function upsertSection(text, heading, body) {
+  const normalized = text.replace(/\r/g, '');
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(^## ${escaped}\\n)([\\s\\S]*?)(?=^## |$)`, 'm');
+  if (re.test(normalized)) {
+    return normalized.replace(re, `$1${body.trimEnd()}\n\n`);
+  }
+  return `${normalized.trimEnd()}\n\n## ${heading}\n${body.trimEnd()}\n`;
+}
+
+function appendImplementedEntry(text, entry) {
+  const normalized = text.replace(/\r/g, '');
+  const re = /(^## Implemented\n)([\s\S]*?)(?=^## |$)/m;
+  if (re.test(normalized)) {
+    return normalized.replace(re, (_, head, body) => `${head}${entry}\n${body.trimStart()}`);
+  }
+  return `${normalized.trimEnd()}\n\n## Implemented\n${entry}\n`;
+}
+
+function normalizeBulletLines(lines = []) {
+  return lines
+    .map(line => String(line || '').trim())
+    .filter(Boolean)
+    .map(line => line.startsWith('- ') ? line : `- ${line}`)
+    .join('\n');
+}
+
+function summarizeRoadmapItems(items = []) {
+  if (!Array.isArray(items) || !items.length) {return [];}
+  return items.slice(0, 6).map(item => {
+    const title = String(item?.title || '').trim();
+    const desc = String(item?.description || '').trim();
+    return desc ? `${title} — ${desc}` : title;
+  }).filter(Boolean);
 }
 
 export function ensureProjectRoadmap({ projectRoot = null, title = null, context = null } = {}) {
@@ -61,64 +117,53 @@ export function ensureProjectRoadmap({ projectRoot = null, title = null, context
   };
 }
 
-function formatRoadmapItems(items = []) {
-  if (!Array.isArray(items) || !items.length) {return '- No structured roadmap items extracted.';}
-  return items.map(item => {
-    const title = String(item?.title || '').trim() || 'Untitled item';
-    const desc = String(item?.description || '').trim();
-    return desc ? `- ${title} — ${desc}` : `- ${title}`;
-  }).join('\n');
-}
-
-function formatChangedFiles(changedFiles = []) {
-  if (!Array.isArray(changedFiles) || !changedFiles.length) {return '- Not recorded';}
-  return changedFiles.map(file => `- ${String(file)}`).join('\n');
-}
-
 export function appendProjectRoadmapEntry({ projectRoot = null, roadmap = null, replyBody = '', changedFiles = [], notes = '' } = {}) {
   const ensured = ensureProjectRoadmap({ projectRoot });
   const roadmapPath = ensured.roadmapPath;
-  const now = new Date().toISOString();
+  const timestamp = nowIso();
   const existing = fs.readFileSync(roadmapPath, 'utf8');
-  const replyPreview = String(replyBody || '').trim().slice(0, 500);
-  const block = `
+  const roadmapItems = summarizeRoadmapItems(roadmap?.items || []);
+  const replyPreview = String(replyBody || '').trim().replace(/\s+/g, ' ').slice(0, 280);
 
-### ${now}
+  const implementedLines = [
+    `- ${timestamp} — Updated project state after a development/review turn.`,
+    ...(roadmapItems.length ? roadmapItems.map(item => `  - ${item}`) : []),
+    ...(changedFiles.length ? changedFiles.map(file => `  - changed: ${file}`) : []),
+  ].join('\n');
 
-#### Completed Changes
-${formatRoadmapItems(roadmap?.items || [])}
+  let next = appendImplementedEntry(existing, `${implementedLines}\n`);
 
-#### Changed Files
-${formatChangedFiles(changedFiles)}
+  const currentStateLines = normalizeBulletLines([
+    roadmapItems[0] ? `Current focus: ${roadmapItems[0]}` : 'Current focus: infer from latest implementation turn',
+    notes ? `Latest state note: ${String(notes).trim()}` : null,
+    replyPreview ? `Latest reply signal: ${replyPreview}` : null,
+  ].filter(Boolean));
+  next = upsertSection(next, 'Current State', currentStateLines || '- Current focus: pending update');
 
-#### Notes
-${notes ? String(notes).trim() : (replyPreview || 'No additional notes recorded.')}
-`;
+  const nextStepsLines = normalizeBulletLines(
+    roadmapItems.length
+      ? roadmapItems
+      : ['Review current state, refine design, and record the next real implementation step.']
+  );
+  next = upsertSection(next, 'Next Steps', nextStepsLines);
 
-  let next = existing;
-  if (/## Implemented Changes\s*/i.test(existing)) {
-    next = existing.replace(/## Implemented Changes\s*/i, match => `${match}${block}\n`);
-  } else {
-    next = `${existing.trimEnd()}\n\n## Implemented Changes\n${block}\n`;
-  }
+  const recoveryNotesLines = normalizeBulletLines([
+    `Resume from: ${ensured.roadmapPathRel}`,
+    `Key files to read first: ${['roadmap.md', 'src/server.mjs', 'src/server/projectRoadmap.mjs'].join(', ')}`,
+    'Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.',
+  ]);
+  next = upsertSection(next, 'Recovery Notes', recoveryNotesLines);
 
-  if (roadmap?.items?.length) {
-    const nextSteps = formatRoadmapItems(roadmap.items);
-    if (/## Next Steps\s*/i.test(next)) {
-      next = next.replace(/## Next Steps\s*/i, match => `${match}${nextSteps}\n\n`);
-    } else {
-      next = `${next.trimEnd()}\n\n## Next Steps\n${nextSteps}\n`;
-    }
-  }
+  next = updateLastUpdated(next, timestamp).trimEnd() + '\n';
+  fs.writeFileSync(roadmapPath, next, 'utf8');
 
-  fs.writeFileSync(roadmapPath, next.trimEnd() + '\n', 'utf8');
   return {
     ok: true,
     projectRoot: ensured.projectRoot,
     projectRootRel: ensured.projectRootRel,
     roadmapPath: ensured.roadmapPath,
     roadmapPathRel: ensured.roadmapPathRel,
-    appendedAt: now,
-    itemCount: Array.isArray(roadmap?.items) ? roadmap.items.length : 0,
+    appendedAt: timestamp,
+    itemCount: roadmapItems.length,
   };
 }
