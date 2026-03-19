@@ -25,6 +25,7 @@ import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeIn
 import { evaluateSetupState } from './server/setupState.mjs';
 import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
+import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -551,6 +552,22 @@ const bridge = new GatewayBridge({
         saveRoadmapData(roadmap);
         console.log('[wrapper] roadmap source:', roadmap.sourceType, 'items:', roadmap.items?.length || 0, 'decision:', roadmapDecision.reason);
         broadcast({ type: 'roadmap', roadmap, decision: roadmapDecision.reason, extractedRoadmap });
+
+        let projectRoadmapResult = null;
+        try {
+          ensureProjectRoadmap({ context: 'Auto-created by VioDashboard from assistant code-workflow roadmap handling.' });
+          if (roadmap?.items?.length) {
+            projectRoadmapResult = appendProjectRoadmapEntry({
+              roadmap,
+              replyBody,
+              changedFiles: [],
+              notes: 'Auto-appended from assistant final reply roadmap extraction.',
+            });
+            console.log('[wrapper] project roadmap updated:', JSON.stringify(projectRoadmapResult));
+          }
+        } catch (roadmapFileError) {
+          console.log('[wrapper] project roadmap update failed', roadmapFileError?.message || String(roadmapFileError));
+        }
 
         const newerRunStillActive = activeRunSeq.size > 0 && finishedSeq < runSequence;
         if (newerRunStillActive) {
