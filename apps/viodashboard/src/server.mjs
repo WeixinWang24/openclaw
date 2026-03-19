@@ -24,6 +24,7 @@ import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from './server/uti
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
 import { evaluateSetupState } from './server/setupState.mjs';
 import { handleSetupAction } from './server/setupActions.mjs';
+import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -980,6 +981,32 @@ const server = http.createServer((req, res) => {
         sendJson(res, 200, { ok: true, result });
       })
       .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/memory/guidelines' && req.method === 'GET') {
+    try {
+      const limit = Number(requestUrl.searchParams.get('limit') || 100);
+      const items = listGuidelines({ limit });
+      sendJson(res, 200, {
+        ok: true,
+        source: 'workspace-directory',
+        dir: getGuidelinesDir(),
+        items,
+        count: items.length,
+      });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error?.message || String(error) });
+    }
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/memory/guidelines' && req.method === 'POST') {
+    sendJson(res, 405, {
+      ok: false,
+      error: 'guideline writes are not enabled yet; edit files under memory/permanent/guidelines directly',
+      dir: getGuidelinesDir(),
+    });
     return;
   }
 
