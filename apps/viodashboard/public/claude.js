@@ -44,7 +44,6 @@
     $taskView.style.display = 'none';
     $emptyState.style.display = '';
     currentTaskId = null;
-    lastEventCount = 0;
   }
 
   function showTask() {
