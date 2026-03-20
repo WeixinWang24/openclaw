@@ -25,11 +25,13 @@ export function handleAgentTaskRoutes(requestUrl, req, res) {
     if (!task) {
       sendJson(res, 200, { ok: true, task: null });
     } else {
-      // Compute elapsed if running
       const snapshot = { ...task };
+      // Compute elapsed if running
       if (snapshot.status === 'running' && snapshot.startedAt) {
         snapshot.elapsedMs = Date.now() - new Date(snapshot.startedAt).getTime();
       }
+      // Include runtime source indicator for the frontend
+      snapshot.isRealTask = !!(snapshot.runtime?.source === 'claude-terminal');
       sendJson(res, 200, { ok: true, task: snapshot });
     }
     return true;

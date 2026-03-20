@@ -27,6 +27,7 @@ import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
+import { syncRealTaskFromClaudeState } from './server/agentTasks/index.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -1277,11 +1278,14 @@ const server = http.createServer((req, res) => {
 });
 
 // Push Claude terminal state to all connected clients when output changes.
+// Also sync real task lifecycle into agentTasks on each tick.
 let lastBroadcastClaudeOutput = null;
 setInterval(() => {
-  if (clients.size === 0) {return;}
   try {
     const state = getClaudeState();
+    // Sync agentTasks with live Claude session state (detects exit -> handoff)
+    syncRealTaskFromClaudeState(state);
+    if (clients.size === 0) {return;}
     if (state.output !== lastBroadcastClaudeOutput) {
       lastBroadcastClaudeOutput = state.output;
       broadcast({ type: 'claude-state', ...state });

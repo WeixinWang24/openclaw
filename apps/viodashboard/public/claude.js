@@ -90,8 +90,14 @@
     $badgeAcceptance.textContent = acc;
     $badgeAcceptance.className = 'pill accept-' + acc;
 
-    // Timing
+    // Timing + runtime info
     const parts = [];
+    if (task.isRealTask) {
+      parts.push('[live]');
+    }
+    if (task.runtime && task.runtime.bridgePid) {
+      parts.push('pid:' + task.runtime.bridgePid);
+    }
     if (task.startedAt) {
       parts.push('Started ' + formatTime(task.startedAt));
     }

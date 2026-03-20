@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_BIN, CLAUDE_RUNTIME_ROOT, DEFAULT_CLAUDE_CWD } from '../config.mjs';
 import { safeProjectPath } from './filesystem.mjs';
+import { registerRealTask, updateCurrentTask, getCurrentTask } from './agentTasks/index.mjs';
 
 export const CLAUDE_SESSION_ID = 'claude-default';
 
@@ -328,7 +329,19 @@ function startDetachedClaudeSession(cwdRel) {
     bridgePid: child.pid,
   });
   appendSyntheticOutput(session.logPath, `[dashboard] starting claude\n[cwd] ${cwdAbs}\n`);
-  return persistAndCacheSession(session);
+  persistAndCacheSession(session);
+
+  // Register this real Claude run as the current agent task
+  registerRealTask({
+    sessionId: session.id,
+    bridgePid: session.bridgePid,
+    cwd: session.cwdRel,
+    cwdAbs: session.cwdAbs,
+    claudeCommand: session.claudeCommand,
+    startedAt: session.claudeStartedAt || session.createdAt,
+  });
+
+  return session;
 }
 
 function rehydrateClaudeSession(cwdRel) {
@@ -338,6 +351,17 @@ function rehydrateClaudeSession(cwdRel) {
   const session = materializeSessionFromRegistry(registry, cwdRel);
   if (!session) {return null;}
   claudeSessions.set(session.id, session);
+  // If recovered session is alive and no task is tracked, register it
+  if (!session.exited && isPidAlive(session.bridgePid) && !getCurrentTask()) {
+    registerRealTask({
+      sessionId: session.id,
+      bridgePid: session.bridgePid,
+      cwd: session.cwdRel,
+      cwdAbs: session.cwdAbs,
+      claudeCommand: session.claudeCommand,
+      startedAt: session.createdAt,
+    });
+  }
   return session;
 }
 
@@ -370,8 +394,19 @@ export function startClaudeSession({ cwdRel } = {}) {
 
 export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
   let session = rehydrateClaudeSession(cwdRel);
-  if (!session || !isPidAlive(session.bridgePid) || session.exited) {
+  const wasNewSession = !session || !isPidAlive(session.bridgePid) || session.exited;
+  if (wasNewSession) {
     session = startDetachedClaudeSession(normalizeClaudeCwd(cwdRel));
+  }
+  // If this is the first input to a fresh session, update the task title/prompt
+  if (wasNewSession && text) {
+    const task = getCurrentTask();
+    if (task && task.runtime?.sessionId === session.id) {
+      updateCurrentTask({
+        title: text.slice(0, 120),
+        promptSummary: text.slice(0, 500),
+      });
+    }
   }
   const payload = String(text || '');
   if (!payload.length) {return buildClaudeState(session, session.cwdRel);}

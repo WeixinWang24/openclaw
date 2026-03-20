@@ -1,9 +1,101 @@
 // Runtime bridge: connects the agent task store to real runtime signals.
-// MVP: provides a demo/mock task seeder and placeholder hooks for future
-// integration with Claude CLI PTY output and gateway events.
+// Registers real Claude background runs as agentTasks, syncs runtime identity,
+// and drives the completion handoff state machine on process exit.
 
-import { setCurrentTask, getCurrentTask, advancePhase, appendLog, markFinishedByClaude } from './store.mjs';
-import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff } from './events.mjs';
+import { setCurrentTask, getCurrentTask, updateCurrentTask, advancePhase, appendLog, markFinishedByClaude } from './store.mjs';
+import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff, emitError } from './events.mjs';
+
+/**
+ * Register a real Claude background run as the current agent task.
+ * Called from claudeTerminal when a new session is started.
+ * @param {object} sessionInfo - Claude session metadata
+ * @param {string} sessionInfo.sessionId
+ * @param {number|null} sessionInfo.bridgePid
+ * @param {string} sessionInfo.cwd
+ * @param {string} sessionInfo.cwdAbs
+ * @param {string} sessionInfo.claudeCommand
+ * @param {string} sessionInfo.startedAt
+ * @param {string} [sessionInfo.promptText] - optional prompt/instruction text
+ */
+export function registerRealTask(sessionInfo) {
+  // If there's already a running real task for the same session, just update runtime
+  const existing = getCurrentTask();
+  if (existing && existing.status === 'running' && existing.runtime?.sessionId === sessionInfo.sessionId) {
+    updateCurrentTask({
+      runtime: buildRuntimeMeta(sessionInfo),
+    });
+    appendLog({ level: 'info', text: `Runtime refreshed for session ${sessionInfo.sessionId}` });
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const task = setCurrentTask({
+    title: sessionInfo.promptText
+      ? sessionInfo.promptText.slice(0, 120)
+      : `Claude task (${sessionInfo.sessionId})`,
+    owner: 'vio',
+    executor: 'claude',
+    status: 'running',
+    phase: 'coding',
+    cwd: sessionInfo.cwd || null,
+    promptSummary: sessionInfo.promptText || null,
+    startedAt: sessionInfo.startedAt || now,
+    runtime: buildRuntimeMeta(sessionInfo),
+  });
+
+  advancePhase('coding', 'Claude session started');
+  appendLog({ level: 'info', text: `Real task registered: session=${sessionInfo.sessionId} pid=${sessionInfo.bridgePid}` });
+
+  return task;
+}
+
+/**
+ * Sync real task state from the live Claude session.
+ * Called periodically from the server polling loop.
+ * Detects exit/completion and drives the handoff state machine.
+ * @param {object} claudeState - from getClaudeState()
+ */
+export function syncRealTaskFromClaudeState(claudeState) {
+  const task = getCurrentTask();
+  if (!task || !task.runtime?.sessionId) { return; }
+  // Only sync if the task belongs to this Claude session
+  if (task.runtime.sessionId !== claudeState.sessionId) { return; }
+
+  // Update runtime liveness
+  updateCurrentTask({
+    runtime: {
+      ...task.runtime,
+      bridgeAlive: claudeState.running,
+      lastSyncAt: new Date().toISOString(),
+    },
+  });
+
+  // If task is still running but Claude has exited, trigger completion handoff
+  if (task.status === 'running' && !claudeState.running && claudeState.exited) {
+    const exitCode = claudeState.exitCode;
+    if (exitCode === 0 || exitCode === null) {
+      appendLog({ level: 'info', text: `Claude process exited (code=${exitCode}), triggering completion handoff` });
+      markFinishedByClaude(`Claude finished (exit code ${exitCode ?? 'unknown'})`);
+    } else {
+      appendLog({ level: 'warn', text: `Claude process exited with error code ${exitCode}` });
+      updateCurrentTask({ status: 'failed' });
+      advancePhase('done', `Claude exited with error (code=${exitCode})`);
+      emitError(`Claude process failed (exit code ${exitCode})`, { exitCode });
+    }
+  }
+}
+
+function buildRuntimeMeta(sessionInfo) {
+  return {
+    sessionId: sessionInfo.sessionId,
+    bridgePid: sessionInfo.bridgePid ?? null,
+    claudeCommand: sessionInfo.claudeCommand || null,
+    cwd: sessionInfo.cwdAbs || sessionInfo.cwd || null,
+    startedAt: sessionInfo.startedAt || new Date().toISOString(),
+    bridgeAlive: true,
+    source: 'claude-terminal',
+  };
+}
 
 /**
  * Seed a demo task for development and manual testing.
@@ -25,7 +117,6 @@ export function seedDemoTask() {
     startedAt: new Date().toISOString(),
   });
 
-  // Simulate coding phase
   advancePhase('coding', 'Claude started implementation');
   emitMilestone('Backend handoff model added', { detail: 'types, store, events extended' });
   emitMilestone('API review routes wired', { detail: 'start-review, accept, needs-fix endpoints' });
@@ -41,12 +132,10 @@ export function seedDemoTask() {
     'public/claude.css',
   ]);
 
-  // Simulate testing + completion
   advancePhase('testing', 'Running validation');
   emitValidation('Tests pass', { tests: { status: 'pass', summary: '4/4 passed' } });
   emitValidation('Commit created', { commit: { sha: 'abc1234', message: 'feat: completion handoff state machine' } });
 
-  // Signal completion -- task is now finished_by_claude, waiting for review
   emitCompletionHandoff('Claude finished: completion handoff state machine implemented');
 
   appendLog({ level: 'info', text: 'Demo task seeded (finished_by_claude, awaiting review)' });
@@ -55,8 +144,8 @@ export function seedDemoTask() {
 }
 
 /**
- * Placeholder: called when Claude CLI PTY emits output.
- * Future integration point.
+ * Called when Claude CLI PTY emits output.
+ * Streams log lines into the task event/log layer.
  */
 export function onClaudeOutput(text) {
   const task = getCurrentTask();
@@ -65,7 +154,7 @@ export function onClaudeOutput(text) {
 }
 
 /**
- * Placeholder: called when gateway events indicate task progress.
+ * Called when gateway events indicate task progress.
  * Recognizes completion signals and triggers handoff.
  */
 export function onGatewayEvent(event) {
