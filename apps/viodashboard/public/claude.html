@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Task — VioDashboard</title>
+  <link rel="stylesheet" href="/claude.css?v=1" />
+</head>
+<body>
+  <div class="claude-shell">
+
+    <!-- Top bar -->
+    <div class="top-bar">
+      <div class="brand">Claude Task <a href="/">Dashboard</a></div>
+      <div class="spacer"></div>
+      <span id="pollIndicator" class="poll-indicator"></span>
+    </div>
+
+    <!-- Content container (swapped between empty state and task view) -->
+    <div id="taskView" style="display:none">
+
+      <!-- Task header -->
+      <section class="card" id="taskHeader">
+        <div class="task-header">
+          <div class="task-meta">
+            <h2 id="taskTitle">—</h2>
+            <p id="taskPrompt" class="prompt-summary"></p>
+          </div>
+          <div class="task-badges">
+            <span id="badgeStatus" class="pill">—</span>
+            <span id="badgePhase" class="pill">—</span>
+            <span id="badgeAcceptance" class="pill">—</span>
+          </div>
+        </div>
+        <div id="taskTiming" class="task-timing"></div>
+      </section>
+
+      <!-- Phase timeline -->
+      <section class="card">
+        <div class="card-title">Phase Timeline</div>
+        <div class="phase-timeline" id="phaseTimeline">
+          <div class="phase-step" data-phase="dispatch">Dispatch</div>
+          <div class="phase-step" data-phase="coding">Coding</div>
+          <div class="phase-step" data-phase="testing">Testing</div>
+          <div class="phase-step" data-phase="handoff">Handoff</div>
+          <div class="phase-step" data-phase="review">Review</div>
+          <div class="phase-step" data-phase="done">Done</div>
+        </div>
+      </section>
+
+      <!-- Collaboration feed -->
+      <section class="card">
+        <div class="card-title">Collaboration Feed</div>
+        <div class="collab-feed" id="collabFeed">
+          <div class="feed-event"><div class="event-body"><span class="event-message" style="color:var(--text-dim)">Loading events...</span></div></div>
+        </div>
+      </section>
+
+      <!-- Validation + Touched files -->
+      <div class="two-col">
+        <section class="card">
+          <div class="card-title">Validation</div>
+          <div class="validation-grid" id="validationGrid">
+            <div class="val-item"><div class="val-label">Tests</div><div class="val-value none" id="valTests">—</div></div>
+            <div class="val-item"><div class="val-label">Commit</div><div class="val-value none" id="valCommit">—</div></div>
+            <div class="val-item"><div class="val-label">Acceptance</div><div class="val-value none" id="valAcceptance">pending</div></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-title">Touched Files</div>
+          <ul class="file-list" id="fileList">
+            <li style="color:var(--text-dim);font-style:italic">none yet</li>
+          </ul>
+        </section>
+      </div>
+
+      <!-- Recent logs -->
+      <section class="card">
+        <div class="card-title">Recent Logs</div>
+        <div class="logs-scroll" id="logsScroll">
+          <div class="log-line" style="color:var(--text-dim)">No logs available</div>
+        </div>
+      </section>
+
+      <!-- Follow-up composer -->
+      <section class="card">
+        <div class="card-title">Follow-up</div>
+        <div class="followup-composer">
+          <textarea id="followupText" placeholder="Send a follow-up instruction..." rows="2"></textarea>
+          <button id="followupBtn" type="button">Send</button>
+        </div>
+        <div class="followup-note">Follow-up instructions are routed to Vio first. Vio will decide how to relay to Claude.</div>
+      </section>
+
+    </div><!-- /taskView -->
+
+    <!-- Empty state -->
+    <div id="emptyState">
+      <section class="card empty-state">
+        <div class="empty-icon">~</div>
+        <h2>No active Claude task</h2>
+        <p>
+          When Vio dispatches a task to Claude, it will appear here with
+          real-time phase tracking, collaboration feed, and validation status.
+        </p>
+        <button class="seed-btn" id="seedDemoBtn" type="button">Seed demo task</button>
+      </section>
+    </div>
+
+  </div><!-- /claude-shell -->
+
+  <script src="/claude.js?v=1"></script>
+</body>
+</html>

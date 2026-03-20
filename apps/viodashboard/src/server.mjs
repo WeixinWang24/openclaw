@@ -26,6 +26,7 @@ import { evaluateSetupState } from './server/setupState.mjs';
 import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
+import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -562,6 +563,9 @@ const bridge = new GatewayBridge({
               replyBody,
               changedFiles: [],
               notes: 'Auto-appended from assistant final reply roadmap extraction.',
+              taskState: {
+                phase: 'development/review turn',
+              },
             });
             console.log('[wrapper] project roadmap updated:', JSON.stringify(projectRoadmapResult));
           }
@@ -1257,6 +1261,11 @@ const server = http.createServer((req, res) => {
       .then(payload => sendJson(res, 200, { ok: true, gestureRuntime: updateGestureWatcher(payload) }))
       .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
     return;
+  }
+
+  // Agent task routes (Claude task page API)
+  if (requestUrl.pathname.startsWith('/api/agent-tasks')) {
+    if (handleAgentTaskRoutes(requestUrl, req, res)) { return; }
   }
 
   if (requestUrl.pathname.startsWith('/vio_cam/')) {
