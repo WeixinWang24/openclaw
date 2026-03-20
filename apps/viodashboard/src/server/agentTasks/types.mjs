@@ -1,9 +1,9 @@
 // Agent task data model types and factory functions.
 
-/** @typedef {'pending'|'running'|'paused'|'completed'|'failed'|'cancelled'} TaskStatus */
+/** @typedef {'created'|'running'|'finished_by_claude'|'review_started_by_vio'|'accepted'|'needs_fix'|'paused'|'failed'|'cancelled'} TaskStatus */
 /** @typedef {'dispatch'|'coding'|'testing'|'handoff'|'review'|'done'} TaskPhase */
-/** @typedef {'pending'|'accepted'|'needs-fix'|'rejected'} AcceptanceStatus */
-/** @typedef {'instruction'|'phase-change'|'milestone'|'validation'|'review'|'follow-up'|'task-finished'|'error'} EventType */
+/** @typedef {'pending'|'reviewing'|'accepted'|'needs-fix'|'rejected'} AcceptanceStatus */
+/** @typedef {'instruction'|'phase-change'|'milestone'|'validation'|'review'|'follow-up'|'task-finished'|'completion-handoff'|'review-started'|'error'} EventType */
 
 /**
  * Create a new task snapshot with defaults.
@@ -16,7 +16,7 @@ export function createTaskSnapshot(overrides = {}) {
     title: overrides.title || 'Untitled task',
     owner: overrides.owner || 'vio',
     executor: overrides.executor || 'claude',
-    status: overrides.status || 'pending',
+    status: overrides.status || 'created',
     phase: overrides.phase || 'dispatch',
     acceptanceStatus: overrides.acceptanceStatus || 'pending',
     cwd: overrides.cwd || null,
@@ -30,6 +30,11 @@ export function createTaskSnapshot(overrides = {}) {
     tests: overrides.tests || null,
     commit: overrides.commit || null,
     runtime: overrides.runtime || null,
+    // Completion handoff tracking
+    completionEventSeen: overrides.completionEventSeen || false,
+    completionSeenAt: overrides.completionSeenAt || null,
+    completionAcknowledged: overrides.completionAcknowledged || false,
+    completionAcknowledgedAt: overrides.completionAcknowledgedAt || null,
   };
 }
 

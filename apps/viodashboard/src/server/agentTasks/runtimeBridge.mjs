@@ -2,12 +2,12 @@
 // MVP: provides a demo/mock task seeder and placeholder hooks for future
 // integration with Claude CLI PTY output and gateway events.
 
-import { setCurrentTask, getCurrentTask, advancePhase, appendLog } from './store.mjs';
-import { emitMilestone, emitTouchedFiles } from './events.mjs';
+import { setCurrentTask, getCurrentTask, advancePhase, appendLog, markFinishedByClaude } from './store.mjs';
+import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff } from './events.mjs';
 
 /**
  * Seed a demo task for development and manual testing.
- * In production this would be triggered by Vio dispatching work to Claude.
+ * Demonstrates the full completion handoff lifecycle.
  */
 export function seedDemoTask() {
   const existing = getCurrentTask();
@@ -16,19 +16,20 @@ export function seedDemoTask() {
   }
 
   const task = setCurrentTask({
-    title: 'Implement Claude task page MVP',
+    title: 'Implement completion handoff state machine',
     owner: 'vio',
     executor: 'claude',
     status: 'running',
     phase: 'coding',
-    promptSummary: 'Build the first usable frontend+backend version of a structured Claude task visibility page.',
+    promptSummary: 'Add structured completion handoff so finished work is durably visible and reviewable.',
     startedAt: new Date().toISOString(),
   });
 
-  // Simulate some history
+  // Simulate coding phase
   advancePhase('coding', 'Claude started implementation');
-  emitMilestone('Backend module scaffolded', { detail: 'types, store, events, runtimeBridge created' });
-  emitMilestone('API routes registered', { detail: '4 endpoints wired' });
+  emitMilestone('Backend handoff model added', { detail: 'types, store, events extended' });
+  emitMilestone('API review routes wired', { detail: 'start-review, accept, needs-fix endpoints' });
+  emitMilestone('Frontend review actions added', { detail: 'review panel with accept/needs-fix buttons' });
   emitTouchedFiles([
     'src/server/agentTasks/types.mjs',
     'src/server/agentTasks/store.mjs',
@@ -39,7 +40,16 @@ export function seedDemoTask() {
     'public/claude.js',
     'public/claude.css',
   ]);
-  appendLog({ level: 'info', text: 'Demo task seeded for development' });
+
+  // Simulate testing + completion
+  advancePhase('testing', 'Running validation');
+  emitValidation('Tests pass', { tests: { status: 'pass', summary: '4/4 passed' } });
+  emitValidation('Commit created', { commit: { sha: 'abc1234', message: 'feat: completion handoff state machine' } });
+
+  // Signal completion -- task is now finished_by_claude, waiting for review
+  emitCompletionHandoff('Claude finished: completion handoff state machine implemented');
+
+  appendLog({ level: 'info', text: 'Demo task seeded (finished_by_claude, awaiting review)' });
 
   return task;
 }
@@ -56,12 +66,23 @@ export function onClaudeOutput(text) {
 
 /**
  * Placeholder: called when gateway events indicate task progress.
- * Future integration point.
+ * Recognizes completion signals and triggers handoff.
  */
 export function onGatewayEvent(event) {
   const task = getCurrentTask();
-  if (!task || task.status !== 'running') { return; }
-  if (event.type === 'final') {
+  if (!task) { return; }
+  if (event.type === 'final' && task.status === 'running') {
     appendLog({ level: 'info', text: 'Gateway final reply received' });
+    markFinishedByClaude('Claude completed via gateway signal');
   }
+}
+
+/**
+ * Called when any runtime detects Claude has finished.
+ * Ensures durable completion state regardless of signal source.
+ */
+export function onCompletionSignal(message = 'Claude signaled completion') {
+  const task = getCurrentTask();
+  if (!task || task.completionEventSeen) { return task; }
+  return markFinishedByClaude(message);
 }

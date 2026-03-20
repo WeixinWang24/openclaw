@@ -82,3 +82,77 @@ export function advancePhase(nextPhase, detail = '') {
   ));
   return currentTask;
 }
+
+// Mark task as finished by Claude (completion handoff).
+// Durable: sets completionEventSeen even if no review has started.
+export function markFinishedByClaude(message = 'Claude finished execution') {
+  if (!currentTask) { return null; }
+  const now = new Date().toISOString();
+  updateCurrentTask({
+    status: 'finished_by_claude',
+    completionEventSeen: true,
+    completionSeenAt: now,
+  });
+  advancePhase('handoff', 'Claude signaled completion');
+  addEvent(createTaskEvent(
+    'completion-handoff',
+    'claude',
+    message,
+    { completionSeenAt: now },
+  ));
+  return currentTask;
+}
+
+// Vio starts reviewing the finished task.
+export function startReview() {
+  if (!currentTask) { return null; }
+  if (!currentTask.completionEventSeen) { return null; }
+  const now = new Date().toISOString();
+  updateCurrentTask({
+    status: 'review_started_by_vio',
+    acceptanceStatus: 'reviewing',
+    completionAcknowledged: true,
+    completionAcknowledgedAt: now,
+  });
+  advancePhase('review', 'Vio started review');
+  addEvent(createTaskEvent(
+    'review-started',
+    'vio',
+    'Vio started reviewing the completed work',
+    { completionAcknowledgedAt: now },
+  ));
+  return currentTask;
+}
+
+// Vio accepts the task.
+export function acceptTask(message = 'Work accepted') {
+  if (!currentTask) { return null; }
+  updateCurrentTask({
+    status: 'accepted',
+    acceptanceStatus: 'accepted',
+  });
+  advancePhase('done', 'Task accepted');
+  addEvent(createTaskEvent(
+    'review',
+    'vio',
+    message,
+    { acceptanceStatus: 'accepted' },
+  ));
+  return currentTask;
+}
+
+// Vio marks the task as needing fixes.
+export function markNeedsFix(message = 'Changes needed') {
+  if (!currentTask) { return null; }
+  updateCurrentTask({
+    status: 'needs_fix',
+    acceptanceStatus: 'needs-fix',
+  });
+  addEvent(createTaskEvent(
+    'review',
+    'vio',
+    message,
+    { acceptanceStatus: 'needs-fix' },
+  ));
+  return currentTask;
+}

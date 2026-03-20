@@ -27,6 +27,14 @@
   const $followupText = document.getElementById('followupText');
   const $followupBtn = document.getElementById('followupBtn');
   const $seedDemoBtn = document.getElementById('seedDemoBtn');
+  const $handoffCard = document.getElementById('handoffCard');
+  const $handoffSeen = document.getElementById('handoffSeen');
+  const $handoffAcked = document.getElementById('handoffAcked');
+  const $handoffStatusText = document.getElementById('handoffStatusText');
+  const $reviewActions = document.getElementById('reviewActions');
+  const $startReviewBtn = document.getElementById('startReviewBtn');
+  const $acceptBtn = document.getElementById('acceptBtn');
+  const $needsFixBtn = document.getElementById('needsFixBtn');
 
   let currentTaskId = null;
 
@@ -51,12 +59,26 @@
     $emptyState.style.display = 'none';
   }
 
+  // Human-readable status labels
+  const STATUS_LABELS = {
+    created: 'Created',
+    running: 'Running',
+    finished_by_claude: 'Claude Finished',
+    review_started_by_vio: 'Vio Reviewing',
+    accepted: 'Accepted',
+    needs_fix: 'Needs Fix',
+    paused: 'Paused',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+  };
+
   function renderTask(task) {
     $taskTitle.textContent = task.title;
     $taskPrompt.textContent = task.promptSummary || '';
 
-    // Status badge
-    $badgeStatus.textContent = task.status;
+    // Status badge with readable label
+    const statusLabel = STATUS_LABELS[task.status] || task.status;
+    $badgeStatus.textContent = statusLabel;
     $badgeStatus.className = 'pill status-' + task.status;
 
     // Phase badge
@@ -90,11 +112,50 @@
       if (i === phaseIdx) {step.classList.add('active');}
     });
 
+    // Handoff card
+    renderHandoff(task);
+
     // Validation
     renderValidation(task);
 
     // Touched files
     renderFiles(task.touchedFiles || []);
+  }
+
+  function renderHandoff(task) {
+    // Show handoff card when completion has been seen or task is in a post-completion state
+    const showHandoff = task.completionEventSeen ||
+      ['finished_by_claude', 'review_started_by_vio', 'accepted', 'needs_fix'].includes(task.status);
+
+    $handoffCard.style.display = showHandoff ? '' : 'none';
+    if (!showHandoff) { return; }
+
+    $handoffSeen.textContent = task.completionEventSeen
+      ? 'Yes (' + formatTime(task.completionSeenAt) + ')'
+      : 'No';
+    $handoffSeen.className = 'handoff-value ' + (task.completionEventSeen ? 'yes' : 'no');
+
+    $handoffAcked.textContent = task.completionAcknowledged
+      ? 'Yes (' + formatTime(task.completionAcknowledgedAt) + ')'
+      : 'No';
+    $handoffAcked.className = 'handoff-value ' + (task.completionAcknowledged ? 'yes' : 'no');
+
+    $handoffStatusText.textContent = STATUS_LABELS[task.status] || task.status;
+    $handoffStatusText.className = 'handoff-value status-text-' + task.status;
+
+    // Review action buttons
+    $reviewActions.style.display = '';
+    const isFinished = task.status === 'finished_by_claude';
+    const isReviewing = task.status === 'review_started_by_vio';
+    const isTerminal = task.status === 'accepted' || task.status === 'needs_fix';
+
+    $startReviewBtn.style.display = isFinished ? '' : 'none';
+    $acceptBtn.style.display = isReviewing ? '' : 'none';
+    $needsFixBtn.style.display = isReviewing ? '' : 'none';
+
+    if (isTerminal) {
+      $reviewActions.style.display = 'none';
+    }
   }
 
   function renderValidation(task) {
@@ -274,6 +335,46 @@
     return str.length > max ? str.slice(0, max) + '...' : str;
   }
 
+  // --- Review actions ---
+  async function startReview() {
+    if (!currentTaskId) { return; }
+    $startReviewBtn.disabled = true;
+    try {
+      await api('/api/agent-tasks/' + encodeURIComponent(currentTaskId) + '/start-review', { method: 'POST', body: '{}' });
+      await poll();
+    } catch (err) {
+      console.error('[claude] start-review failed:', err);
+    } finally {
+      $startReviewBtn.disabled = false;
+    }
+  }
+
+  async function acceptWork() {
+    if (!currentTaskId) { return; }
+    $acceptBtn.disabled = true;
+    try {
+      await api('/api/agent-tasks/' + encodeURIComponent(currentTaskId) + '/accept', { method: 'POST', body: '{}' });
+      await poll();
+    } catch (err) {
+      console.error('[claude] accept failed:', err);
+    } finally {
+      $acceptBtn.disabled = false;
+    }
+  }
+
+  async function markNeedsFix() {
+    if (!currentTaskId) { return; }
+    $needsFixBtn.disabled = true;
+    try {
+      await api('/api/agent-tasks/' + encodeURIComponent(currentTaskId) + '/needs-fix', { method: 'POST', body: '{}' });
+      await poll();
+    } catch (err) {
+      console.error('[claude] needs-fix failed:', err);
+    } finally {
+      $needsFixBtn.disabled = false;
+    }
+  }
+
   // --- Init ---
   $followupBtn.addEventListener('click', sendFollowUp);
   $followupText.addEventListener('keydown', e => {
@@ -283,6 +384,9 @@
     }
   });
   $seedDemoBtn.addEventListener('click', seedDemo);
+  $startReviewBtn.addEventListener('click', startReview);
+  $acceptBtn.addEventListener('click', acceptWork);
+  $needsFixBtn.addEventListener('click', markNeedsFix);
 
   // Initial poll + interval
   void poll();

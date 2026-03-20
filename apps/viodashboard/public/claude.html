@@ -56,6 +56,30 @@
         </div>
       </section>
 
+      <!-- Completion handoff status -->
+      <section class="card" id="handoffCard" style="display:none">
+        <div class="card-title">Completion Handoff</div>
+        <div class="handoff-status">
+          <div class="handoff-row">
+            <span class="handoff-label">Completion seen:</span>
+            <span id="handoffSeen" class="handoff-value">—</span>
+          </div>
+          <div class="handoff-row">
+            <span class="handoff-label">Acknowledged:</span>
+            <span id="handoffAcked" class="handoff-value">—</span>
+          </div>
+          <div class="handoff-row">
+            <span class="handoff-label">Status:</span>
+            <span id="handoffStatusText" class="handoff-value">—</span>
+          </div>
+        </div>
+        <div class="review-actions" id="reviewActions" style="display:none">
+          <button id="startReviewBtn" type="button" class="review-btn review-btn-start">Start Review</button>
+          <button id="acceptBtn" type="button" class="review-btn review-btn-accept" style="display:none">Accept</button>
+          <button id="needsFixBtn" type="button" class="review-btn review-btn-fix" style="display:none">Needs Fix</button>
+        </div>
+      </section>
+
       <!-- Validation + Touched files -->
       <div class="two-col">
         <section class="card">

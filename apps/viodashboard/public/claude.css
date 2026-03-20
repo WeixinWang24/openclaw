@@ -128,15 +128,22 @@ html, body {
   color: var(--text-dim);
   text-transform: uppercase;
 }
+.pill.status-created { border-color: var(--text-dim); color: var(--text-dim); }
 .pill.status-running { border-color: var(--cyan); color: var(--cyan); }
+.pill.status-finished_by_claude { border-color: var(--yellow); color: var(--yellow); }
+.pill.status-review_started_by_vio { border-color: var(--pink); color: var(--pink); }
+.pill.status-accepted { border-color: var(--green); color: var(--green); }
+.pill.status-needs_fix { border-color: #ff8844; color: #ff8844; }
 .pill.status-completed { border-color: var(--green); color: var(--green); }
 .pill.status-failed { border-color: var(--pink); color: var(--pink); }
 .pill.status-pending { border-color: var(--yellow); color: var(--yellow); }
 .pill.phase-coding { border-color: var(--purple); color: #c78bff; }
 .pill.phase-testing { border-color: var(--yellow); color: var(--yellow); }
+.pill.phase-handoff { border-color: var(--yellow); color: var(--yellow); }
 .pill.phase-review { border-color: var(--pink); color: var(--pink); }
 .pill.phase-done { border-color: var(--green); color: var(--green); }
 .pill.accept-pending { border-color: var(--text-dim); }
+.pill.accept-reviewing { border-color: var(--pink); color: var(--pink); }
 .pill.accept-accepted { border-color: var(--green); color: var(--green); }
 .pill.accept-needs-fix { border-color: var(--yellow); color: var(--yellow); }
 .pill.accept-rejected { border-color: var(--pink); color: var(--pink); }
@@ -238,6 +245,8 @@ html, body {
 .feed-event.type-error { border-color: rgba(255,46,136,.3); }
 .feed-event.type-milestone { border-color: rgba(0,255,198,.2); }
 .feed-event.type-follow-up { border-color: rgba(79,184,255,.25); }
+.feed-event.type-completion-handoff { border-color: rgba(255,230,109,.35); background: rgba(255,230,109,.04); }
+.feed-event.type-review-started { border-color: rgba(255,46,136,.3); background: rgba(255,46,136,.04); }
 
 /* --- Validation card --- */
 .validation-grid {
@@ -391,3 +400,72 @@ html, body {
 @media (max-width: 720px) {
   .two-col { grid-template-columns: 1fr; }
 }
+
+/* --- Completion handoff card --- */
+.handoff-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 12px;
+}
+.handoff-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.handoff-label {
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-dim);
+}
+.handoff-value {
+  font-size: .82rem;
+  font-weight: 600;
+}
+.handoff-value.yes { color: var(--green); }
+.handoff-value.no { color: var(--text-dim); font-style: italic; }
+.handoff-value.status-text-finished_by_claude { color: var(--yellow); }
+.handoff-value.status-text-review_started_by_vio { color: var(--pink); }
+.handoff-value.status-text-accepted { color: var(--green); }
+.handoff-value.status-text-needs_fix { color: #ff8844; }
+
+.review-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.review-btn {
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: .82rem;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-dim);
+}
+.review-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+.review-btn-start {
+  border-color: var(--pink);
+  color: var(--pink);
+  background: rgba(255,46,136,.08);
+}
+.review-btn-start:hover:not(:disabled) { background: rgba(255,46,136,.18); }
+.review-btn-accept {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(77,255,184,.08);
+}
+.review-btn-accept:hover:not(:disabled) { background: rgba(77,255,184,.18); }
+.review-btn-fix {
+  border-color: #ff8844;
+  color: #ff8844;
+  background: rgba(255,136,68,.08);
+}
+.review-btn-fix:hover:not(:disabled) { background: rgba(255,136,68,.18); }

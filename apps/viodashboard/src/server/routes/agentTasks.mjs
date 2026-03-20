@@ -6,6 +6,7 @@ import { readJsonRequest } from '../httpUtils.mjs';
 import {
   getCurrentTask, getEvents, getLogs,
   emitFollowUp, seedDemoTask,
+  emitCompletionHandoff, emitReviewStarted, emitAccepted, emitNeedsFix,
 } from '../agentTasks/index.mjs';
 
 /**
@@ -72,6 +73,78 @@ export function handleAgentTaskRoutes(requestUrl, req, res) {
         note: 'This follow-up is routed to Vio for orchestration',
       });
       sendJson(res, 200, { ok: true, event });
+    }).catch(err => {
+      sendJson(res, 400, { ok: false, error: err.message });
+    });
+    return true;
+  }
+
+  // POST /api/agent-tasks/:taskId/signal-completion
+  const completionMatch = pathname.match(/^\/api\/agent-tasks\/([^/]+)\/signal-completion$/);
+  if (completionMatch && req.method === 'POST') {
+    const taskId = decodeURIComponent(completionMatch[1]);
+    const task = getCurrentTask();
+    if (!task || task.id !== taskId) {
+      sendJson(res, 404, { ok: false, error: 'Task not found' });
+      return true;
+    }
+    readJsonRequest(req).then(body => {
+      const result = emitCompletionHandoff(body.message || undefined);
+      sendJson(res, 200, { ok: true, task: result });
+    }).catch(err => {
+      sendJson(res, 400, { ok: false, error: err.message });
+    });
+    return true;
+  }
+
+  // POST /api/agent-tasks/:taskId/start-review
+  const reviewMatch = pathname.match(/^\/api\/agent-tasks\/([^/]+)\/start-review$/);
+  if (reviewMatch && req.method === 'POST') {
+    const taskId = decodeURIComponent(reviewMatch[1]);
+    const task = getCurrentTask();
+    if (!task || task.id !== taskId) {
+      sendJson(res, 404, { ok: false, error: 'Task not found' });
+      return true;
+    }
+    const result = emitReviewStarted();
+    if (!result) {
+      sendJson(res, 400, { ok: false, error: 'Task has no completion to review' });
+      return true;
+    }
+    sendJson(res, 200, { ok: true, task: result });
+    return true;
+  }
+
+  // POST /api/agent-tasks/:taskId/accept
+  const acceptMatch = pathname.match(/^\/api\/agent-tasks\/([^/]+)\/accept$/);
+  if (acceptMatch && req.method === 'POST') {
+    const taskId = decodeURIComponent(acceptMatch[1]);
+    const task = getCurrentTask();
+    if (!task || task.id !== taskId) {
+      sendJson(res, 404, { ok: false, error: 'Task not found' });
+      return true;
+    }
+    readJsonRequest(req).then(body => {
+      const result = emitAccepted(body.message || undefined);
+      sendJson(res, 200, { ok: true, task: result });
+    }).catch(err => {
+      sendJson(res, 400, { ok: false, error: err.message });
+    });
+    return true;
+  }
+
+  // POST /api/agent-tasks/:taskId/needs-fix
+  const needsFixMatch = pathname.match(/^\/api\/agent-tasks\/([^/]+)\/needs-fix$/);
+  if (needsFixMatch && req.method === 'POST') {
+    const taskId = decodeURIComponent(needsFixMatch[1]);
+    const task = getCurrentTask();
+    if (!task || task.id !== taskId) {
+      sendJson(res, 404, { ok: false, error: 'Task not found' });
+      return true;
+    }
+    readJsonRequest(req).then(body => {
+      const result = emitNeedsFix(body.message || undefined);
+      sendJson(res, 200, { ok: true, task: result });
     }).catch(err => {
       sendJson(res, 400, { ok: false, error: err.message });
     });

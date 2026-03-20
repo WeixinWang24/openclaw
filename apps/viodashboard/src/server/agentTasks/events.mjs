@@ -1,7 +1,10 @@
 // Higher-level event helpers for common collaboration patterns.
 
 import { createTaskEvent } from './types.mjs';
-import { addEvent, updateCurrentTask, getCurrentTask, advancePhase } from './store.mjs';
+import {
+  addEvent, updateCurrentTask, getCurrentTask,
+  markFinishedByClaude, startReview, acceptTask, markNeedsFix,
+} from './store.mjs';
 
 export function emitMilestone(message, meta = {}) {
   return addEvent(createTaskEvent('milestone', 'claude', message, meta));
@@ -27,10 +30,29 @@ export function emitFollowUp(source, message, meta = {}) {
   return addEvent(createTaskEvent('follow-up', source, message, meta));
 }
 
+// Legacy: kept for backward compat but now delegates to handoff flow.
 export function emitTaskFinished(message = 'Task execution complete') {
-  updateCurrentTask({ status: 'completed' });
-  advancePhase('done');
-  return addEvent(createTaskEvent('task-finished', 'system', message));
+  return markFinishedByClaude(message);
+}
+
+// Completion handoff: Claude signals it is done.
+export function emitCompletionHandoff(message = 'Claude finished execution') {
+  return markFinishedByClaude(message);
+}
+
+// Vio starts reviewing the completed work.
+export function emitReviewStarted() {
+  return startReview();
+}
+
+// Vio accepts the task result.
+export function emitAccepted(message = 'Work accepted') {
+  return acceptTask(message);
+}
+
+// Vio marks the task as needing fixes.
+export function emitNeedsFix(message = 'Changes needed') {
+  return markNeedsFix(message);
 }
 
 export function emitError(message, meta = {}) {
