@@ -433,6 +433,7 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
         source: r.source,
         snippet: r.snippet,
         vectorScore: r.score,
+        metadata: r.metadata,
       })),
       keyword: params.keyword.map((r) => ({
         id: r.id,
@@ -442,11 +443,13 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
         source: r.source,
         snippet: r.snippet,
         textScore: r.textScore,
+        metadata: r.metadata,
       })),
       vectorWeight: params.vectorWeight,
       textWeight: params.textWeight,
       mmr: params.mmr,
       temporalDecay: params.temporalDecay,
+      heuristicRerank: { enabled: true },
       workspaceDir: this.workspaceDir,
     }).then((entries) => entries.map((entry) => entry as MemorySearchResult));
   }

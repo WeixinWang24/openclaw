@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { truncateUtf16Safe } from "../utils.js";
+import type { ChunkMetadata, ChunkSignals } from "./chunk-metadata.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const vectorToBlob = (embedding: number[]): Buffer =>
@@ -15,7 +16,54 @@ export type SearchRowResult = {
   score: number;
   snippet: string;
   source: SearchSource;
+  metadata?: ChunkMetadata;
 };
+
+function parseStoredSignals(raw: string | null | undefined): ChunkSignals {
+  if (!raw) {
+    return {
+      containsDecision: false,
+      containsRule: false,
+      containsStatus: false,
+      containsResume: false,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<ChunkSignals>;
+    return {
+      containsDecision: parsed.containsDecision === true,
+      containsRule: parsed.containsRule === true,
+      containsStatus: parsed.containsStatus === true,
+      containsResume: parsed.containsResume === true,
+    };
+  } catch {
+    return {
+      containsDecision: false,
+      containsRule: false,
+      containsStatus: false,
+      containsResume: false,
+    };
+  }
+}
+
+type ChunkMetadataRow = {
+  doc_kind?: string;
+  heading_path?: string;
+  section_type?: string;
+  signals?: string;
+};
+
+function rowToMetadata(row: ChunkMetadataRow): ChunkMetadata | undefined {
+  if (!row.doc_kind && !row.heading_path && !row.section_type) {
+    return undefined;
+  }
+  return {
+    docKind: (row.doc_kind as ChunkMetadata["docKind"]) ?? "unknown",
+    headingPath: row.heading_path ?? "",
+    sectionType: (row.section_type as ChunkMetadata["sectionType"]) ?? "unknown",
+    signals: parseStoredSignals(row.signals),
+  };
+}
 
 export async function searchVector(params: {
   db: DatabaseSync;
@@ -35,7 +83,7 @@ export async function searchVector(params: {
     const rows = params.db
       .prepare(
         `SELECT c.id, c.path, c.start_line, c.end_line, c.text,\n` +
-          `       c.source,\n` +
+          `       c.source, c.doc_kind, c.heading_path, c.section_type, c.signals,\n` +
           `       vec_distance_cosine(v.embedding, ?) AS dist\n` +
           `  FROM ${params.vectorTable} v\n` +
           `  JOIN chunks c ON c.id = v.id\n` +
@@ -56,6 +104,10 @@ export async function searchVector(params: {
       text: string;
       source: SearchSource;
       dist: number;
+      doc_kind?: string;
+      heading_path?: string;
+      section_type?: string;
+      signals?: string;
     }>;
     return rows.map((row) => ({
       id: row.id,
@@ -65,6 +117,7 @@ export async function searchVector(params: {
       score: 1 - row.dist,
       snippet: truncateUtf16Safe(row.text, params.snippetMaxChars),
       source: row.source,
+      metadata: rowToMetadata(row),
     }));
   }
 
@@ -90,6 +143,7 @@ export async function searchVector(params: {
       score: entry.score,
       snippet: truncateUtf16Safe(entry.chunk.text, params.snippetMaxChars),
       source: entry.chunk.source,
+      metadata: entry.chunk.metadata,
     }));
 }
 
@@ -105,10 +159,12 @@ export function listChunks(params: {
   text: string;
   embedding: number[];
   source: SearchSource;
+  metadata?: ChunkMetadata;
 }> {
   const rows = params.db
     .prepare(
-      `SELECT id, path, start_line, end_line, text, embedding, source\n` +
+      `SELECT id, path, start_line, end_line, text, embedding, source,\n` +
+        `       doc_kind, heading_path, section_type, signals\n` +
         `  FROM chunks\n` +
         ` WHERE model = ?${params.sourceFilter.sql}`,
     )
@@ -120,6 +176,10 @@ export function listChunks(params: {
     text: string;
     embedding: string;
     source: SearchSource;
+    doc_kind?: string;
+    heading_path?: string;
+    section_type?: string;
+    signals?: string;
   }>;
 
   return rows.map((row) => ({
@@ -130,6 +190,7 @@ export function listChunks(params: {
     text: row.text,
     embedding: parseEmbedding(row.embedding),
     source: row.source,
+    metadata: rowToMetadata(row),
   }));
 }
 
@@ -175,8 +236,10 @@ export async function searchKeyword(params: {
     rank: number;
   }>;
 
+  // For FTS results, look up metadata from the chunks table
   return rows.map((row) => {
     const textScore = params.bm25RankToScore(row.rank);
+    const metaRow = lookupChunkMetadata(params.db, row.id);
     return {
       id: row.id,
       path: row.path,
@@ -186,6 +249,18 @@ export async function searchKeyword(params: {
       textScore,
       snippet: truncateUtf16Safe(row.text, params.snippetMaxChars),
       source: row.source,
+      metadata: metaRow ? rowToMetadata(metaRow) : undefined,
     };
   });
+}
+
+function lookupChunkMetadata(db: DatabaseSync, id: string): ChunkMetadataRow | undefined {
+  try {
+    const row = db
+      .prepare(`SELECT doc_kind, heading_path, section_type, signals FROM chunks WHERE id = ?`)
+      .get(id) as ChunkMetadataRow | undefined;
+    return row;
+  } catch {
+    return undefined;
+  }
 }

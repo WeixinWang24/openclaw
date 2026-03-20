@@ -1,3 +1,9 @@
+import type { ChunkMetadata } from "./chunk-metadata.js";
+import {
+  heuristicRerank,
+  type HeuristicRerankConfig,
+  DEFAULT_HEURISTIC_RERANK_CONFIG,
+} from "./heuristic-rerank.js";
 import { applyMMRToHybridResults, type MMRConfig, DEFAULT_MMR_CONFIG } from "./mmr.js";
 import {
   applyTemporalDecayToHybridResults,
@@ -9,6 +15,7 @@ export type HybridSource = string;
 
 export { type MMRConfig, DEFAULT_MMR_CONFIG };
 export { type TemporalDecayConfig, DEFAULT_TEMPORAL_DECAY_CONFIG };
+export { type HeuristicRerankConfig, DEFAULT_HEURISTIC_RERANK_CONFIG };
 
 export type HybridVectorResult = {
   id: string;
@@ -18,6 +25,7 @@ export type HybridVectorResult = {
   source: HybridSource;
   snippet: string;
   vectorScore: number;
+  metadata?: ChunkMetadata;
 };
 
 export type HybridKeywordResult = {
@@ -28,6 +36,7 @@ export type HybridKeywordResult = {
   source: HybridSource;
   snippet: string;
   textScore: number;
+  metadata?: ChunkMetadata;
 };
 
 export function buildFtsQuery(raw: string): string | null {
@@ -64,6 +73,8 @@ export async function mergeHybridResults(params: {
   mmr?: Partial<MMRConfig>;
   /** Temporal decay configuration for recency-aware scoring */
   temporalDecay?: Partial<TemporalDecayConfig>;
+  /** Heuristic reranking configuration for metadata-aware scoring */
+  heuristicRerank?: Partial<HeuristicRerankConfig>;
   /** Test seam for deterministic time-dependent behavior */
   nowMs?: number;
 }): Promise<
@@ -74,6 +85,7 @@ export async function mergeHybridResults(params: {
     score: number;
     snippet: string;
     source: HybridSource;
+    metadata?: ChunkMetadata;
   }>
 > {
   const byId = new Map<
@@ -87,6 +99,7 @@ export async function mergeHybridResults(params: {
       snippet: string;
       vectorScore: number;
       textScore: number;
+      metadata?: ChunkMetadata;
     }
   >();
 
@@ -100,6 +113,7 @@ export async function mergeHybridResults(params: {
       snippet: r.snippet,
       vectorScore: r.vectorScore,
       textScore: 0,
+      metadata: r.metadata,
     });
   }
 
@@ -109,6 +123,10 @@ export async function mergeHybridResults(params: {
       existing.textScore = r.textScore;
       if (r.snippet && r.snippet.length > 0) {
         existing.snippet = r.snippet;
+      }
+      // Prefer vector metadata if present, else use keyword metadata
+      if (!existing.metadata && r.metadata) {
+        existing.metadata = r.metadata;
       }
     } else {
       byId.set(r.id, {
@@ -120,6 +138,7 @@ export async function mergeHybridResults(params: {
         snippet: r.snippet,
         vectorScore: 0,
         textScore: r.textScore,
+        metadata: r.metadata,
       });
     }
   }
@@ -133,6 +152,7 @@ export async function mergeHybridResults(params: {
       score,
       snippet: entry.snippet,
       source: entry.source,
+      metadata: entry.metadata,
     };
   });
 
@@ -143,7 +163,12 @@ export async function mergeHybridResults(params: {
     workspaceDir: params.workspaceDir,
     nowMs: params.nowMs,
   });
-  const sorted = decayed.toSorted((a, b) => b.score - a.score);
+
+  // Apply heuristic metadata-based reranking
+  const heuristicConfig = { ...DEFAULT_HEURISTIC_RERANK_CONFIG, ...params.heuristicRerank };
+  const reranked = heuristicRerank(decayed, heuristicConfig);
+
+  const sorted = reranked.toSorted((a, b) => b.score - a.score);
 
   // Apply MMR re-ranking if enabled
   const mmrConfig = { ...DEFAULT_MMR_CONFIG, ...params.mmr };

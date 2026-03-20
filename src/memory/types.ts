@@ -1,3 +1,6 @@
+import type { ChunkMetadata } from "./chunk-metadata.js";
+import type { EvidenceAssessment } from "./evidence-guardrail.js";
+
 export type MemorySource = "memory" | "sessions";
 
 export type MemorySearchResult = {
@@ -8,6 +11,12 @@ export type MemorySearchResult = {
   snippet: string;
   source: MemorySource;
   citation?: string;
+  metadata?: ChunkMetadata;
+};
+
+export type MemorySearchResultSet = {
+  results: MemorySearchResult[];
+  evidence?: EvidenceAssessment;
 };
 
 export type MemoryEmbeddingProbeResult = {

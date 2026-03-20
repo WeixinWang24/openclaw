@@ -32,7 +32,11 @@ export function ensureMemoryIndexSchema(params: {
       model TEXT NOT NULL,
       text TEXT NOT NULL,
       embedding TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      doc_kind TEXT NOT NULL DEFAULT 'unknown',
+      heading_path TEXT NOT NULL DEFAULT '',
+      section_type TEXT NOT NULL DEFAULT 'unknown',
+      signals TEXT NOT NULL DEFAULT '{}'
     );
   `);
   params.db.exec(`
@@ -76,8 +80,13 @@ export function ensureMemoryIndexSchema(params: {
 
   ensureColumn(params.db, "files", "source", "TEXT NOT NULL DEFAULT 'memory'");
   ensureColumn(params.db, "chunks", "source", "TEXT NOT NULL DEFAULT 'memory'");
+  ensureColumn(params.db, "chunks", "doc_kind", "TEXT NOT NULL DEFAULT 'unknown'");
+  ensureColumn(params.db, "chunks", "heading_path", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(params.db, "chunks", "section_type", "TEXT NOT NULL DEFAULT 'unknown'");
+  ensureColumn(params.db, "chunks", "signals", "TEXT NOT NULL DEFAULT '{}'");
   params.db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);`);
   params.db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks(source);`);
+  params.db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_doc_kind ON chunks(doc_kind);`);
 
   return { ftsAvailable, ...(ftsError ? { ftsError } : {}) };
 }

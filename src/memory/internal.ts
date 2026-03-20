@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { detectMime } from "../media/mime.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
+import { buildChunkMetadata, type ChunkMetadata } from "./chunk-metadata.js";
 import { estimateStructuredEmbeddingInputBytes } from "./embedding-input-limits.js";
 import { buildTextEmbeddingInput, type EmbeddingInput } from "./embedding-inputs.js";
 import { isFileMissingError } from "./fs-utils.js";
@@ -33,6 +34,7 @@ export type MemoryChunk = {
   text: string;
   hash: string;
   embeddingInput?: EmbeddingInput;
+  metadata?: ChunkMetadata;
 };
 
 export type MultimodalMemoryChunk = {
@@ -334,6 +336,7 @@ export async function buildMultimodalChunkForIndexing(
 export function chunkMarkdown(
   content: string,
   chunking: { tokens: number; overlap: number },
+  relPath?: string,
 ): MemoryChunk[] {
   const lines = content.split("\n");
   if (lines.length === 0) {
@@ -358,12 +361,16 @@ export function chunkMarkdown(
     const text = current.map((entry) => entry.line).join("\n");
     const startLine = firstEntry.lineNo;
     const endLine = lastEntry.lineNo;
+    const metadata = relPath
+      ? buildChunkMetadata({ relPath, allLines: lines, chunkStartLine: startLine, chunkText: text })
+      : undefined;
     chunks.push({
       startLine,
       endLine,
       text,
       hash: hashText(text),
       embeddingInput: buildTextEmbeddingInput(text),
+      metadata,
     });
   };
 

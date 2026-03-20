@@ -828,7 +828,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
       const content = options.content ?? (await fs.readFile(entry.absPath, "utf-8"));
       chunks = enforceEmbeddingMaxInputTokens(
         this.provider,
-        chunkMarkdown(content, this.settings.chunking).filter(
+        chunkMarkdown(content, this.settings.chunking, entry.path).filter(
           (chunk) => chunk.text.trim().length > 0,
         ),
         EMBEDDING_BATCH_MAX_TOKENS,
@@ -874,14 +874,18 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
       );
       this.db
         .prepare(
-          `INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at, doc_kind, heading_path, section_type, signals)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              hash=excluded.hash,
              model=excluded.model,
              text=excluded.text,
              embedding=excluded.embedding,
-             updated_at=excluded.updated_at`,
+             updated_at=excluded.updated_at,
+             doc_kind=excluded.doc_kind,
+             heading_path=excluded.heading_path,
+             section_type=excluded.section_type,
+             signals=excluded.signals`,
         )
         .run(
           id,
@@ -894,6 +898,10 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerSyncOps {
           chunk.text,
           JSON.stringify(embedding),
           now,
+          chunk.metadata?.docKind ?? "unknown",
+          chunk.metadata?.headingPath ?? "",
+          chunk.metadata?.sectionType ?? "unknown",
+          JSON.stringify(chunk.metadata?.signals ?? {}),
         );
       if (vectorReady && embedding.length > 0) {
         try {

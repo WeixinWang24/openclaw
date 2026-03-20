@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
 import { resolveMemoryBackendConfig } from "../../memory/backend-config.js";
+import { assessEvidence } from "../../memory/evidence-guardrail.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemorySearchResult } from "../../memory/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
@@ -116,6 +117,7 @@ export function createMemorySearchTool(options: {
               ? clampResultsByInjectedChars(decorated, resolved.qmd?.limits.maxInjectedChars)
               : decorated;
           const searchMode = (status.custom as { searchMode?: string } | undefined)?.searchMode;
+          const evidence = assessEvidence(results);
           return jsonResult({
             results,
             provider: status.provider,
@@ -123,6 +125,10 @@ export function createMemorySearchTool(options: {
             fallback: status.fallback,
             citations: citationsMode,
             mode: searchMode,
+            evidence: {
+              confidence: evidence.confidence,
+              ...(evidence.warning ? { warning: evidence.warning } : {}),
+            },
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
