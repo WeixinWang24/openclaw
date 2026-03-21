@@ -331,16 +331,9 @@ function startDetachedClaudeSession(cwdRel) {
   appendSyntheticOutput(session.logPath, `[dashboard] starting claude\n[cwd] ${cwdAbs}\n`);
   persistAndCacheSession(session);
 
-  // Register this real Claude run as the current agent task
-  registerRealTask({
-    sessionId: session.id,
-    bridgePid: session.bridgePid,
-    cwd: session.cwdRel,
-    cwdAbs: session.cwdAbs,
-    claudeCommand: session.claudeCommand,
-    startedAt: session.claudeStartedAt || session.createdAt,
-  });
-
+  // Do not register an agent task yet.
+  // A detached Claude terminal can be alive while still idle at the prompt.
+  // We only bind a real task once the user actually sends task input.
   return session;
 }
 
@@ -351,17 +344,8 @@ function rehydrateClaudeSession(cwdRel) {
   const session = materializeSessionFromRegistry(registry, cwdRel);
   if (!session) {return null;}
   claudeSessions.set(session.id, session);
-  // If recovered session is alive and no task is tracked, register it
-  if (!session.exited && isPidAlive(session.bridgePid) && !getCurrentTask()) {
-    registerRealTask({
-      sessionId: session.id,
-      bridgePid: session.bridgePid,
-      cwd: session.cwdRel,
-      cwdAbs: session.cwdAbs,
-      claudeCommand: session.claudeCommand,
-      startedAt: session.createdAt,
-    });
-  }
+  // Do not auto-register a recovered Claude terminal as an active task.
+  // A restored session may simply be sitting idle at the prompt.
   return session;
 }
 
@@ -398,13 +382,25 @@ export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
   if (wasNewSession) {
     session = startDetachedClaudeSession(normalizeClaudeCwd(cwdRel));
   }
-  // If this is the first input to a fresh session, update the task title/prompt
-  if (wasNewSession && text) {
+
+  const trimmedText = typeof text === 'string' ? text.trim() : '';
+  if (trimmedText) {
     const task = getCurrentTask();
-    if (task && task.runtime?.sessionId === session.id) {
+    const sameSessionTask = task && task.runtime?.sessionId === session.id;
+    if (!sameSessionTask) {
+      registerRealTask({
+        sessionId: session.id,
+        bridgePid: session.bridgePid,
+        cwd: session.cwdRel,
+        cwdAbs: session.cwdAbs,
+        claudeCommand: session.claudeCommand,
+        startedAt: session.claudeStartedAt || session.createdAt,
+        promptText: trimmedText,
+      });
+    } else {
       updateCurrentTask({
-        title: text.slice(0, 120),
-        promptSummary: text.slice(0, 500),
+        title: trimmedText.slice(0, 120),
+        promptSummary: trimmedText.slice(0, 500),
       });
     }
   }
