@@ -8,6 +8,7 @@ import {
   emitFollowUp, seedDemoTask,
   emitCompletionHandoff, emitReviewStarted, emitAccepted, emitNeedsFix,
 } from '../agentTasks/index.mjs';
+import { sendClaudeInput } from '../claudeTerminal.mjs';
 
 /**
  * Handle agent-task API requests.
@@ -147,6 +148,31 @@ export function handleAgentTaskRoutes(requestUrl, req, res) {
     readJsonRequest(req).then(body => {
       const result = emitNeedsFix(body.message || undefined);
       sendJson(res, 200, { ok: true, task: result });
+    }).catch(err => {
+      sendJson(res, 400, { ok: false, error: err.message });
+    });
+    return true;
+  }
+
+  // POST /api/agent-tasks/dispatch
+  // Product-level entry point for Claude task dispatch.
+  // Validates input, binds task lifecycle, calls lower-level transport, returns task+session snapshot.
+  if (pathname === '/api/agent-tasks/dispatch' && req.method === 'POST') {
+    readJsonRequest(req).then(body => {
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) {
+        sendJson(res, 400, { ok: false, error: 'text is required' });
+        return;
+      }
+      const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : undefined;
+      // sendClaudeInput handles session bootstrap, task registration, and FIFO write
+      const sessionState = sendClaudeInput({ text, cwdRel: cwd, raw: false });
+      const task = getCurrentTask();
+      sendJson(res, 200, {
+        ok: true,
+        task: task ? { ...task, isRealTask: !!(task.runtime?.source === 'claude-terminal') } : null,
+        session: sessionState,
+      });
     }).catch(err => {
       sendJson(res, 400, { ok: false, error: err.message });
     });
