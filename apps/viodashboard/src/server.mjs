@@ -32,6 +32,13 @@ import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './s
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
 
+function sendMacOsNotification({ title, message }) {
+  if (!title || !message) {return;}
+  const safeTitle = String(title).replace(/"/g, '\\"');
+  const safeMessage = String(message).replace(/"/g, '\\"');
+  execFile('osascript', ['-e', `display notification "${safeMessage}" with title "${safeTitle}"`], () => {});
+}
+
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
   for (const candidate of candidates) {
@@ -273,6 +280,7 @@ const seenFinalRunIds = new Set();
 const activeRunSeq = new Map();
 let runSequence = 0;
 let lastRouting = { mode: 'n/a', detail: 'no final reply routed yet' };
+let lastAssistantFinalNotifiedRunId = null;
 let runtimeState = {
   mood: 'idle',
   phase: 'idle',
@@ -596,6 +604,13 @@ const bridge = new GatewayBridge({
         }
 
         const result = await onAssistantFinal(replyBody || '');
+        if (event.runId && event.runId !== lastAssistantFinalNotifiedRunId) {
+          lastAssistantFinalNotifiedRunId = event.runId;
+          sendMacOsNotification({
+            title: 'Vio sent a final reply',
+            message: preview || 'A reply finished and is ready for you.',
+          });
+        }
         lastRouting = {
           mode: result?.mode ?? 'unknown',
           detail: `final length=${replyBody.length}`,
