@@ -386,7 +386,13 @@ export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
   const payload = String(text || '');
   const trimmedText = typeof text === 'string' ? text.trim() : '';
   if (trimmedText) {
-    const screenSnapshot = normalizeTerminalText(readLogTail(session.logPath).text || '');
+    const rawScreenSnapshot = readLogTail(session.logPath).text || '';
+    const ansiPattern = new RegExp('\\\\u001b\\\\[[0-9;?]*[ -/]*[@-~]', 'g');
+    const screenSnapshot = String(rawScreenSnapshot)
+      .replace(ansiPattern, '')
+      .replace(/\r/g, '\n')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+/g, ' ');
     registerRealTask({
       sessionId: session.id,
       bridgePid: session.bridgePid,
