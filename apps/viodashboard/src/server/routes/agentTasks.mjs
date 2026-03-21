@@ -166,7 +166,7 @@ export function handleAgentTaskRoutes(requestUrl, req, res) {
       }
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : undefined;
       // sendClaudeInput handles session bootstrap, task registration, and FIFO write
-      const sessionState = sendClaudeInput({ text, cwdRel: cwd, raw: false });
+      const sessionState = sendClaudeInput({ text, cwdRel: cwd, raw: false, registerTask: true });
       const task = getCurrentTask();
       sendJson(res, 200, {
         ok: true,

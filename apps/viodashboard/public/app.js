@@ -184,7 +184,7 @@ const claude = {
   inputFlushDelayMs: 16,
   composerDraft: '',
   composerSending: false,
-  composerStatus: 'Enter 发送 · Shift+Enter 换行',
+  composerStatus: 'Dispatch new task: Enter send · Shift+Enter newline',
   composerStatusTone: 'hint',
   autoStartAttempted: false,
 };
@@ -1319,63 +1319,96 @@ function setClaudeComposerStatus(message, tone = 'hint') {
   }
 }
 
+function getClaudeComposerMode() {
+  return claude.running ? 'reply' : 'dispatch';
+}
+
+function getClaudeComposerHint(mode = getClaudeComposerMode()) {
+  return mode === 'reply'
+    ? 'Reply to running Claude session: Enter send · Shift+Enter newline'
+    : 'Dispatch new task: Enter send · Shift+Enter newline';
+}
+
+function getClaudeComposerPlaceholder(mode = getClaudeComposerMode()) {
+  return mode === 'reply'
+    ? 'Reply to the running Claude session…'
+    : 'Dispatch a new task to Claude…';
+}
+
 function renderClaudeComposer() {
+  const mode = getClaudeComposerMode();
   if (claudeComposerInputEl && document.activeElement !== claudeComposerInputEl) {
     if (claudeComposerInputEl.value !== claude.composerDraft) {claudeComposerInputEl.value = claude.composerDraft;}
   }
   resizeClaudeComposer();
   const trimmed = (claude.composerDraft || '').trim();
   const disabled = claude.loading || claude.composerSending;
-  if (claudeComposerInputEl) {claudeComposerInputEl.disabled = disabled;}
+  if (claudeComposerInputEl) {
+    claudeComposerInputEl.disabled = disabled;
+    claudeComposerInputEl.placeholder = getClaudeComposerPlaceholder(mode);
+  }
   if (claudeComposerSendBtnEl) {
     claudeComposerSendBtnEl.disabled = disabled || !trimmed.length;
-    claudeComposerSendBtnEl.textContent = claude.composerSending ? 'Sending…' : 'Send';
+    claudeComposerSendBtnEl.textContent = claude.composerSending ? 'Sending…' : (mode === 'reply' ? 'Reply' : 'Dispatch');
+  }
+  if (claude.composerStatusTone === 'hint') {
+    claude.composerStatus = getClaudeComposerHint(mode);
   }
   setClaudeComposerStatus(claude.composerStatus, claude.composerStatusTone);
 }
 
 async function submitClaudeComposer() {
   const value = String(claude.composerDraft || '').trim();
+  const mode = getClaudeComposerMode();
   if (!value || claude.composerSending || claude.loading) {return;}
   claude.composerSending = true;
-  setClaudeComposerStatus('Sending to Claude…', 'busy');
+  setClaudeComposerStatus(mode === 'reply' ? 'Sending reply to Claude…' : 'Dispatching task to Claude…', 'busy');
   renderClaudeComposer();
   setConsoleTab('claude');
-  addDebugLine(`Claude composer send len=${value.length}`, 'cyan');
+  addDebugLine(`Claude composer ${mode} len=${value.length}`, 'cyan');
   try {
     await flushClaudeInputBuffer();
-    const res = await fetch('/api/agent-tasks/dispatch', {
+    const endpoint = mode === 'reply' ? '/api/claude/input' : '/api/agent-tasks/dispatch';
+    const body = mode === 'reply'
+      ? { text: value, cwd: claude.cwd, raw: false }
+      : { text: value, cwd: claude.cwd };
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: value, cwd: claude.cwd }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!res.ok) {throw new Error(data?.error || 'Failed to send to Claude');}
-    // sendClaudeInput (server-side) already writes \r after 120ms — do not send a second Enter
+    if (!res.ok) {throw new Error(data?.error || `Failed to ${mode} Claude`);}
     if (data.session) {applyClaudeStateData(data.session);}
+    else {applyClaudeStateData(data);}
     claude.composerDraft = '';
     if (claudeComposerInputEl) {claudeComposerInputEl.value = '';}
     resizeClaudeComposer();
     renderClaudeComposer();
-    addDebugLine('Claude composer send accepted.', 'cyan');
-    setClaudeComposerStatus('Sent to Claude. Waiting for PTY output…', 'success');
+    addDebugLine(`Claude composer ${mode} accepted.`, 'cyan');
+    setClaudeComposerStatus(
+      mode === 'reply'
+        ? 'Reply sent to running Claude session. Waiting for PTY output…'
+        : 'Task dispatched to Claude. Waiting for PTY output…',
+      'success',
+    );
     window.setTimeout(() => {
       fetchClaudeState().catch(error => {
-        addDebugLine(`Claude post-send refresh failed: ${error?.message || error}`, 'pink');
+        addDebugLine(`Claude post-${mode} refresh failed: ${error?.message || error}`, 'pink');
       });
     }, 120);
     window.setTimeout(() => {
       fetchClaudeState().catch(() => {});
     }, 600);
     window.setTimeout(() => {
-      if (!claude.composerDraft && !claude.composerSending) {setClaudeComposerStatus('Enter to send · Shift+Enter for newline', 'hint');}
+      if (!claude.composerDraft && !claude.composerSending) {setClaudeComposerStatus(getClaudeComposerHint(), 'hint');}
     }, 2200);
     claude.term?.focus();
     claudeComposerInputEl?.focus();
   } catch (error) {
     claude.error = error?.message || String(error);
-    addDebugLine(`Claude composer send failed: ${claude.error}`, 'pink');
-    setClaudeComposerStatus(claude.error || 'Send failed, retry', 'error');
+    addDebugLine(`Claude composer ${mode} failed: ${claude.error}`, 'pink');
+    setClaudeComposerStatus(claude.error || `${mode} failed, retry`, 'error');
     renderClaudeChrome();
     claudeComposerInputEl?.focus();
   } finally {
@@ -1750,7 +1783,7 @@ function bindClaudeEvents() {
   claudeComposerInputEl?.addEventListener('input', event => {
     claude.composerDraft = event.target.value || '';
     if (claude.composerStatusTone === 'error' || claude.composerStatusTone === 'success') {
-      setClaudeComposerStatus('Enter 发送 · Shift+Enter 换行', 'hint');
+      setClaudeComposerStatus(getClaudeComposerHint(), 'hint');
     }
     renderClaudeComposer();
   });

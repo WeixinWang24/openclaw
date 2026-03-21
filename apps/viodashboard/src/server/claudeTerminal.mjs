@@ -376,7 +376,7 @@ export function startClaudeSession({ cwdRel } = {}) {
   return buildClaudeState(session, normalized);
 }
 
-export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
+export function sendClaudeInput({ text, cwdRel, raw = false, registerTask = false } = {}) {
   let session = rehydrateClaudeSession(cwdRel);
   const wasNewSession = !session || !isPidAlive(session.bridgePid) || session.exited;
   if (wasNewSession) {
@@ -385,10 +385,11 @@ export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
 
   const payload = String(text || '');
   const trimmedText = typeof text === 'string' ? text.trim() : '';
-  if (trimmedText) {
+  if (registerTask && trimmedText) {
     const rawScreenSnapshot = readLogTail(session.logPath).text || '';
+    const ansiControlPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
     const screenSnapshot = String(rawScreenSnapshot)
-      .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+      .replace(ansiControlPattern, '')
       .replace(/\r/g, '\n')
       .replace(/\u00a0/g, ' ')
       .replace(/[ \t]+/g, ' ');
