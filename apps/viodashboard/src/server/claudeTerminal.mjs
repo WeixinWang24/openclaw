@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_BIN, CLAUDE_RUNTIME_ROOT, DEFAULT_CLAUDE_CWD } from '../config.mjs';
 import { safeProjectPath } from './filesystem.mjs';
-import { registerRealTask, updateCurrentTask, getCurrentTask } from './agentTasks/index.mjs';
+import { registerRealTask } from './agentTasks/index.mjs';
 
 export const CLAUDE_SESSION_ID = 'claude-default';
 
@@ -383,28 +383,24 @@ export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
     session = startDetachedClaudeSession(normalizeClaudeCwd(cwdRel));
   }
 
+  const payload = String(text || '');
   const trimmedText = typeof text === 'string' ? text.trim() : '';
   if (trimmedText) {
-    const task = getCurrentTask();
-    const sameSessionTask = task && task.runtime?.sessionId === session.id;
-    if (!sameSessionTask) {
-      registerRealTask({
-        sessionId: session.id,
-        bridgePid: session.bridgePid,
-        cwd: session.cwdRel,
-        cwdAbs: session.cwdAbs,
-        claudeCommand: session.claudeCommand,
-        startedAt: session.claudeStartedAt || session.createdAt,
-        promptText: trimmedText,
-      });
-    } else {
-      updateCurrentTask({
-        title: trimmedText.slice(0, 120),
-        promptSummary: trimmedText.slice(0, 500),
-      });
-    }
+    const screenSnapshot = normalizeTerminalText(readLogTail(session.logPath).text || '');
+    registerRealTask({
+      sessionId: session.id,
+      bridgePid: session.bridgePid,
+      cwd: session.cwdRel,
+      cwdAbs: session.cwdAbs,
+      claudeCommand: session.claudeCommand,
+      startedAt: new Date().toISOString(),
+      promptText: trimmedText,
+      forceNewTask: true,
+      dispatchedAt: new Date().toISOString(),
+      screenLengthAtDispatch: screenSnapshot.length,
+    });
   }
-  const payload = String(text || '');
+  
   if (!payload.length) {return buildClaudeState(session, session.cwdRel);}
   if (!session.stdinPath || !fs.existsSync(session.stdinPath)) {
     throw new Error('Claude stdin pipe is not ready');

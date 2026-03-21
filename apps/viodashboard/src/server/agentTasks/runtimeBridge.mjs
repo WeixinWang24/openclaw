@@ -92,13 +92,20 @@ export function syncRealTaskFromClaudeState(claudeState) {
       }
     }
 
-    const looksDone =
+    const dispatchBaseline = Number.isFinite(task.runtime?.screenLengthAtDispatch)
+      ? task.runtime.screenLengthAtDispatch
+      : 0;
+    const outputDelta = Math.max(0, screen.length - dispatchBaseline);
+    const hasNewOutputSinceDispatch = outputDelta > 24;
+
+    const looksDone = hasNewOutputSinceDispatch && (
       screen.includes('⏺ Done.') ||
       screen.includes('The file already exists with the correct content') ||
       screen.includes('Nothing to do.') ||
       screen.includes('Task completed') ||
-      screen.includes('completed successfully');
-    const promptReturned = screen.includes('❯') && !screen.includes('esc to interrupt');
+      screen.includes('completed successfully')
+    );
+    const promptReturned = hasNewOutputSinceDispatch && screen.includes('❯') && !screen.includes('esc to interrupt');
     if (looksDone || promptReturned) {
       lastAttentionFingerprint = null;
       const reason = looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt';
@@ -139,6 +146,8 @@ function buildRuntimeMeta(sessionInfo) {
     startedAt: sessionInfo.startedAt || new Date().toISOString(),
     bridgeAlive: true,
     source: 'claude-terminal',
+    dispatchedAt: sessionInfo.dispatchedAt || null,
+    screenLengthAtDispatch: Number.isFinite(sessionInfo.screenLengthAtDispatch) ? sessionInfo.screenLengthAtDispatch : null,
   };
 }
 
