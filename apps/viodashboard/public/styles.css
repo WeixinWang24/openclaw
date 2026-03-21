@@ -1905,7 +1905,7 @@ body.animations-off *::after {
   height: 100%;
   width: 100%;
   flex: 1 1 auto;
-  padding: 8px;
+  padding: 0;
   box-sizing: border-box;
 }
 
