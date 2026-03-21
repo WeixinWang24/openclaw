@@ -2,9 +2,9 @@
 // Registers real Claude background runs as agentTasks, syncs runtime identity,
 // and drives the completion handoff state machine on process exit.
 
-import { execFile } from 'node:child_process';
 import { setCurrentTask, getCurrentTask, updateCurrentTask, advancePhase, appendLog, markFinishedByClaude } from './store.mjs';
 import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff, emitError } from './events.mjs';
+import { notifyClaude, notifyTaskFinished } from '../notifications.mjs';
 
 let lastAttentionFingerprint = null;
 
@@ -85,7 +85,7 @@ export function syncRealTaskFromClaudeState(claudeState) {
       if (fingerprint !== lastAttentionFingerprint) {
         lastAttentionFingerprint = fingerprint;
         appendLog({ level: 'info', text: `Claude needs user input [${attention.kind}]: ${attention.summary}` });
-        sendMacOsNotification({
+        notifyClaude({
           title: attention.title || 'Claude needs your input',
           message: attention.summary,
         });
@@ -101,8 +101,13 @@ export function syncRealTaskFromClaudeState(claudeState) {
     const promptReturned = screen.includes('❯') && !screen.includes('esc to interrupt');
     if (looksDone || promptReturned) {
       lastAttentionFingerprint = null;
+      const reason = looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt';
       appendLog({ level: 'info', text: looksDone ? 'Claude completion detected from terminal snapshot' : 'Claude prompt returned; marking handoff' });
-      markFinishedByClaude(looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt');
+      markFinishedByClaude(reason);
+      notifyTaskFinished({
+        title: 'Claude task finished',
+        message: reason,
+      });
       return;
     }
   }
@@ -112,8 +117,10 @@ export function syncRealTaskFromClaudeState(claudeState) {
     lastAttentionFingerprint = null;
     const exitCode = claudeState.exitCode;
     if (exitCode === 0 || exitCode === null) {
+      const exitMsg = `Claude finished (exit code ${exitCode ?? 'unknown'})`;
       appendLog({ level: 'info', text: `Claude process exited (code=${exitCode}), triggering completion handoff` });
-      markFinishedByClaude(`Claude finished (exit code ${exitCode ?? 'unknown'})`);
+      markFinishedByClaude(exitMsg);
+      notifyTaskFinished({ title: 'Claude task finished', message: exitMsg });
     } else {
       appendLog({ level: 'warn', text: `Claude process exited with error code ${exitCode}` });
       updateCurrentTask({ status: 'failed' });
@@ -206,12 +213,6 @@ function detectAttention(screen) {
   return null;
 }
 
-function sendMacOsNotification({ title, message }) {
-  if (!title || !message) {return;}
-  const safeTitle = String(title).replace(/"/g, '\\"');
-  const safeMessage = String(message).replace(/"/g, '\\"');
-  execFile('osascript', ['-e', `display notification "${safeMessage}" with title "${safeTitle}"`], () => {});
-}
 
 /**
  * Seed a demo task for development and manual testing.

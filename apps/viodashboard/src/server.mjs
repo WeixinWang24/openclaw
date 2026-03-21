@@ -28,16 +28,11 @@ import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
+import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
 
-function sendMacOsNotification({ title, message }) {
-  if (!title || !message) {return;}
-  const safeTitle = String(title).replace(/"/g, '\\"');
-  const safeMessage = String(message).replace(/"/g, '\\"');
-  execFile('osascript', ['-e', `display notification "${safeMessage}" with title "${safeTitle}"`], () => {});
-}
 
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
@@ -606,9 +601,10 @@ const bridge = new GatewayBridge({
         const result = await onAssistantFinal(replyBody || '');
         if (event.runId && event.runId !== lastAssistantFinalNotifiedRunId) {
           lastAssistantFinalNotifiedRunId = event.runId;
-          sendMacOsNotification({
+          notifyAssistantFinal({
             title: 'Vio sent a final reply',
             message: preview || 'A reply finished and is ready for you.',
+            dashboardPort: wrapperPort,
           });
         }
         lastRouting = {
@@ -1282,6 +1278,20 @@ const server = http.createServer((req, res) => {
   // Agent task routes (Claude task page API)
   if (requestUrl.pathname.startsWith('/api/agent-tasks')) {
     if (handleAgentTaskRoutes(requestUrl, req, res)) { return; }
+  }
+
+  // Notification preferences API
+  if (requestUrl.pathname === '/api/notification-prefs') {
+    if (req.method === 'GET') {
+      sendJson(res, 200, getNotificationPrefs());
+      return;
+    }
+    if (req.method === 'POST' || req.method === 'PATCH') {
+      readJsonRequest(req)
+        .then(body => sendJson(res, 200, setNotificationPrefs(body)))
+        .catch(err => sendJson(res, 400, { error: err?.message || String(err) }));
+      return;
+    }
   }
 
   if (requestUrl.pathname.startsWith('/vio_cam/')) {
