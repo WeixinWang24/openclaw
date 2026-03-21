@@ -1501,14 +1501,42 @@ function maybeScrollClaudeOutput() {
   claude.term.scrollToBottom();
 }
 
+function measureClaudeTerminalGeometry() {
+  const host = claudeTerminalHostEl;
+  if (!host) {return null;}
+  const helper = host.querySelector('.xterm-helper-textarea');
+  const measure = host.querySelector('.xterm-char-measure-element');
+  const screen = host.querySelector('.xterm-screen');
+  const charWidth = helper?.getBoundingClientRect?.().width || (measure ? (measure.getBoundingClientRect().width / 32) : 0);
+  const charHeight = helper?.getBoundingClientRect?.().height || measure?.getBoundingClientRect?.().height || 0;
+  const screenWidth = screen?.getBoundingClientRect?.().width || 0;
+  const screenHeight = screen?.getBoundingClientRect?.().height || 0;
+  if (!charWidth || !charHeight || !screenWidth || !screenHeight) {return null;}
+  return {
+    cols: Math.max(2, Math.floor(screenWidth / charWidth)),
+    rows: Math.max(2, Math.floor(screenHeight / charHeight)),
+    charWidth,
+    charHeight,
+    screenWidth,
+    screenHeight,
+  };
+}
+
 async function resizeClaudeSession() {
   ensureClaudeTerminal();
   if (!claude.term) {return;}
   if (claude.fitAddon) {claude.fitAddon.fit();}
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const measured = measureClaudeTerminalGeometry();
   const hostWidth = claudeTerminalHostEl?.clientWidth || 0;
   const hostHeight = claudeTerminalHostEl?.clientHeight || 0;
-  const cols = claude.term.cols || Math.max(40, Math.floor(hostWidth / 8));
-  const rows = claude.term.rows || Math.max(12, Math.floor(hostHeight / 18));
+  const fallbackCols = Math.max(40, Math.floor(hostWidth / 8));
+  const fallbackRows = Math.max(12, Math.floor(hostHeight / 18));
+  const cols = measured?.cols || claude.term.cols || fallbackCols;
+  const rows = measured?.rows || claude.term.rows || fallbackRows;
+  if (cols !== claude.term.cols || rows !== claude.term.rows) {
+    claude.term.resize(cols, rows);
+  }
   try {
     await fetch('/api/claude/resize', {
       method: 'POST',
