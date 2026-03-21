@@ -63,6 +63,7 @@
   const STATUS_LABELS = {
     created: 'Created',
     running: 'Running',
+    completed: 'Completed',
     finished_by_claude: 'Claude Finished',
     review_started_by_vio: 'Vio Reviewing',
     accepted: 'Accepted',
@@ -74,7 +75,8 @@
 
   function renderTask(task) {
     $taskTitle.textContent = task.title;
-    $taskPrompt.textContent = task.promptSummary || '';
+    const promptText = task.finalSummary || task.needsInputSummary || task.promptSummary || '';
+    $taskPrompt.textContent = promptText;
 
     // Status badge with readable label (override for needs-input)
     const statusLabel = task.needsInput
@@ -108,6 +110,8 @@
     }
     if (task.needsInput && task.needsInputSummary) {
       parts.push('⚠ ' + truncate(task.needsInputSummary, 100));
+    } else if (task.finalSummary) {
+      parts.push('Final: ' + truncate(task.finalSummary, 100));
     } else if (task.latestMeaningfulUpdate) {
       parts.push('Latest: ' + truncate(task.latestMeaningfulUpdate, 80));
     }

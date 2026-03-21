@@ -10,6 +10,34 @@ import {
 } from '../agentTasks/index.mjs';
 import { sendClaudeInput } from '../claudeTerminal.mjs';
 
+function buildClaudeTaskPrompt(userText) {
+  const protocol = [
+    '',
+    'Completion protocol (must follow exactly):',
+    '',
+    'When you are truly finished, output exactly one final completion block:',
+    '',
+    '<VIO_TASK_COMPLETE>',
+    'summary: <one-line summary>',
+    'files: <comma-separated paths or none>',
+    'tests: <short result or not run>',
+    'commit: <sha or none>',
+    '</VIO_TASK_COMPLETE>',
+    '',
+    'If you need user input before completion, do not pretend the task is done. Instead output:',
+    '',
+    '<VIO_TASK_INPUT_NEEDED>',
+    'summary: <what you need from the user>',
+    '</VIO_TASK_INPUT_NEEDED>',
+    '',
+    'Rules:',
+    '- Do not output either block until appropriate.',
+    '- Do not output a completion block if you are still waiting for input.',
+    '- Use the completion block only once the task is actually complete.',
+  ].join('\n');
+  return `${String(userText || '').trim()}\n${protocol}`;
+}
+
 /**
  * Handle agent-task API requests.
  * Returns true if the request was handled, false otherwise.
@@ -165,8 +193,9 @@ export function handleAgentTaskRoutes(requestUrl, req, res) {
         return;
       }
       const cwd = typeof body.cwd === 'string' && body.cwd ? body.cwd : undefined;
+      const dispatchText = buildClaudeTaskPrompt(text);
       // sendClaudeInput handles session bootstrap, task registration, and FIFO write
-      const sessionState = sendClaudeInput({ text, cwdRel: cwd, raw: false, registerTask: true });
+      const sessionState = sendClaudeInput({ text: dispatchText, cwdRel: cwd, raw: false, registerTask: true });
       const task = getCurrentTask();
       sendJson(res, 200, {
         ok: true,

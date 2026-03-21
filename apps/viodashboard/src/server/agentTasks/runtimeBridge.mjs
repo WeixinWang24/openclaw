@@ -78,6 +78,54 @@ export function syncRealTaskFromClaudeState(claudeState) {
   // Use the full terminal snapshot, not only the latest delta, to detect completion.
   if (task.status === 'running' && !task.completionEventSeen) {
     const screen = normalizeTerminalText(claudeState.output || '');
+    const protocolState = parseClaudeProtocolState(screen);
+
+    if (protocolState.kind === 'complete') {
+      lastAttentionFingerprint = null;
+      updateCurrentTask({
+        status: 'completed',
+        phase: 'done',
+        needsInput: false,
+        needsInputKind: null,
+        needsInputSummary: null,
+        finalSummary: protocolState.summary,
+        touchedFiles: protocolState.files || [],
+        tests: protocolState.tests || null,
+        commit: protocolState.commit || null,
+        protocolState: 'completed',
+        protocolSource: protocolState.protocolSource,
+        latestMeaningfulUpdate: protocolState.summary,
+      });
+      appendLog({ level: 'info', text: `Claude completed via structured protocol: ${protocolState.summary}` });
+      emitMilestone(protocolState.summary);
+      notifyTaskFinished({
+        title: 'Claude task finished',
+        message: protocolState.summary,
+      });
+      return;
+    }
+
+    if (protocolState.kind === 'input_needed') {
+      const fingerprint = `${task.id}::structured::${protocolState.summary}`;
+      if (fingerprint !== lastAttentionFingerprint) {
+        lastAttentionFingerprint = fingerprint;
+        appendLog({ level: 'info', text: `Claude requested input via structured protocol: ${protocolState.summary}` });
+        notifyClaude({
+          title: 'Claude needs your input',
+          message: protocolState.summary,
+        });
+      }
+      updateCurrentTask({
+        needsInput: true,
+        needsInputKind: 'structured',
+        needsInputSummary: protocolState.summary,
+        protocolState: 'input_needed',
+        protocolSource: protocolState.protocolSource,
+        phase: 'waiting',
+        latestMeaningfulUpdate: protocolState.summary,
+      });
+      return;
+    }
 
     const attention = detectAttention(screen);
     if (attention) {
@@ -90,20 +138,22 @@ export function syncRealTaskFromClaudeState(claudeState) {
           message: attention.summary,
         });
       }
-      // Surface needs-input state on the task so the dashboard shows it
-      if (!task.needsInput) {
-        updateCurrentTask({
-          needsInput: true,
-          needsInputKind: attention.kind,
-          needsInputSummary: attention.summary,
-        });
-      }
+      updateCurrentTask({
+        needsInput: true,
+        needsInputKind: attention.kind,
+        needsInputSummary: attention.summary,
+        protocolState: 'input_needed',
+        protocolSource: 'attention',
+        phase: 'waiting',
+      });
     } else if (task.needsInput) {
-      // Attention cleared — task resumed normal coding
       updateCurrentTask({
         needsInput: false,
         needsInputKind: null,
         needsInputSummary: null,
+        protocolState: 'running',
+        protocolSource: null,
+        phase: 'coding',
       });
       lastAttentionFingerprint = null;
     }
@@ -121,11 +171,12 @@ export function syncRealTaskFromClaudeState(claudeState) {
       screen.includes('Task completed') ||
       screen.includes('completed successfully')
     );
-    const promptReturned = hasNewOutputSinceDispatch && screen.includes('❯') && !screen.includes('esc to interrupt');
+    const promptReturned = hasNewOutputSinceDispatch && screen.includes('❯') && !screen.includes('esc to interrupt') && !attention;
     if (looksDone || promptReturned) {
       lastAttentionFingerprint = null;
       const reason = looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt';
       appendLog({ level: 'info', text: looksDone ? 'Claude completion detected from terminal snapshot' : 'Claude prompt returned; marking handoff' });
+      updateCurrentTask({ protocolState: 'completed', protocolSource: 'heuristic', finalSummary: task.finalSummary || reason });
       markFinishedByClaude(reason);
       notifyTaskFinished({
         title: 'Claude task finished',
@@ -169,12 +220,90 @@ function buildRuntimeMeta(sessionInfo) {
 
 function normalizeTerminalText(text) {
   // Match real ESC byte (0x1B) followed by CSI sequences
-  const ansiPattern = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+  const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, 'g');
   return String(text || '')
     .replace(ansiPattern, '')
     .replace(/\r/g, '\n')
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+/g, ' ');
+}
+
+function extractLastStructuredBlock(text, tagName) {
+  const source = String(text || '');
+  if (!source || !tagName) {return null;}
+  const openTag = `<${tagName}>`;
+  const closeTag = `</${tagName}>`;
+  const tailWindow = 3000;
+  const searchStart = Math.max(0, source.length - tailWindow);
+  const openIndex = source.lastIndexOf(openTag);
+  const closeIndex = source.lastIndexOf(closeTag);
+  if (openIndex < 0 || closeIndex < 0 || closeIndex <= openIndex) {return null;}
+  if (closeIndex < searchStart) {return null;}
+  const endIndex = closeIndex + closeTag.length;
+  return {
+    rawBlock: source.slice(openIndex, endIndex),
+    innerText: source.slice(openIndex + openTag.length, closeIndex).trim(),
+    startIndex: openIndex,
+    endIndex,
+  };
+}
+
+function parseStructuredFields(innerText) {
+  const fields = {};
+  for (const rawLine of String(innerText || '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {continue;}
+    const match = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (!match) {continue;}
+    fields[match[1].toLowerCase()] = match[2].trim();
+  }
+  return fields;
+}
+
+function parseClaudeProtocolState(text) {
+  const completeBlock = extractLastStructuredBlock(text, 'VIO_TASK_COMPLETE');
+  const inputBlock = extractLastStructuredBlock(text, 'VIO_TASK_INPUT_NEEDED');
+  const latestBlock = (!completeBlock && !inputBlock)
+    ? null
+    : (!inputBlock || (completeBlock && completeBlock.startIndex > inputBlock.startIndex)
+        ? { kind: 'complete', block: completeBlock }
+        : { kind: 'input_needed', block: inputBlock });
+  if (!latestBlock?.block) {
+    return {
+      kind: null,
+      summary: null,
+      files: null,
+      tests: null,
+      commit: null,
+      protocolSource: null,
+      rawBlock: null,
+    };
+  }
+  const fields = parseStructuredFields(latestBlock.block.innerText);
+  const summary = fields.summary || null;
+  if (!summary) {
+    return {
+      kind: null,
+      summary: null,
+      files: null,
+      tests: null,
+      commit: null,
+      protocolSource: null,
+      rawBlock: null,
+    };
+  }
+  const files = latestBlock.kind === 'complete'
+    ? String(fields.files || 'none').split(',').map(part => part.trim()).filter(part => part && part.toLowerCase() !== 'none')
+    : null;
+  return {
+    kind: latestBlock.kind,
+    summary,
+    files,
+    tests: latestBlock.kind === 'complete' ? (fields.tests || null) : null,
+    commit: latestBlock.kind === 'complete' ? (fields.commit || null) : null,
+    protocolSource: 'structured',
+    rawBlock: latestBlock.block.rawBlock,
+  };
 }
 
 function detectAttention(screen) {
