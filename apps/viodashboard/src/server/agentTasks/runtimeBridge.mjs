@@ -70,6 +70,24 @@ export function syncRealTaskFromClaudeState(claudeState) {
     },
   });
 
+  // Long-lived Claude TUI sessions may complete while the process stays alive.
+  // Use the full terminal snapshot, not only the latest delta, to detect completion.
+  if (task.status === 'running' && !task.completionEventSeen) {
+    const screen = normalizeTerminalText(claudeState.output || '');
+    const looksDone =
+      screen.includes('⏺ Done.') ||
+      screen.includes('The file already exists with the correct content') ||
+      screen.includes('Nothing to do.') ||
+      screen.includes('Task completed') ||
+      screen.includes('completed successfully');
+    const promptReturned = screen.includes('❯') && !screen.includes('esc to interrupt');
+    if (looksDone || promptReturned) {
+      appendLog({ level: 'info', text: looksDone ? 'Claude completion detected from terminal snapshot' : 'Claude prompt returned; marking handoff' });
+      markFinishedByClaude(looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt');
+      return;
+    }
+  }
+
   // If task is still running but Claude has exited, trigger completion handoff
   if (task.status === 'running' && !claudeState.running && claudeState.exited) {
     const exitCode = claudeState.exitCode;
@@ -95,6 +113,15 @@ function buildRuntimeMeta(sessionInfo) {
     bridgeAlive: true,
     source: 'claude-terminal',
   };
+}
+
+function normalizeTerminalText(text) {
+  const ansiPattern = new RegExp('\\\\u001b\\[[0-9;?]*[ -/]*[@-~]', 'g');
+  return String(text || '')
+    .replace(ansiPattern, '')
+    .replace(/\r/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ');
 }
 
 /**
@@ -151,23 +178,6 @@ export function onClaudeOutput(text) {
   const task = getCurrentTask();
   if (!task || task.status !== 'running') { return; }
   appendLog({ level: 'debug', text: text.slice(0, 500) });
-
-  // Long-lived Claude TUI sessions often finish a task without exiting.
-  // Detect a returned prompt / explicit done marker and trigger handoff.
-  if (task.completionEventSeen) { return; }
-  const ansiPattern = new RegExp('\\\\u001b\\[[0-9;?]*[ -/]*[@-~]', 'g');
-  const normalized = String(text || '').replace(ansiPattern, '');
-  const looksDone =
-    normalized.includes('⏺ Done.') ||
-    normalized.includes('The file already exists with the correct content') ||
-    normalized.includes('Nothing to do.') ||
-    normalized.includes('Task completed') ||
-    normalized.includes('completed successfully');
-  const promptReturned = normalized.includes('❯') && !normalized.includes('esc to interrupt');
-
-  if (looksDone || promptReturned) {
-    markFinishedByClaude(looksDone ? 'Claude completed via terminal output' : 'Claude returned to prompt');
-  }
 }
 
 /**
