@@ -1471,7 +1471,7 @@ function renderClaudeChrome() {
     if (claudeCwdInputEl.value !== nextCwd) {claudeCwdInputEl.value = nextCwd;}
   }
   if (claudeMetaEl) {
-    const nextMeta = `<span class="semantic-label">session</span> <span class="semantic-value">${claude.sessionId || 'claude-default'}</span> <span class="semantic-label">· running</span> <span class="semantic-value">${claude.running ? 'yes' : 'no'}</span> <span class="semantic-label">· exit</span> <span class="semantic-value">${claude.exitCode ?? '-'}</span> <span class="semantic-label">· status</span> <span class="semantic-value">${claude.status || 'idle'}</span>`;
+    const nextMeta = `<span class="claude-meta-chunk"><span class="semantic-label">session</span><span class="semantic-value">${claude.sessionId || 'claude-default'}</span></span><span class="claude-meta-sep">·</span><span class="claude-meta-chunk"><span class="semantic-label">running</span><span class="semantic-value">${claude.running ? 'yes' : 'no'}</span></span><span class="claude-meta-sep">·</span><span class="claude-meta-chunk"><span class="semantic-label">exit</span><span class="semantic-value">${claude.exitCode ?? '-'}</span></span><span class="claude-meta-sep">·</span><span class="claude-meta-chunk"><span class="semantic-label">status</span><span class="semantic-value">${claude.status || 'idle'}</span></span>`;
     if (claudeMetaEl.innerHTML !== nextMeta) {claudeMetaEl.innerHTML = nextMeta;}
   }
   if (claudeErrorEl) {

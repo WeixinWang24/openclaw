@@ -1844,6 +1844,22 @@ body.animations-off *::after {
   flex: 1 1 auto;
 }
 
+.claude-meta .claude-meta-chunk {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.claude-meta .claude-meta-sep {
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--text-dim);
+  opacity: .72;
+  white-space: nowrap;
+}
+
 .claude-terminal-host,
 .claude-output {
   margin: 0;
