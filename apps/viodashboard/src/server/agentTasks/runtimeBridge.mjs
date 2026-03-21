@@ -260,6 +260,30 @@ function parseStructuredFields(innerText) {
   return fields;
 }
 
+function isTemplatePlaceholderValue(value) {
+  const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) {return true;}
+  if (/^<[^>]+>$/.test(normalized)) {return true;}
+  const lowered = normalized.toLowerCase();
+  return [
+    '<one-line summary>',
+    '<what you need from the user>',
+    '<comma-separated paths or none>',
+    '<short result or not run>',
+    '<sha or none>',
+  ].includes(lowered);
+}
+
+function hasTemplateFieldValues(fields, kind) {
+  if (isTemplatePlaceholderValue(fields.summary)) {return true;}
+  if (kind === 'complete') {
+    if (isTemplatePlaceholderValue(fields.files)) {return true;}
+    if (isTemplatePlaceholderValue(fields.tests)) {return true;}
+    if (isTemplatePlaceholderValue(fields.commit)) {return true;}
+  }
+  return false;
+}
+
 function parseClaudeProtocolState(text) {
   const completeBlock = extractLastStructuredBlock(text, 'VIO_TASK_COMPLETE');
   const inputBlock = extractLastStructuredBlock(text, 'VIO_TASK_INPUT_NEEDED');
@@ -281,7 +305,7 @@ function parseClaudeProtocolState(text) {
   }
   const fields = parseStructuredFields(latestBlock.block.innerText);
   const summary = fields.summary || null;
-  if (!summary) {
+  if (!summary || hasTemplateFieldValues(fields, latestBlock.kind)) {
     return {
       kind: null,
       summary: null,
