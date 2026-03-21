@@ -1351,7 +1351,7 @@ async function submitClaudeComposer() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to send to Claude');}
-    await sendClaudeRawInput('\r');
+    // sendClaudeInput (server-side) already writes \r after 120ms — do not send a second Enter
     if (data.session) {applyClaudeStateData(data.session);}
     claude.composerDraft = '';
     if (claudeComposerInputEl) {claudeComposerInputEl.value = '';}
@@ -1368,7 +1368,7 @@ async function submitClaudeComposer() {
       fetchClaudeState().catch(() => {});
     }, 600);
     window.setTimeout(() => {
-      if (!claude.composerDraft && !claude.composerSending) {setClaudeComposerStatus('Enter 发送 · Shift+Enter 换行', 'hint');}
+      if (!claude.composerDraft && !claude.composerSending) {setClaudeComposerStatus('Enter to send · Shift+Enter for newline', 'hint');}
     }, 2200);
     claude.term?.focus();
     claudeComposerInputEl?.focus();

@@ -76,14 +76,16 @@
     $taskTitle.textContent = task.title;
     $taskPrompt.textContent = task.promptSummary || '';
 
-    // Status badge with readable label
-    const statusLabel = STATUS_LABELS[task.status] || task.status;
+    // Status badge with readable label (override for needs-input)
+    const statusLabel = task.needsInput
+      ? 'Needs Input'
+      : (STATUS_LABELS[task.status] || task.status);
     $badgeStatus.textContent = statusLabel;
-    $badgeStatus.className = 'pill status-' + task.status;
+    $badgeStatus.className = 'pill status-' + (task.needsInput ? 'needs_input' : task.status);
 
     // Phase badge
-    $badgePhase.textContent = task.phase;
-    $badgePhase.className = 'pill phase-' + task.phase;
+    $badgePhase.textContent = task.needsInput ? 'waiting' : task.phase;
+    $badgePhase.className = 'pill phase-' + (task.needsInput ? 'waiting' : task.phase);
 
     // Acceptance badge
     const acc = task.acceptanceStatus || 'pending';
@@ -104,7 +106,9 @@
     if (task.elapsedMs > 0) {
       parts.push('Elapsed ' + formatDuration(task.elapsedMs));
     }
-    if (task.latestMeaningfulUpdate) {
+    if (task.needsInput && task.needsInputSummary) {
+      parts.push('⚠ ' + truncate(task.needsInputSummary, 100));
+    } else if (task.latestMeaningfulUpdate) {
       parts.push('Latest: ' + truncate(task.latestMeaningfulUpdate, 80));
     }
     $taskTiming.textContent = parts.join('  |  ');

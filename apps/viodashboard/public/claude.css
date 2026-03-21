@@ -134,6 +134,7 @@ html, body {
 .pill.status-review_started_by_vio { border-color: var(--pink); color: var(--pink); }
 .pill.status-accepted { border-color: var(--green); color: var(--green); }
 .pill.status-needs_fix { border-color: #ff8844; color: #ff8844; }
+.pill.status-needs_input { border-color: #ffaa00; color: #ffaa00; background: rgba(255,170,0,0.08); }
 .pill.status-completed { border-color: var(--green); color: var(--green); }
 .pill.status-failed { border-color: var(--pink); color: var(--pink); }
 .pill.status-pending { border-color: var(--yellow); color: var(--yellow); }
@@ -142,6 +143,7 @@ html, body {
 .pill.phase-handoff { border-color: var(--yellow); color: var(--yellow); }
 .pill.phase-review { border-color: var(--pink); color: var(--pink); }
 .pill.phase-done { border-color: var(--green); color: var(--green); }
+.pill.phase-waiting { border-color: #ffaa00; color: #ffaa00; }
 .pill.accept-pending { border-color: var(--text-dim); }
 .pill.accept-reviewing { border-color: var(--pink); color: var(--pink); }
 .pill.accept-accepted { border-color: var(--green); color: var(--green); }

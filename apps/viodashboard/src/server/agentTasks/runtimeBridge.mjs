@@ -90,6 +90,22 @@ export function syncRealTaskFromClaudeState(claudeState) {
           message: attention.summary,
         });
       }
+      // Surface needs-input state on the task so the dashboard shows it
+      if (!task.needsInput) {
+        updateCurrentTask({
+          needsInput: true,
+          needsInputKind: attention.kind,
+          needsInputSummary: attention.summary,
+        });
+      }
+    } else if (task.needsInput) {
+      // Attention cleared — task resumed normal coding
+      updateCurrentTask({
+        needsInput: false,
+        needsInputKind: null,
+        needsInputSummary: null,
+      });
+      lastAttentionFingerprint = null;
     }
 
     const dispatchBaseline = Number.isFinite(task.runtime?.screenLengthAtDispatch)
@@ -152,7 +168,8 @@ function buildRuntimeMeta(sessionInfo) {
 }
 
 function normalizeTerminalText(text) {
-  const ansiPattern = new RegExp('\\\\u001b\\[[0-9;?]*[ -/]*[@-~]', 'g');
+  // Match real ESC byte (0x1B) followed by CSI sequences
+  const ansiPattern = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
   return String(text || '')
     .replace(ansiPattern, '')
     .replace(/\r/g, '\n')
