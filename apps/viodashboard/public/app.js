@@ -1241,6 +1241,10 @@ function ensureClaudeTerminal() {
       selectionBackground: 'rgba(143,255,224,0.18)',
     },
     scrollback: 5000,
+    windowsPty: {
+      backend: 'conpty',
+      buildNumber: 0,
+    },
   });
   claude.fitAddon = new window.FitAddon.FitAddon();
   claude.term.loadAddon(claude.fitAddon);
