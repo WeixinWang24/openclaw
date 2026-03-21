@@ -996,10 +996,12 @@ const server = http.createServer((req, res) => {
   if (requestUrl.pathname === '/api/wrapper/restart' && req.method === 'POST') {
     readJsonRequest(req)
       .then(() => {
-        const script = path.join(ROOT, 'launchd', 'reload.sh');
         sendJson(res, 202, { ok: true, restarting: true, target: 'wrapper' });
         setTimeout(() => {
-          execFile('/bin/bash', [script], { cwd: ROOT }, () => {});
+          // Restart the existing launchd job in place. Do not call reload.sh from
+          // inside the launchd-managed wrapper process or it can unload itself
+          // before the replacement job is fully running.
+          execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
         }, 120);
       })
       .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));

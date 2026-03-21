@@ -136,6 +136,7 @@ let currentFilePath = null;
 let currentFileOriginal = '';
 let terminalSessionId = 'default';
 const UI_PREFS_KEY = 'vio-wrapper-ui-prefs-v2';
+let infraActionInFlight = null;
 
 const consoleTabs = {
   active: 'claude',
@@ -964,6 +965,45 @@ async function refreshDistInfo() {
   }
 }
 
+async function waitForWrapperReady(timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch('/api/run-mode', { cache: 'no-store' });
+      if (res.ok) {return true;}
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 800));
+  }
+  throw new Error(`wrapper timeout after ${timeoutMs}ms`);
+}
+
+async function waitForGatewayReady(timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch('/api/telemetry', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.gateway_connected !== false) {return true;}
+      }
+    } catch {}
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  throw new Error(`gateway timeout after ${timeoutMs}ms`);
+}
+
+async function runInfraAction(name, fn) {
+  if (infraActionInFlight) {
+    throw new Error(`Another infrastructure action is already running: ${infraActionInFlight}`);
+  }
+  infraActionInFlight = name;
+  try {
+    return await fn();
+  } finally {
+    infraActionInFlight = null;
+  }
+}
+
 async function rebuildDist() {
   if (!distRebuildBtnEl || distRebuildBtnEl.disabled) {return;}
   const prevText = distRebuildBtnEl.textContent;
@@ -971,20 +1011,20 @@ async function rebuildDist() {
   distRebuildBtnEl.textContent = 'Rebuilding…';
   addDebugLine('Dist rebuild requested.', 'cyan');
   try {
-    const res = await fetch('/api/dist-rebuild', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+    await runInfraAction('dist-rebuild', async () => {
+      const res = await fetch('/api/dist-rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {throw new Error(data?.error || 'Failed to rebuild dist');}
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await refreshDistInfo().catch(() => {});
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {throw new Error(data?.error || 'Failed to rebuild dist');}
-    setTimeout(() => {
-      refreshDistInfo().catch(() => {});
-      distRebuildBtnEl.disabled = false;
-      distRebuildBtnEl.textContent = prevText || 'Rebuild';
-    }, 6000);
   } catch (error) {
     addDebugLine(`Dist rebuild failed: ${error?.message || error}`, 'pink');
+  } finally {
     distRebuildBtnEl.disabled = false;
     distRebuildBtnEl.textContent = prevText || 'Rebuild';
   }
@@ -1579,15 +1619,19 @@ async function restartWrapper() {
   wrapperRestartBtnEl.textContent = 'Restarting…';
   addDebugLine('Wrapper restart requested.', 'cyan');
   try {
-    const res = await fetch('/api/wrapper/restart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+    await runInfraAction('wrapper-restart', async () => {
+      const res = await fetch('/api/wrapper/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {throw new Error(data?.error || 'Failed to restart wrapper');}
+      await waitForWrapperReady(20000);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {throw new Error(data?.error || 'Failed to restart wrapper');}
   } catch (error) {
     addDebugLine(`Wrapper restart failed: ${error?.message || error}`, 'pink');
+  } finally {
     wrapperRestartBtnEl.disabled = false;
     wrapperRestartBtnEl.textContent = prevText || 'Restart';
   }
@@ -1600,21 +1644,19 @@ async function restartGateway() {
   gatewayRestartBtnEl.textContent = 'Restarting gateway…';
   addDebugLine('Gateway restart requested.', 'cyan');
   try {
-    const res = await fetch('/api/gateway/restart', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+    await runInfraAction('gateway-restart', async () => {
+      const res = await fetch('/api/gateway/restart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {throw new Error(data?.error || 'Failed to restart gateway');}
+      await waitForGatewayReady(30000);
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {throw new Error(data?.error || 'Failed to restart gateway');}
-    setTimeout(() => {
-      if (gatewayRestartBtnEl) {
-        gatewayRestartBtnEl.disabled = false;
-        gatewayRestartBtnEl.textContent = prevText || 'Restart';
-      }
-    }, 5000);
   } catch (error) {
     addDebugLine(`Gateway restart failed: ${error?.message || error}`, 'pink');
+  } finally {
     gatewayRestartBtnEl.disabled = false;
     gatewayRestartBtnEl.textContent = prevText || 'Restart';
   }
