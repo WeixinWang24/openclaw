@@ -33,8 +33,8 @@ const distDetailEl = document.getElementById('distDetail');
 const distRebuildBtnEl = document.getElementById('distRebuildBtn');
 const distDotEl = document.getElementById('distDot');
 const debugLogEl = document.getElementById('debugLog');
-const chatFlowValueEl = document.getElementById('chatFlowValue');
-const chatFlowDetailEl = document.getElementById('chatFlowDetail');
+const _chatFlowValueEl = document.getElementById('chatFlowValue');
+const _chatFlowDetailEl = document.getElementById('chatFlowDetail');
 const bodyLinkValueEl = document.getElementById('bodyLinkValue');
 const bodyLinkDetailEl = document.getElementById('bodyLinkDetail');
 const lastTokensDetailEl = document.getElementById('lastTokensDetail');
@@ -113,7 +113,7 @@ const safeEditSummaryEl = document.getElementById('safeEditSummary');
 const safeEditTxnDetailEl = document.getElementById('safeEditTxnDetail');
 const safeEditSmokeDetailEl = document.getElementById('safeEditSmokeDetail');
 const safeEditDotEl = document.getElementById('safeEditDot');
-let lastSafeEditState = null;
+let _lastSafeEditState = null;
 
 const LAST_REPLY_ROADMAP_KEY = 'vio-wrapper-last-reply-roadmap-v1';
 const STRUCTURED_ROADMAP_KEY = 'vio-wrapper-roadmap-v2';
@@ -126,7 +126,7 @@ const renderedFinalRunIds = new Set();
 let activeRunId = null;
 let activeRunState = 'idle';
 const abortedRunIds = new Set();
-let stopRequestedAt = null;
+let _stopRequestedAt = null;
 let lastStreamEventAt = 0;
 const taskRegistry = new Map();
 let latestWrapperRuntime = null;
@@ -710,13 +710,13 @@ function extractProposedNextSteps(text = '') {
     sawBody = true;
   }
 
-  return steps.map(({ baseIndent, ...item }) => ({
+  return steps.map(({ baseIndent: _baseIndent, ...item }) => ({
     ...item,
     description: String(item.description || '').trim(),
   }));
 }
 
-function persistLatestReplyRoadmap(text = '') {
+function _persistLatestReplyRoadmap(text = '') {
   try {
     warnRoadmapLeak('persistLatestReplyRoadmap(input)', text);
     const normalizedText = stripRoadmapBlockForDisplay(text);
@@ -765,7 +765,7 @@ function setMood(mode, detail = '', runtime = null) {
   if (currentMoodDotEl) {applyDotState(currentMoodDotEl, 'mood', state);}
 }
 
-function setRouting(summary, detail = '') {
+function setRouting(summary, _detail = '') {
   if (routingEl) {routingEl.innerHTML = `<span class="semantic-label">routing:</span> <span class="semantic-value">${summary || 'n/a'}</span>`;}
 }
 
@@ -1096,7 +1096,7 @@ async function refreshSafeEditState() {
     const res = await fetch('/api/safe-edit/state');
     const data = await res.json();
     if (!res.ok) {throw new Error(data.error || 'safe-edit state unavailable');}
-    lastSafeEditState = data;
+    _lastSafeEditState = data;
     renderSafeEditState(data);
   } catch (error) {
     addDebugLine(`Safe-edit state refresh failed: ${error.message || error}`, 'pink');
@@ -1156,7 +1156,7 @@ async function flushClaudeInputBuffer() {
 function scheduleClaudeInputFlush() {
   if (claude.inputFlushTimer) {return;}
   claude.inputFlushTimer = window.setTimeout(() => {
-    flushClaudeInputBuffer();
+    void flushClaudeInputBuffer();
   }, claude.inputFlushDelayMs);
 }
 
@@ -1203,7 +1203,7 @@ function ensureClaudeTerminal() {
   claude.term.onData(data => {
     if (!claude.running) {return;}
     if (shouldSendClaudeInputImmediately(data)) {
-      flushClaudeInputBuffer().finally(() => {
+      void flushClaudeInputBuffer().finally(() => {
         sendClaudeRawInput(data).catch(() => {});
       });
       return;
@@ -1290,15 +1290,15 @@ async function submitClaudeComposer() {
   addDebugLine(`Claude composer send len=${value.length}`, 'cyan');
   try {
     await flushClaudeInputBuffer();
-    const res = await fetch('/api/claude/input', {
+    const res = await fetch('/api/agent-tasks/dispatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: value, cwd: claude.cwd, raw: false }),
+      body: JSON.stringify({ text: value, cwd: claude.cwd }),
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to send to Claude');}
     await sendClaudeRawInput('\r');
-    applyClaudeStateData(data);
+    if (data.session) {applyClaudeStateData(data.session);}
     claude.composerDraft = '';
     if (claudeComposerInputEl) {claudeComposerInputEl.value = '';}
     resizeClaudeComposer();
@@ -1665,7 +1665,7 @@ function setConsoleTab(tab) {
     queueClaudeAutoStart();
     requestAnimationFrame(() => {
       maybeScrollClaudeOutput();
-      resizeClaudeSession();
+      void resizeClaudeSession();
       claude.term?.focus();
       if (!claude.term && claudeComposerInputEl) {claudeComposerInputEl.focus();}
     });
@@ -1679,11 +1679,11 @@ function bindConsoleTabEvents() {
 
 function bindClaudeEvents() {
   if (claudeStartBtnEl) {
-    claudeStartBtnEl.onclick = startClaude;
+    claudeStartBtnEl.addEventListener('click', startClaude);
     claudeStartBtnEl.dataset.bound = '1';
   }
-  if (claudeStopBtnEl) {claudeStopBtnEl.onclick = stopClaude;}
-  if (claudeRestartBtnEl) {claudeRestartBtnEl.onclick = restartClaude;}
+  if (claudeStopBtnEl) {claudeStopBtnEl.addEventListener('click', stopClaude);}
+  if (claudeRestartBtnEl) {claudeRestartBtnEl.addEventListener('click', restartClaude);}
   claudeCwdInputEl?.addEventListener('change', event => {
     claude.cwd = String(event.target.value || '').trim() || getDefaultClaudeCwd();
   });
@@ -1721,7 +1721,7 @@ function initClaudePanel() {
     claudeResizeScheduled = true;
     requestAnimationFrame(() => {
       claudeResizeScheduled = false;
-      resizeClaudeSession();
+      void resizeClaudeSession();
     });
   };
   if (window.ResizeObserver && claudeTerminalHostEl) {
@@ -1894,7 +1894,7 @@ async function loadFileTree(dir = currentDir) {
 
 function openDirectory(dirPath) {
   if (currentDir && currentDir !== dirPath) {lastVisitedDirs.push(currentDir);}
-  loadFileTree(dirPath);
+  void loadFileTree(dirPath);
 }
 
 function persistLatestAssistantReply(text = '', meta = {}) {
@@ -1937,7 +1937,7 @@ function getPersistedLatestAssistantReplyMeta() {
   }
 }
 
-function getPersistedLatestAssistantReply() {
+function _getPersistedLatestAssistantReply() {
   return getPersistedLatestAssistantReplyMeta().text;
 }
 
@@ -2015,10 +2015,10 @@ function addMessage(role, text, extraClass = '', options = {}) {
     const img = document.createElement('img');
     img.className = 'avatar-img';
     img.alt = role === 'user' ? 'Xin avatar' : 'avatar';
-    img.onerror = () => {
+    img.addEventListener('error', () => {
       img.remove();
       avatar.textContent = avatarLabel(role);
-    };
+    });
     img.src = `${avatarSrc}?v=1`;
     avatar.appendChild(img);
   } else {avatar.textContent = avatarLabel(role);}
@@ -2226,7 +2226,7 @@ stopBtnEl?.addEventListener('click', () => {
   if (!activeRunId || activeRunState !== 'streaming') {return;}
   activeRunState = 'aborting';
   syncStopButton();
-  stopRequestedAt = Date.now();
+  _stopRequestedAt = Date.now();
   abortedRunIds.add(activeRunId);
   if (abortedRunIds.size > 200) {abortedRunIds.clear();}
   updateChatRunStatus(activeRunId, 'aborted');
@@ -2262,12 +2262,12 @@ fileBackBtnEl?.addEventListener('click', () => {
   if (currentDir === '.') {return;}
   const parent = currentDir.includes('/') ? currentDir.split('/').slice(0, -1).join('/') : '.';
   if (currentDir) {lastVisitedDirs.push(currentDir);}
-  loadFileTree(parent || '.');
+  void loadFileTree(parent || '.');
 });
 fileForwardBtnEl?.addEventListener('click', () => {
   const prev = lastVisitedDirs.pop();
   if (!prev) {return;}
-  loadFileTree(prev);
+  void loadFileTree(prev);
 });
 fileRefreshBtnEl?.addEventListener('click', () => loadFileTree(currentDir));
 openDirBtnEl?.addEventListener('click', async () => {
@@ -2433,11 +2433,11 @@ fetchServerConfig().catch(() => {});
 bindFoldPersistence(cameraFoldEl, 'cameraFoldOpen', false);
 bindFoldPersistence(gestureFoldEl, 'gestureFoldOpen', false);
 setupResizers();
-refreshCameraTelemetry();
-refreshVioBodyState();
-refreshTokenSaverStats();
-refreshDistInfo();
-refreshSafeEditState();
+void refreshCameraTelemetry();
+void refreshVioBodyState();
+void refreshTokenSaverStats();
+void refreshDistInfo();
+void refreshSafeEditState();
 syncTerminalTaskButtons();
 syncContinueButton();
 setInterval(() => {
@@ -2451,7 +2451,7 @@ setInterval(refreshTokenSaverStats, 4000);
 setInterval(refreshDistInfo, 15000);
 setInterval(refreshSafeEditState, 5000);
 syncFileNavButtons();
-loadFileTree();
+void loadFileTree();
 ensureTerminalSession().catch(() => {});
 try { initClaudePanel(); } catch (error) { addDebugLine(`initClaudePanel failed: ${error?.message || error}`, 'pink'); }
 try { renderRunModeChip(); } catch (error) { addDebugLine(`renderRunModeChip failed: ${error?.message || error}`, 'pink'); }
