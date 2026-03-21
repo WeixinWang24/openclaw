@@ -349,6 +349,27 @@ function rehydrateClaudeSession(cwdRel) {
   return session;
 }
 
+function sleepMs(ms) {
+  const duration = Math.max(0, Number(ms) || 0);
+  if (!duration) {return;}
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, duration);
+}
+
+function waitForPathReady(filePath, { timeoutMs = 2000, pollMs = 25 } = {}) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    try {
+      if (filePath && fs.existsSync(filePath)) {return true;}
+    } catch {}
+    sleepMs(pollMs);
+  }
+  try {
+    return !!(filePath && fs.existsSync(filePath));
+  } catch {
+    return false;
+  }
+}
+
 function killBridgePid(pid, signal = 'SIGTERM') {
   const numericPid = Number(pid);
   if (!Number.isInteger(numericPid) || numericPid <= 0) {return false;}
@@ -408,7 +429,11 @@ export function sendClaudeInput({ text, cwdRel, raw = false, registerTask = fals
   }
   
   if (!payload.length) {return buildClaudeState(session, session.cwdRel);}
-  if (!session.stdinPath || !fs.existsSync(session.stdinPath)) {
+  const stdinReady = waitForPathReady(session.stdinPath, {
+    timeoutMs: wasNewSession ? 2500 : 500,
+    pollMs: 25,
+  });
+  if (!stdinReady) {
     throw new Error('Claude stdin pipe is not ready');
   }
   if (raw) {
