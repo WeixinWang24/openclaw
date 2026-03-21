@@ -409,9 +409,23 @@ export function sendClaudeInput({ text, cwdRel, raw = false } = {}) {
   if (!session.stdinPath || !fs.existsSync(session.stdinPath)) {
     throw new Error('Claude stdin pipe is not ready');
   }
-  const writer = fs.createWriteStream(session.stdinPath, { flags: 'w' });
-  writer.write(raw ? payload : (payload.endsWith('\n') ? payload : `${payload}\n`));
-  writer.end();
+  if (raw) {
+    const writer = fs.createWriteStream(session.stdinPath, { flags: 'w' });
+    writer.write(payload);
+    writer.end();
+  } else {
+    const textWriter = fs.createWriteStream(session.stdinPath, { flags: 'w' });
+    textWriter.write(payload.replace(/[\r\n]+$/, ''));
+    textWriter.end();
+
+    setTimeout(() => {
+      try {
+        const submitWriter = fs.createWriteStream(session.stdinPath, { flags: 'w' });
+        submitWriter.write('\r');
+        submitWriter.end();
+      } catch {}
+    }, 120);
+  }
   session.lastClaudeInputAt = new Date().toISOString();
   saveRegistry(session);
   return buildClaudeState(session, session.cwdRel);

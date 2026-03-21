@@ -151,6 +151,23 @@ export function onClaudeOutput(text) {
   const task = getCurrentTask();
   if (!task || task.status !== 'running') { return; }
   appendLog({ level: 'debug', text: text.slice(0, 500) });
+
+  // Long-lived Claude TUI sessions often finish a task without exiting.
+  // Detect a returned prompt / explicit done marker and trigger handoff.
+  if (task.completionEventSeen) { return; }
+  const ansiPattern = new RegExp('\\\\u001b\\[[0-9;?]*[ -/]*[@-~]', 'g');
+  const normalized = String(text || '').replace(ansiPattern, '');
+  const looksDone =
+    normalized.includes('⏺ Done.') ||
+    normalized.includes('The file already exists with the correct content') ||
+    normalized.includes('Nothing to do.') ||
+    normalized.includes('Task completed') ||
+    normalized.includes('completed successfully');
+  const promptReturned = normalized.includes('❯') && !normalized.includes('esc to interrupt');
+
+  if (looksDone || promptReturned) {
+    markFinishedByClaude(looksDone ? 'Claude completed via terminal output' : 'Claude returned to prompt');
+  }
 }
 
 /**
