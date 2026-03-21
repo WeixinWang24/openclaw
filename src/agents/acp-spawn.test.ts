@@ -481,7 +481,7 @@ describe("spawnAcpDirect", () => {
       acp: {
         enabled: true,
         backend: "acpx",
-        allowedAgents: ["claudecode"],
+        allowedAgents: ["claude"],
       },
     };
 
