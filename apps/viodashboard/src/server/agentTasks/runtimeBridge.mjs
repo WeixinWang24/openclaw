@@ -79,15 +79,15 @@ export function syncRealTaskFromClaudeState(claudeState) {
   if (task.status === 'running' && !task.completionEventSeen) {
     const screen = normalizeTerminalText(claudeState.output || '');
 
-    const attentionSummary = detectAttentionSummary(screen);
-    if (attentionSummary) {
-      const fingerprint = `${task.id}::${attentionSummary}`;
+    const attention = detectAttention(screen);
+    if (attention) {
+      const fingerprint = `${task.id}::${attention.kind}::${attention.summary}`;
       if (fingerprint !== lastAttentionFingerprint) {
         lastAttentionFingerprint = fingerprint;
-        appendLog({ level: 'info', text: `Claude needs user input: ${attentionSummary}` });
+        appendLog({ level: 'info', text: `Claude needs user input [${attention.kind}]: ${attention.summary}` });
         sendMacOsNotification({
-          title: 'Claude needs your input',
-          message: attentionSummary,
+          title: attention.title || 'Claude needs your input',
+          message: attention.summary,
         });
       }
     }
@@ -109,6 +109,7 @@ export function syncRealTaskFromClaudeState(claudeState) {
 
   // If task is still running but Claude has exited, trigger completion handoff
   if (task.status === 'running' && !claudeState.running && claudeState.exited) {
+    lastAttentionFingerprint = null;
     const exitCode = claudeState.exitCode;
     if (exitCode === 0 || exitCode === null) {
       appendLog({ level: 'info', text: `Claude process exited (code=${exitCode}), triggering completion handoff` });
@@ -143,16 +144,66 @@ function normalizeTerminalText(text) {
     .replace(/[ \t]+/g, ' ');
 }
 
-function detectAttentionSummary(screen) {
+function detectAttention(screen) {
   if (!screen) {return null;}
-  if (!screen.includes('Do you want to')) {return null;}
-  if (!screen.includes('1. Yes') || !screen.includes('3. No')) {return null;}
+
+  const hasChoiceUi =
+    (screen.includes('1. Yes') && screen.includes('3. No')) ||
+    screen.includes('Esc to cancel') ||
+    screen.includes('Tab to amend') ||
+    screen.includes('shift+tab');
 
   const createMatch = screen.match(/Do you want to create ([^\n?]+)\?/i);
-  if (createMatch?.[1]) {
-    return `Claude is waiting for your decision: create ${createMatch[1].trim()}?`;
+  if (createMatch?.[1] && hasChoiceUi) {
+    return {
+      kind: 'confirm-create',
+      title: 'Claude needs your input',
+      summary: `Claude is waiting for your decision: create ${createMatch[1].trim()}?`,
+    };
   }
-  return 'Claude is waiting for your decision in the terminal';
+
+  const editScopeMatch = screen.match(/Yes, allow all edits in ([^\n]+?) during this session/i);
+  if (editScopeMatch?.[1]) {
+    return {
+      kind: 'confirm-edit-scope',
+      title: 'Claude needs your input',
+      summary: `Claude is asking whether to allow edits in ${editScopeMatch[1].trim()} during this session.`,
+    };
+  }
+
+  if (screen.includes('Do you want to') && hasChoiceUi) {
+    return {
+      kind: 'confirm-choice',
+      title: 'Claude needs your input',
+      summary: 'Claude is waiting for your decision in the terminal.',
+    };
+  }
+
+  if (screen.includes('accept edits on') && screen.includes('shift+tab to cycle')) {
+    return {
+      kind: 'accept-edits-mode',
+      title: 'Claude needs your input',
+      summary: 'Claude is waiting for you to confirm or adjust edit acceptance mode.',
+    };
+  }
+
+  if (screen.includes('Press Enter to') || screen.includes('press enter to')) {
+    return {
+      kind: 'press-enter',
+      title: 'Claude needs your input',
+      summary: 'Claude is waiting for you to press Enter to continue.',
+    };
+  }
+
+  if (screen.includes('Select an option') || screen.includes('select an option')) {
+    return {
+      kind: 'select-option',
+      title: 'Claude needs your input',
+      summary: 'Claude is waiting for you to select an option.',
+    };
+  }
+
+  return null;
 }
 
 function sendMacOsNotification({ title, message }) {
