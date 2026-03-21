@@ -1819,13 +1819,21 @@ function initClaudePanel() {
   bindClaudeEvents();
   renderClaudePanel();
   let claudeResizeScheduled = false;
+  let claudeResizeSettledTimer = null;
   const scheduleClaudeResize = () => {
-    if (claudeResizeScheduled || consoleTabs.active !== 'claude') {return;}
-    claudeResizeScheduled = true;
-    requestAnimationFrame(() => {
-      claudeResizeScheduled = false;
+    if (consoleTabs.active !== 'claude') {return;}
+    if (!claudeResizeScheduled) {
+      claudeResizeScheduled = true;
+      requestAnimationFrame(() => {
+        claudeResizeScheduled = false;
+        void resizeClaudeSession();
+      });
+    }
+    if (claudeResizeSettledTimer) {clearTimeout(claudeResizeSettledTimer);}
+    claudeResizeSettledTimer = window.setTimeout(() => {
+      claudeResizeSettledTimer = null;
       void resizeClaudeSession();
-    });
+    }, 96);
   };
   if (window.ResizeObserver && claudeTerminalHostEl) {
     const ro = new ResizeObserver(() => {
@@ -1833,6 +1841,7 @@ function initClaudePanel() {
       resizeClaudeComposer();
     });
     ro.observe(claudeTerminalHostEl);
+    if (consolePaneClaudeEl) {ro.observe(consolePaneClaudeEl);}
     if (claudeComposerInputEl) {ro.observe(claudeComposerInputEl);}
   }
   window.addEventListener('resize', () => {
