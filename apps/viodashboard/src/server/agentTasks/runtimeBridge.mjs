@@ -2,8 +2,11 @@
 // Registers real Claude background runs as agentTasks, syncs runtime identity,
 // and drives the completion handoff state machine on process exit.
 
+import { execFile } from 'node:child_process';
 import { setCurrentTask, getCurrentTask, updateCurrentTask, advancePhase, appendLog, markFinishedByClaude } from './store.mjs';
 import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff, emitError } from './events.mjs';
+
+let lastAttentionFingerprint = null;
 
 /**
  * Register a real Claude background run as the current agent task.
@@ -18,6 +21,7 @@ import { emitMilestone, emitTouchedFiles, emitValidation, emitCompletionHandoff,
  * @param {string} [sessionInfo.promptText] - optional prompt/instruction text
  */
 export function registerRealTask(sessionInfo) {
+  lastAttentionFingerprint = null;
   // If there's already a running real task for the same session, just update runtime
   const existing = getCurrentTask();
   if (existing && existing.status === 'running' && existing.runtime?.sessionId === sessionInfo.sessionId) {
@@ -74,6 +78,20 @@ export function syncRealTaskFromClaudeState(claudeState) {
   // Use the full terminal snapshot, not only the latest delta, to detect completion.
   if (task.status === 'running' && !task.completionEventSeen) {
     const screen = normalizeTerminalText(claudeState.output || '');
+
+    const attentionSummary = detectAttentionSummary(screen);
+    if (attentionSummary) {
+      const fingerprint = `${task.id}::${attentionSummary}`;
+      if (fingerprint !== lastAttentionFingerprint) {
+        lastAttentionFingerprint = fingerprint;
+        appendLog({ level: 'info', text: `Claude needs user input: ${attentionSummary}` });
+        sendMacOsNotification({
+          title: 'Claude needs your input',
+          message: attentionSummary,
+        });
+      }
+    }
+
     const looksDone =
       screen.includes('⏺ Done.') ||
       screen.includes('The file already exists with the correct content') ||
@@ -82,6 +100,7 @@ export function syncRealTaskFromClaudeState(claudeState) {
       screen.includes('completed successfully');
     const promptReturned = screen.includes('❯') && !screen.includes('esc to interrupt');
     if (looksDone || promptReturned) {
+      lastAttentionFingerprint = null;
       appendLog({ level: 'info', text: looksDone ? 'Claude completion detected from terminal snapshot' : 'Claude prompt returned; marking handoff' });
       markFinishedByClaude(looksDone ? 'Claude completed via terminal snapshot' : 'Claude returned to prompt');
       return;
@@ -122,6 +141,25 @@ function normalizeTerminalText(text) {
     .replace(/\r/g, '\n')
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+/g, ' ');
+}
+
+function detectAttentionSummary(screen) {
+  if (!screen) {return null;}
+  if (!screen.includes('Do you want to')) {return null;}
+  if (!screen.includes('1. Yes') || !screen.includes('3. No')) {return null;}
+
+  const createMatch = screen.match(/Do you want to create ([^\n?]+)\?/i);
+  if (createMatch?.[1]) {
+    return `Claude is waiting for your decision: create ${createMatch[1].trim()}?`;
+  }
+  return 'Claude is waiting for your decision in the terminal';
+}
+
+function sendMacOsNotification({ title, message }) {
+  if (!title || !message) {return;}
+  const safeTitle = String(title).replace(/"/g, '\\"');
+  const safeMessage = String(message).replace(/"/g, '\\"');
+  execFile('osascript', ['-e', `display notification "${safeMessage}" with title "${safeTitle}"`], () => {});
 }
 
 /**
