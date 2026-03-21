@@ -394,7 +394,35 @@
   $acceptBtn.addEventListener('click', acceptWork);
   $needsFixBtn.addEventListener('click', markNeedsFix);
 
-  // Initial poll + interval
+  // --- WebSocket: real-time task state push ---
+  let ws = null;
+  let wsRetryTimer = null;
+
+  function connectWs() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws');
+    ws.addEventListener('message', function (evt) {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'agent-task') {
+          // Real-time task state update — trigger immediate poll for full data
+          void poll();
+        }
+      } catch {}
+    });
+    ws.addEventListener('close', function () {
+      ws = null;
+      clearTimeout(wsRetryTimer);
+      wsRetryTimer = setTimeout(connectWs, 5000);
+    });
+    ws.addEventListener('error', function () {
+      try { ws.close(); } catch {}
+    });
+  }
+
+  connectWs();
+
+  // Initial poll + interval (WS pushes supplement, don't replace, the poll)
   void poll();
   setInterval(poll, POLL_INTERVAL);
 })();

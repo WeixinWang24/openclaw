@@ -27,7 +27,7 @@ import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
-import { syncRealTaskFromClaudeState } from './server/agentTasks/index.mjs';
+import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -1278,17 +1278,49 @@ const server = http.createServer((req, res) => {
 });
 
 // Push Claude terminal state to all connected clients when output changes.
-// Also sync real task lifecycle into agentTasks on each tick.
+// Also sync real task lifecycle into agentTasks on each tick,
+// stream output deltas into task logs, and broadcast task state changes.
 let lastBroadcastClaudeOutput = null;
+let lastBroadcastTaskSnapshot = null;
 setInterval(() => {
   try {
     const state = getClaudeState();
+
+    // Pipe new Claude output into the agentTask log layer
+    if (state.output && state.output !== lastBroadcastClaudeOutput) {
+      const prevLen = (lastBroadcastClaudeOutput || '').length;
+      const delta = state.output.slice(prevLen);
+      if (delta.length > 0) {
+        // Feed meaningful output deltas (skip tiny whitespace-only changes)
+        const trimmed = delta.trim();
+        if (trimmed.length > 0) {
+          onClaudeOutput(trimmed);
+        }
+      }
+    }
+
     // Sync agentTasks with live Claude session state (detects exit -> handoff)
     syncRealTaskFromClaudeState(state);
-    if (clients.size === 0) {return;}
+
+    if (clients.size === 0) {
+      // Still track output position even with no clients
+      if (state.output !== lastBroadcastClaudeOutput) {
+        lastBroadcastClaudeOutput = state.output;
+      }
+      return;
+    }
+
     if (state.output !== lastBroadcastClaudeOutput) {
       lastBroadcastClaudeOutput = state.output;
       broadcast({ type: 'claude-state', ...state });
+    }
+
+    // Broadcast task state changes over WebSocket for real-time UI updates
+    const task = getCurrentTask();
+    const taskKey = task ? `${task.id}:${task.status}:${task.phase}:${task.updatedAt}` : null;
+    if (taskKey !== lastBroadcastTaskSnapshot) {
+      lastBroadcastTaskSnapshot = taskKey;
+      broadcast({ type: 'agent-task', task: task || null });
     }
   } catch {}
 }, 200);
@@ -1299,6 +1331,7 @@ wss.on('connection', ws => {
   ws.send(JSON.stringify({ type: 'status', connected: bridge.connected, sessionKey: bridge.sessionKey }));
   ws.send(JSON.stringify(buildTokensPacket()));
   try { ws.send(JSON.stringify({ type: 'claude-state', ...getClaudeState() })); } catch {}
+  try { ws.send(JSON.stringify({ type: 'agent-task', task: getCurrentTask() || null })); } catch {}
   ws.send(JSON.stringify(buildMoodPacket(lastRouting.mode, {
     state: null,
     detail: lastRouting.detail,
