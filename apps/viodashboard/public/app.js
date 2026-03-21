@@ -1279,6 +1279,16 @@ function ensureClaudeTerminal() {
   claude.terminalReady = true;
 }
 
+function sanitizeClaudeTerminalChunk(text) {
+  const esc = String.fromCharCode(27);
+  const bel = String.fromCharCode(7);
+  const oscPattern = new RegExp(`${esc}\\][^${bel}${esc}]*(?:${bel}|${esc}\\\\)`, 'g');
+  return String(text || '')
+    .replace(oscPattern, '')
+    .replace(/\uFFFD+/g, '')
+    .replace(/\r\r\n/g, '\r\n');
+}
+
 function syncClaudeTerminalOutput() {
   ensureClaudeTerminal();
   const text = claude.output || '';
@@ -1286,8 +1296,12 @@ function syncClaudeTerminalOutput() {
     claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
     return;
   }
-  const nextChunk = text.slice(claude.renderedLength);
-  if (!nextChunk) {return;}
+  const nextChunk = sanitizeClaudeTerminalChunk(text.slice(claude.renderedLength));
+  if (!nextChunk) {
+    claude.renderedLength = text.length;
+    claude.lastOutputLength = text.length;
+    return;
+  }
   claude.term.write(nextChunk, () => {
     if (claude.autoScroll) {claude.term.scrollToBottom();}
   });

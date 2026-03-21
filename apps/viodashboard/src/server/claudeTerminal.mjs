@@ -217,6 +217,14 @@ function persistAndCacheSession(session) {
   return session;
 }
 
+function sanitizeClaudeDisplayOutput(text) {
+  return String(text || '')
+    .replace(/^\[dashboard\].*\n?/gm, '')
+    .replace(/^\[cwd\].*\n?/gm, '')
+    .replace(/^\[bridge\].*\n?/gm, '')
+    .replace(/^\s*\n{3,}/gm, '\n\n');
+}
+
 function buildIdleState(cwdRel = DEFAULT_CLAUDE_CWD) {
   return {
     ok: true,
@@ -242,7 +250,7 @@ function buildIdleState(cwdRel = DEFAULT_CLAUDE_CWD) {
 function buildClaudeState(session, cwdRel = DEFAULT_CLAUDE_CWD) {
   if (!session) {return buildIdleState(cwdRel);}
   const { text: outputText, truncated: outputTruncated } = readLogTail(session.logPath);
-  session.output = outputText;
+  session.output = sanitizeClaudeDisplayOutput(outputText);
   const bridgeAlive = isPidAlive(session.bridgePid);
   if (!bridgeAlive && !session.exited) {
     enrichSessionFromStatus(session);
@@ -370,6 +378,27 @@ function waitForPathReady(filePath, { timeoutMs = 2000, pollMs = 25 } = {}) {
   }
 }
 
+function isClaudeUiReady(outputText) {
+  const text = String(outputText || '');
+  return text.includes('Claude Code') || text.includes('❯') || text.includes('? for shortcuts');
+}
+
+function waitForClaudeUiReady(session, { timeoutMs = 2500, pollMs = 50 } = {}) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const { text } = readLogTail(session.logPath);
+    if (isClaudeUiReady(text)) {return true;}
+    sleepMs(pollMs);
+  }
+  return isClaudeUiReady(readLogTail(session.logPath).text);
+}
+
+function writeToClaudeStdin(stdinPath, text) {
+  const writer = fs.createWriteStream(stdinPath, { flags: 'w' });
+  writer.write(String(text || ''));
+  writer.end();
+}
+
 function killBridgePid(pid, signal = 'SIGTERM') {
   const numericPid = Number(pid);
   if (!Number.isInteger(numericPid) || numericPid <= 0) {return false;}
@@ -436,20 +465,23 @@ export function sendClaudeInput({ text, cwdRel, raw = false, registerTask = fals
   if (!stdinReady) {
     throw new Error('Claude stdin pipe is not ready');
   }
+  if (wasNewSession && !raw) {
+    const uiReady = waitForClaudeUiReady(session, { timeoutMs: 1500, pollMs: 50 });
+    if (!uiReady) {
+      try {
+        writeToClaudeStdin(session.stdinPath, '\r');
+      } catch {}
+      waitForClaudeUiReady(session, { timeoutMs: 1200, pollMs: 50 });
+    }
+  }
   if (raw) {
-    const writer = fs.createWriteStream(session.stdinPath, { flags: 'w' });
-    writer.write(payload);
-    writer.end();
+    writeToClaudeStdin(session.stdinPath, payload);
   } else {
-    const textWriter = fs.createWriteStream(session.stdinPath, { flags: 'w' });
-    textWriter.write(payload.replace(/[\r\n]+$/, ''));
-    textWriter.end();
+    writeToClaudeStdin(session.stdinPath, payload.replace(/[\r\n]+$/, ''));
 
     setTimeout(() => {
       try {
-        const submitWriter = fs.createWriteStream(session.stdinPath, { flags: 'w' });
-        submitWriter.write('\r');
-        submitWriter.end();
+        writeToClaudeStdin(session.stdinPath, '\r');
       } catch {}
     }, 120);
   }
