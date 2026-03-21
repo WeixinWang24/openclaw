@@ -294,16 +294,30 @@ function renderContextTelemetry(msg = {}) {
   if (!contextDetailEl) {return;}
   const snapshot = msg.contextSnapshot || null;
   const diagnostic = msg.diagnosticContext || null;
-  contextDetailEl.textContent = [
-    formatContextSource('sessions.list', snapshot, { staleLabel: true }),
-    formatContextSource('diag', diagnostic),
-  ].join(' · ');
+  // Prefer diagnostic (real-time context.used/limit) as primary display
+  const parts = [];
+  if (diagnostic) {
+    parts.push(formatContextSource('ctx', diagnostic));
+  }
+  // sessions.list totalTokens is cumulative, not live context — label accordingly
+  if (snapshot) {
+    const totalTokens = snapshot.totalTokens ?? snapshot.used;
+    const totalLabel = totalTokens != null && Number.isFinite(Number(totalTokens))
+      ? `cumulative: ${formatCompactTokens(Number(totalTokens))}`
+      : 'cumulative: n/a';
+    const limitLabel = snapshot.limit != null && Number.isFinite(Number(snapshot.limit)) && Number(snapshot.limit) > 0
+      ? ` / ${formatCompactTokens(Number(snapshot.limit))} window`
+      : '';
+    const stale = snapshot.fresh === false ? ' stale' : '';
+    parts.push(`${totalLabel}${limitLabel}${stale}`);
+  }
+  if (!parts.length) {parts.push('ctx: n/a');}
+  contextDetailEl.textContent = parts.join(' · ');
 
-  const usedCandidates = [snapshot?.used, snapshot?.totalTokens, snapshot?.contextTokens, diagnostic?.used, diagnostic?.totalTokens, diagnostic?.contextTokens]
-    .map(value => Number(value))
-    .filter(value => Number.isFinite(value) && value >= 0);
-  const worstUsed = usedCandidates.length ? Math.max(...usedCandidates) : null;
-  const dotState = worstUsed == null ? 'safe' : worstUsed > 200_000 ? 'alert' : worstUsed >= 100_000 ? 'mid' : 'safe';
+  // Dot state based on diagnostic used (authoritative) or fallback to snapshot totalTokens
+  const usedForDot = diagnostic?.used ?? snapshot?.totalTokens ?? snapshot?.used ?? null;
+  const dotUsed = usedForDot != null ? Number(usedForDot) : null;
+  const dotState = dotUsed == null || !Number.isFinite(dotUsed) ? 'safe' : dotUsed > 200_000 ? 'alert' : dotUsed >= 100_000 ? 'mid' : 'safe';
   applyDotState(contextDotEl, 'window', dotState);
 }
 

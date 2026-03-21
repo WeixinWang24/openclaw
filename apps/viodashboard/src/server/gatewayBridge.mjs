@@ -416,10 +416,12 @@ export class GatewayBridge {
     const sessions = Array.isArray(res?.sessions) ? res.sessions : [];
     const row = sessions.find(session => session?.key === this.sessionKey) ?? null;
     if (!row) {return null;}
+    const contextTokens = typeof row?.contextTokens === 'number' ? row.contextTokens
+      : (typeof res?.defaults?.contextTokens === 'number' ? res.defaults.contextTokens : null);
     return {
       key: row.key,
       totalTokens: typeof row?.totalTokens === 'number' ? row.totalTokens : null,
-      contextTokens: typeof row?.contextTokens === 'number' ? row.contextTokens : null,
+      contextTokens,
       totalTokensFresh: row?.totalTokensFresh !== false,
       model: typeof row?.model === 'string' ? row.model : null,
       provider: typeof row?.modelProvider === 'string' ? row.modelProvider : null,

@@ -479,7 +479,7 @@ const bridge = new GatewayBridge({
               ? Math.min(100, Math.round((estimatedPromptLoad / limit) * 1000) / 10)
               : null;
             tokenStats.contextSnapshot = snapshot ? {
-              used: typeof snapshot.totalTokens === 'number' ? snapshot.totalTokens : null,
+              totalTokens: typeof snapshot.totalTokens === 'number' ? snapshot.totalTokens : null,
               limit: typeof snapshot.contextTokens === 'number' ? snapshot.contextTokens : null,
               fresh:  snapshot.totalTokensFresh,
               model: snapshot.model,
