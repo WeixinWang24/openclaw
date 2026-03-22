@@ -16,7 +16,10 @@ function cleanText(value = '') {
 }
 
 function stripReplyTag(text = '') {
-  return String(text || '').replace(/^\[\[[^\]]+\]\]\s*/i, '').trim();
+  let source = String(text || '');
+  source = source.replace(/^\s*\[\[[^\]]+\]\]\s*/i, '');
+  source = source.replace(/\n\s*\[\[[^\]]+\]\]\s*/gi, '\n');
+  return source.trim();
 }
 
 export function hasRoadmapBlock(text = '') {
@@ -35,13 +38,19 @@ function stripRoadmapProtocolLeak(text = '') {
 
 function stripInboundMetadataEnvelope(text = '') {
   let source = String(text || '');
-  source = source.replace(/^Sender \(untrusted metadata\):\s*```json\s*[\r\n]+[\s\S]*?[\r\n]+```\s*/i, '');
-  source = source.replace(/^Sender \(untrusted metadata\):\s*\{[\s\S]*?\}\s*(?=\n\s*\[[A-Z][a-z]{2}\s\d{4}-\d{2}-\d{2}|\n\s*\[[A-Z][a-z]{2}\s|\n\s*[^\s{])/i, '');
+  source = source.replace(/(?:^|\n)\s*Sender \(untrusted metadata\):\s*```json\s*[\r\n]+[\s\S]*?[\r\n]+```\s*/gi, '\n');
+  source = source.replace(/(?:^|\n)\s*Sender \(untrusted metadata\):\s*\{[\s\S]*?\}\s*/gi, '\n');
+  return source.trim();
+}
+
+function stripTransportTimestampPrefix(text = '') {
+  let source = String(text || '');
+  source = source.replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+GMT[+-]\d+\]\s*/i, '');
   return source.trim();
 }
 
 function stripNoise(text = '') {
-  return cleanText(stripInboundMetadataEnvelope(stripRoadmapProtocolLeak(stripRoadmapBlock(stripReplyTag(text)))));
+  return cleanText(stripTransportTimestampPrefix(stripInboundMetadataEnvelope(stripRoadmapProtocolLeak(stripRoadmapBlock(stripReplyTag(text))))));
 }
 
 function truncate(text = '', limit = 1000) {
