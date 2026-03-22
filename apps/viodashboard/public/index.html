@@ -34,13 +34,6 @@
     <aside class="sidebar panel-shell">
       <section class="card section explorer-shell">
         <div class="section-header">
-          <h2 class="section-title">Sessions</h2>
-          <button id="sessionsRefreshBtn" type="button" class="chip state-idle">refresh</button>
-        </div>
-        <section class="sessions-panel">
-          <div id="sessionsList" class="sessions-list"></div>
-        </section>
-        <div class="section-header">
           <h2 class="section-title">Explorer</h2>
           <button id="openDirBtn" type="button" class="chip state-idle">files</button>
         </div>
@@ -63,6 +56,13 @@
         <div class="section-header">
           <h2 class="section-title">INTERACTION</h2>
           <div id="streamState" class="chip state-idle">idle</div>
+        </div>
+        <div class="interaction-session-strip">
+          <div class="interaction-session-strip-head">
+            <div class="interaction-session-label">Sessions</div>
+            <button id="sessionsRefreshBtn" type="button" class="chip state-idle">refresh</button>
+          </div>
+          <div id="sessionsList" class="sessions-list sessions-list-inline"></div>
         </div>
         <div class="workspace-split" id="workspaceSplit">
           <section class="editor-stack" id="editorStack">

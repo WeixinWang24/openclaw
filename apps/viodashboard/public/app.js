@@ -2306,6 +2306,17 @@ function finalizeStreamingMessage(runId = null, finalText = '') {
   }
 }
 
+function sessionDisplayTitle(session = {}) {
+  const raw = String(session?.label || session?.key || 'session').trim();
+  if (raw === gatewayMainSessionKey) {return 'main';}
+  if (raw.startsWith('agent:claude:acp:')) {return `acp · ${raw.slice(-6)}`;}
+  if (raw.startsWith('agent:')) {
+    const parts = raw.split(':').filter(Boolean);
+    return parts.slice(-2).join(' · ') || raw;
+  }
+  return raw;
+}
+
 function renderSessionsList() {
   if (!sessionsListEl) {return;}
   sessionsListEl.innerHTML = '';
@@ -2313,14 +2324,16 @@ function renderSessionsList() {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = `session-item ${session.key === selectedSessionKey ? 'is-selected' : ''}`.trim();
-    const title = session.label || session.key || 'session';
-    const meta = [session.kind || 'session', session.model || null].filter(Boolean).join(' · ');
-    const preview = (session.preview || '').trim() || 'No recent preview';
+    const title = sessionDisplayTitle(session);
+    const tags = [];
+    if (session.key === gatewayMainSessionKey) {tags.push('main');}
+    else if (String(session.key || '').includes(':acp:')) {tags.push('acp');}
+    if (session.model) {tags.push(session.model);}
     item.innerHTML = `
       <div class="session-item-title">${escapeHtml(title)}</div>
-      <div class="session-item-meta">${escapeHtml(meta || 'session')}</div>
-      <div class="session-item-preview">${escapeHtml(preview.slice(0, 140))}</div>
+      <div class="session-item-meta">${escapeHtml(tags.join(' · ') || (session.kind || 'session'))}</div>
     `;
+    item.title = session.key || title;
     item.addEventListener('click', () => {
       selectDashboardSession(session.key).catch(error => {
         addDebugLine(`Session switch failed: ${error?.message || error}`, 'pink');
