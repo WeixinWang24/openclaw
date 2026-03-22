@@ -260,7 +260,8 @@ function shouldSuppressDebugLine(text = '') {
     source.startsWith('loadSessionHistory resolved ') ||
     source.startsWith('scheduleSessionRefresh ') ||
     source.startsWith('sessionRefreshTimerFired ') ||
-    source.startsWith('refreshSessionHistory seq=')
+    source.startsWith('refreshSessionHistory seq=') ||
+    source.startsWith('renderSessionMessages active=')
   );
   if (!isHighFrequencySessionNoise) {return false;}
   if (source.includes(`active=${selectedSessionKey || 'none'} target=${selectedSessionKey || 'none'}`)) {return false;}
