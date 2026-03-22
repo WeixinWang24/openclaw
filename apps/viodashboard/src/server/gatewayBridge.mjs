@@ -201,7 +201,7 @@ async function gatewayCall(method, params, options = {}) {
 }
 
 export class GatewayBridge {
-  constructor({ onChatEvent, onStatus, onQueuedMood, onDiagnosticEvent }) {
+  constructor({ onChatEvent, onStatus, onQueuedMood, onDiagnosticEvent, onSessionUpdated } = {}) {
     this.onChatEvent = onChatEvent;
     this.onStatus = onStatus;
     this.onQueuedMood = onQueuedMood;
@@ -216,6 +216,8 @@ export class GatewayBridge {
     this.chatRunId = null;
     this.gatewayRunId = null;
     this.sessionKey = 'agent:assistant:main';
+    this.onSessionUpdated = typeof onSessionUpdated === 'function' ? onSessionUpdated : null;
+    this.lastSessionUpdated = null;
     this.tokenSaverEnabled = true;
     this.tokenSaverRules = {
       phase1Summary: false,
@@ -341,12 +343,14 @@ export class GatewayBridge {
         if (!payload) {return;}
         const state = payload.state;
         const runId = payload.runId;
-        if (runId && this.chatRunId && runId !== this.chatRunId) {
+        const eventSessionKey = payload?.sessionKey || msg?.sessionKey || payload?.session?.key || null;
+        const isMainSessionEvent = !eventSessionKey || eventSessionKey === this.sessionKey;
+        if (isMainSessionEvent && runId && this.chatRunId && runId !== this.chatRunId) {
           if (!this.gatewayRunId) {
             this.gatewayRunId = runId;
             console.log('[wrapper] adopting gateway runId', runId, 'for idempotencyKey', this.chatRunId);
           } else if (runId !== this.gatewayRunId) {
-            console.log('[wrapper] ignoring unrelated chat event runId', runId, 'expected', this.gatewayRunId, 'idempotencyKey', this.chatRunId);
+            console.log('[wrapper] ignoring unrelated chat event runId', runId, 'expected', this.gatewayRunId, 'idempotencyKey', this.chatRunId, 'sessionKey', eventSessionKey);
             return;
           }
         }
@@ -359,9 +363,9 @@ export class GatewayBridge {
             console.log('[wrapper] extracted usage:', usage ? JSON.stringify(usage) : 'null');
           } catch {}
         }
-        if (state === 'final' && text && this.tokenSaverEnabled) {this.tokenSaver.ingest('assistant', text);}
-        this.onChatEvent?.({ state, runId, text, rawText, payload, usage });
-        if (runId && (state === 'final' || state === 'error' || state === 'aborted')) {
+        if (state === 'final' && text && this.tokenSaverEnabled && isMainSessionEvent) {this.tokenSaver.ingest('assistant', text);}
+        this.onChatEvent?.({ state, runId, sessionKey: eventSessionKey, text, rawText, payload, usage });
+        if (runId && isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
           writeRunIndexEntry(runId, {
             mode: 'dry-observe-only',
             status: state,
@@ -372,7 +376,7 @@ export class GatewayBridge {
             console.log('[dashboard] dry-diff next check:', `node <repo>/apps/viodashboard/scripts/check-run-index.mjs ${runId}`);
           }
         }
-        if (state === 'final' || state === 'error' || state === 'aborted') {
+        if (isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
           this.chatRunId = null;
           this.gatewayRunId = null;
         }
@@ -388,10 +392,11 @@ export class GatewayBridge {
     }
   }
 
-  async compactSession() {
+  async compactSession(sessionKey = this.sessionKey) {
     if (!this.connected) {throw new Error('gateway not connected');}
+    if (!sessionKey) {throw new Error('sessionKey is required');}
     return gatewayCall('sessions.compact', {
-      key: this.sessionKey,
+      key: sessionKey,
     });
   }
 
@@ -479,6 +484,22 @@ export class GatewayBridge {
     }));
   }
 
+  emitSessionUpdated(sessionKey, reason, extra = {}) {
+    if (!sessionKey) {return;}
+    const payload = {
+      sessionKey,
+      reason,
+      ts: Date.now(),
+      ...extra,
+    };
+    this.lastSessionUpdated = payload;
+    try {
+      this.onSessionUpdated?.(payload);
+    } catch (error) {
+      console.log('[wrapper] onSessionUpdated callback failed', error?.message || String(error));
+    }
+  }
+
   async fetchSessionHistory(sessionKey, { limit = 40 } = {}) {
     if (!this.connected) {throw new Error('gateway not connected');}
     if (!sessionKey) {throw new Error('sessionKey is required');}
@@ -508,6 +529,7 @@ export class GatewayBridge {
       deliver: false,
       idempotencyKey,
     });
+    this.emitSessionUpdated(sessionKey, 'send-accepted', { runId: idempotencyKey });
     return { runId: idempotencyKey, sessionKey };
   }
 
