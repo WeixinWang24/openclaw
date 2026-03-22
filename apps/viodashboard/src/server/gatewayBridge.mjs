@@ -544,7 +544,13 @@ export class GatewayBridge {
         createdAt: message?.createdAt || message?.ts || null,
         raw: message,
       }))
-      .filter(message => (message.role === 'user' || message.role === 'assistant') && String(message.text || '').trim())
+      .filter(message => {
+        const role = String(message.role || '');
+        const text = String(message.text || '').trim();
+        if (!text) {return false;}
+        if (role === 'toolResult' || role === 'tool' || role === 'system') {return false;}
+        return role === 'user' || role === 'assistant';
+      })
       .filter(message => !looksLikeInternalWorkflowNoise(message.role, message.text));
   }
 
