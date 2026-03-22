@@ -136,6 +136,9 @@ let lastVisitedDirs = [];
 let dashboardSessions = [];
 let selectedSessionKey = null;
 let gatewayMainSessionKey = null;
+let sessionSelectionSeq = 0;
+const sessionMeta = new Map();
+const sessionRefreshTimers = new Map();
 const sessionMessages = new Map();
 let currentDir = '.';
 let currentFilePath = null;
@@ -484,6 +487,10 @@ function applyChatEventToActiveRun(event) {
     }
     addDebugLine(`Final reply received (${finalText.length || 0} chars).`, 'cyan');
   } else if (event.state === 'error') {
+    if (!isMainSessionView()) {
+      addDebugLine(`Ignored main-session chat error render while viewing ${selectedSessionKey || 'none'}`, 'pink');
+      return;
+    }
     try {
       addMessage('assistant', `Chat error: ${event.payload?.errorMessage || 'unknown error'}`);
     } catch (error) {
@@ -498,6 +505,10 @@ function applyChatEventToActiveRun(event) {
     syncContinueButton();
     addDebugLine(`Chat error: ${event.payload?.errorMessage || 'unknown error'}`, 'pink');
   } else if (event.state === 'aborted') {
+    if (!isMainSessionView()) {
+      addDebugLine(`Ignored main-session chat aborted render while viewing ${selectedSessionKey || 'none'}`, 'pink');
+      return;
+    }
     try {
       addMessage('assistant', '(aborted)');
     } catch (error) {
@@ -1765,7 +1776,7 @@ async function compactContext() {
     const res = await fetch('/api/context/compact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ sessionKey: selectedSessionKey }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {throw new Error(data?.error || 'Failed to compact context');}
@@ -2186,7 +2197,7 @@ async function submitChatText(text = '', options = {}) {
     return;
   }
 
-  addMessage('user', value);
+  addDebugLine(`submitChatText: non-main send queued for ${selectedSessionKey}; waiting for targeted refresh`, 'cyan');
   const res = await fetch(`/api/sessions/${encodeURIComponent(selectedSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2196,14 +2207,19 @@ async function submitChatText(text = '', options = {}) {
   if (!res.ok) {throw new Error(data?.error || 'session send failed');}
   inputEl.value = '';
   resizeComposer();
+  const meta = getSessionMeta(selectedSessionKey);
+  meta.pending = true;
+  meta.dirty = true;
+  meta.lastUpdatedAt = Date.now();
+  meta.lastReason = 'send-accepted';
   addDebugLine(`Session send accepted: ${selectedSessionKey}`, 'cyan');
   setMood('thinking', 'Session message sent; refreshing history.');
   setRouting('session refresh', selectedSessionKey);
-  window.setTimeout(() => {
-    selectDashboardSession(selectedSessionKey, { force: true }).catch(error => {
-      addDebugLine(`Session refresh failed: ${error?.message || error}`, 'pink');
-    });
-  }, 700);
+  scheduleSessionRefresh(selectedSessionKey, 'send-accepted', 150);
+}
+
+function isMainSessionView() {
+  return !!selectedSessionKey && !!gatewayMainSessionKey && selectedSessionKey === gatewayMainSessionKey;
 }
 
 function clearChat() {
@@ -2214,6 +2230,9 @@ function clearChat() {
 
 function renderSessionMessages(sessionKey, messages = []) {
   if (!chatEl) {return;}
+  const lastMessage = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
+  const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
+  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${Array.isArray(messages) ? messages.length : 0} last=${lastPreview || '<empty>'}`, 'cyan');
   clearChat();
   for (const message of messages) {
     addMessage(message.role === 'user' ? 'user' : 'assistant', message.text || '', '', {
@@ -2350,14 +2369,39 @@ async function fetchDashboardSessions() {
   return data;
 }
 
-async function loadSessionHistory(sessionKey, { force = false } = {}) {
+function getSessionMeta(sessionKey) {
+  if (!sessionKey) {return { dirty: false, pending: false, lastUpdatedAt: 0, lastReason: null };}
+  if (!sessionMeta.has(sessionKey)) {
+    sessionMeta.set(sessionKey, {
+      dirty: false,
+      pending: false,
+      lastUpdatedAt: 0,
+      lastReason: null,
+    });
+  }
+  return sessionMeta.get(sessionKey);
+}
+
+async function loadSessionHistory(sessionKey, { force = false, selectionSeq = null } = {}) {
   if (!sessionKey) {return [];}
-  if (!force && sessionMessages.has(sessionKey)) {return sessionMessages.get(sessionKey) || [];}
+  if (!force && sessionMessages.has(sessionKey)) {
+    const cached = sessionMessages.get(sessionKey) || [];
+    const cachedLast = cached.length ? String(cached[cached.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
+    addDebugLine(`loadSessionHistory cache seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${cached.length} last=${cachedLast || '<empty>'}`, 'cyan');
+    return cached;
+  }
+  addDebugLine(`loadSessionHistory start seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} force=${force ? 'yes' : 'no'}`, 'cyan');
   const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/history?limit=40`, { cache: 'no-store' });
   const data = await res.json();
   if (!res.ok) {throw new Error(data?.error || 'session history fetch failed');}
   const messages = Array.isArray(data?.messages) ? data.messages : [];
   sessionMessages.set(sessionKey, messages);
+  const meta = getSessionMeta(sessionKey);
+  meta.dirty = false;
+  meta.pending = false;
+  meta.lastUpdatedAt = Date.now();
+  const lastPreview = messages.length ? String(messages[messages.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
+  addDebugLine(`loadSessionHistory resolved seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${messages.length} last=${lastPreview || '<empty>'}`, 'cyan');
   return messages;
 }
 
@@ -2379,16 +2423,64 @@ async function refreshSelectedSessionContext(sessionKey) {
 
 async function selectDashboardSession(sessionKey, { force = false } = {}) {
   if (!sessionKey) {return;}
+  const previousSessionKey = selectedSessionKey;
+  const selectionSeq = ++sessionSelectionSeq;
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${force ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
   renderSessionsList();
   const [messages] = await Promise.all([
-    loadSessionHistory(sessionKey, { force }),
+    loadSessionHistory(sessionKey, { force, selectionSeq }),
     refreshSelectedSessionContext(sessionKey),
   ]);
+  if (selectedSessionKey !== sessionKey || selectionSeq !== sessionSelectionSeq) {
+    addDebugLine(`selectDashboardSession stale seq=${selectionSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
+    return;
+  }
   renderSessionMessages(sessionKey, messages);
   if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
-    addDebugLine(`Session selected: ${sessionKey}`, 'cyan');
+    addDebugLine(`Session selected: ${sessionKey} seq=${selectionSeq}`, 'cyan');
   }
+}
+
+async function refreshSessionHistory(sessionKey, reason = 'manual') {
+  if (!sessionKey) {return [];}
+  const refreshSeq = sessionSelectionSeq;
+  const messages = await loadSessionHistory(sessionKey, { force: true, selectionSeq: refreshSeq });
+  const meta = getSessionMeta(sessionKey);
+  meta.dirty = false;
+  meta.pending = false;
+  meta.lastUpdatedAt = Date.now();
+  meta.lastReason = reason;
+  const lastPreview = messages.length ? String(messages[messages.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
+  addDebugLine(`refreshSessionHistory seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason} len=${messages.length} last=${lastPreview || '<empty>'}`, 'cyan');
+  if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq) {
+    renderSessionMessages(sessionKey, messages);
+  } else {
+    addDebugLine(`refreshSessionHistory stale seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
+  }
+  return messages;
+}
+
+function scheduleSessionRefresh(sessionKey, reason = 'session-update', delay = 120) {
+  if (!sessionKey) {return;}
+  const meta = getSessionMeta(sessionKey);
+  meta.dirty = true;
+  meta.lastReason = reason;
+  meta.lastUpdatedAt = Date.now();
+  if (sessionKey === selectedSessionKey) {
+    meta.pending = true;
+  }
+  const existing = sessionRefreshTimers.get(sessionKey);
+  addDebugLine(`scheduleSessionRefresh active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason} delay=${delay} existing=${existing ? 'yes' : 'no'} selectedMatch=${sessionKey === selectedSessionKey ? 'yes' : 'no'}`, 'cyan');
+  if (existing) {clearTimeout(existing);}
+  const timer = setTimeout(() => {
+    sessionRefreshTimers.delete(sessionKey);
+    addDebugLine(`sessionRefreshTimerFired active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason}`, 'cyan');
+    refreshSessionHistory(sessionKey, reason).catch(error => {
+      addDebugLine(`Session refresh failed (${sessionKey}, ${reason}): ${error?.message || error}`, 'pink');
+    });
+  }, delay);
+  sessionRefreshTimers.set(sessionKey, timer);
 }
 
 function connect() {
@@ -2430,10 +2522,14 @@ function connect() {
     }
     if (msg.type === 'error') {
       const errorText = msg.error || 'wrapper error';
-      try {
-        addMessage('assistant', `Error: ${errorText}`);
-      } catch (error) {
-        addDebugLine(`ws error render failed: ${error?.message || error}`, 'pink');
+      if (isMainSessionView()) {
+        try {
+          addMessage('assistant', `Error: ${errorText}`);
+        } catch (error) {
+          addDebugLine(`ws error render failed: ${error?.message || error}`, 'pink');
+        }
+      } else {
+        addDebugLine(`Ignored wrapper error render while viewing ${selectedSessionKey || 'none'}: ${errorText}`, 'pink');
       }
       const fallbackMode = latestWrapperRuntime?.lightOutput || latestWrapperRuntime?.mood || 'idle';
       try {
@@ -2494,14 +2590,27 @@ function connect() {
       try {applyClaudeStateData(msg);} catch (error) {addDebugLine(`ws claude-state apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
+    if (msg.type === 'session.updated') {
+      const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
+      addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
+      if (!sessionKey) {return;}
+      scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated');
+      return;
+    }
     if (msg.type === 'chat') {
       const event = msg.event;
       if (ignoreAbortedRunEvent(event)) {return;}
-      if (selectedSessionKey !== gatewayMainSessionKey) {
-        addDebugLine(`Main-session stream event received while viewing ${selectedSessionKey}; skipped live render`, 'cyan');
+      const eventSessionKey = event?.sessionKey || gatewayMainSessionKey || null;
+      if (!eventSessionKey) {return;}
+      if (eventSessionKey !== gatewayMainSessionKey) {
+        scheduleSessionRefresh(eventSessionKey, event?.state || 'chat-event');
         return;
       }
-      applyChatEventToActiveRun(event);
+      if (selectedSessionKey === gatewayMainSessionKey) {
+        applyChatEventToActiveRun(event);
+      } else if (event?.state === 'final' || event?.state === 'error' || event?.state === 'aborted') {
+        scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat');
+      }
       return;
     }
   } catch (error) {
@@ -2561,7 +2670,11 @@ stopBtnEl?.addEventListener('click', () => {
   activeRunState = 'aborted';
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
   markLatestAssistantReplyAborted(stoppedRunId);
-  addMessage('assistant', '(aborted)');
+  if (isMainSessionView()) {
+    addMessage('assistant', '(aborted)');
+  } else {
+    addDebugLine(`Suppressed aborted marker in non-main session view ${selectedSessionKey || 'none'}`, 'pink');
+  }
   syncStopButton();
   syncContinueButton();
 });
