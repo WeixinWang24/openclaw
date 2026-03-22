@@ -16,6 +16,31 @@ function shortHash(input) {
   return crypto.createHash('sha1').update(String(input || '')).digest('hex').slice(0, 6);
 }
 
+function normalizeAbs(input) {
+  if (!input || typeof input !== 'string') {return null;}
+  try {
+    return path.resolve(input);
+  } catch {
+    return null;
+  }
+}
+
+function isSamePath(a, b) {
+  const left = normalizeAbs(a);
+  const right = normalizeAbs(b);
+  return Boolean(left && right && left === right);
+}
+
+function relativeSubpath(rootPath, repoRoot) {
+  const root = normalizeAbs(rootPath);
+  const repo = normalizeAbs(repoRoot);
+  if (!root || !repo) {return null;}
+  const rel = path.relative(repo, root);
+  if (!rel || rel === '') {return '';}
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {return null;}
+  return rel;
+}
+
 export function toTimestampFilename(isoUtc) {
   return `${String(isoUtc || '').replace(/:/g, '-')}.json`;
 }
@@ -86,12 +111,75 @@ export async function resolveDeviceId(device = {}, viostateRoot) {
 
 export function deriveWorkspaceCandidateKey(workspace = {}) {
   if (workspace.explicitWorkspaceKey) {return slugify(workspace.explicitWorkspaceKey);}
-  const repo = workspace.repoRoot ? path.basename(workspace.repoRoot) : '';
-  const root = String(workspace.rootPath || '').split('/').filter(Boolean).slice(-2).join('_');
-  return slugify([repo, root].filter(Boolean).join('_')) || 'workspace';
+
+  const repoName = workspace.repoRoot ? path.basename(workspace.repoRoot) : '';
+  const rel = relativeSubpath(workspace.rootPath, workspace.repoRoot);
+
+  if (repoName && rel === '') {
+    return slugify(repoName) || 'workspace';
+  }
+
+  if (repoName && rel) {
+    return slugify(`${repoName}_${rel.split(path.sep).join('_')}`) || 'workspace';
+  }
+
+  if (workspace.displayName) {
+    return slugify(workspace.displayName) || 'workspace';
+  }
+
+  const root = String(workspace.rootPath || '').split(/[\\/]/).filter(Boolean).slice(-3).join('_');
+  return slugify(root) || 'workspace';
 }
 
-export async function resolveWorkspaceKey(workspace = {}, _deviceId, _viostateRoot) {
+async function findExistingWorkspaceMatch(viostateRoot, deviceId, workspace = {}) {
+  const workspacesDir = path.join(viostateRoot, DIRS.devices, deviceId, DIRS.workspaces);
+  try {
+    const entries = await fs.readdir(workspacesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {continue;}
+      const file = path.join(workspacesDir, entry.name, FILES.workspace);
+      try {
+        const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+        if (isSamePath(raw?.rootPath, workspace.rootPath)) {
+          return raw.workspaceKey || entry.name;
+        }
+        if (
+          raw?.repoRoot
+          && workspace.repoRoot
+          && isSamePath(raw.repoRoot, workspace.repoRoot)
+        ) {
+          const rawRel = relativeSubpath(raw.rootPath, raw.repoRoot);
+          const targetRel = relativeSubpath(workspace.rootPath, workspace.repoRoot);
+          if (rawRel !== null && targetRel !== null && rawRel === targetRel) {
+            return raw.workspaceKey || entry.name;
+          }
+        }
+      } catch {
+        // ignore malformed record for now
+      }
+    }
+  } catch {
+    // first run or no workspaces yet
+  }
+  return null;
+}
+
+export async function resolveWorkspaceKey(workspace = {}, deviceId, viostateRoot) {
+  if (workspace.explicitWorkspaceKey) {
+    return {
+      workspaceKey: slugify(workspace.explicitWorkspaceKey),
+      matchedExisting: false,
+    };
+  }
+
+  const existing = await findExistingWorkspaceMatch(viostateRoot, deviceId, workspace);
+  if (existing) {
+    return {
+      workspaceKey: existing,
+      matchedExisting: true,
+    };
+  }
+
   return {
     workspaceKey: deriveWorkspaceCandidateKey(workspace),
     matchedExisting: false,
