@@ -45,6 +45,20 @@ Write order:
 7. overwrite `active.json`
 8. best-effort rewrite `summaries/latest.json`
 
+## Recovery read chain
+
+`restoreWorkspaceState()` now provides the first unified recovery read path.
+
+Read order:
+1. read `device.json`
+2. read `workspace.json`
+3. read `active.json`
+4. read `summaries/latest.json`
+5. resolve the active session
+6. load `session.json`
+7. load the newest checkpoint for that session
+8. return a compact `recoveryView` with headline / focus / task / resume hint / next steps / decisions / blockers
+
 ## Boundary rules
 
 - `session.json` is rolling runtime state.
@@ -71,11 +85,11 @@ src/server/viostate/
 
 ## Known v0.1 gaps
 
-- `resolveWorkspaceKey()` is still coarse.
-- latest-checkpoint scanning is stubbed for now.
-- `session.lastCheckpointPath` is only updated in-memory in the first pass.
+- `resolveWorkspaceKey()` is now repo/subproject-aware, but still basic.
+- latest-checkpoint scanning exists for the active session, but broader recovery helpers are still thin.
 - summary staleness marking / repair hooks are not wired yet.
-- no production call site is connected yet.
+- the first production call site is connected through `agentTasks` lifecycle events.
+- no heartbeat maintenance / stale repair flow is connected yet.
 
 ## Recommended first integration points
 

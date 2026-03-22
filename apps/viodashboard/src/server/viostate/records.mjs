@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { SCHEMA_VERSIONS, DEFAULTS } from './constants.mjs';
 import { buildViostatePaths } from './paths.mjs';
 import { readJsonIfExists, writeJsonAtomic, ensureDir } from './fs.mjs';
@@ -76,6 +78,36 @@ export async function ensureWorkspaceRecord({ viostateRoot, now, deviceId, works
   return record;
 }
 
+export async function readDeviceRecord({ viostateRoot, deviceId }) {
+  const paths = buildViostatePaths({
+    viostateRoot,
+    deviceId,
+    workspaceKey: '__placeholder__',
+    sessionId: '__placeholder__',
+  });
+  return readJsonIfExists(paths.deviceFile);
+}
+
+export async function readWorkspaceRecord({ viostateRoot, deviceId, workspaceKey }) {
+  const paths = buildViostatePaths({
+    viostateRoot,
+    deviceId,
+    workspaceKey,
+    sessionId: '__placeholder__',
+  });
+  return readJsonIfExists(paths.workspaceFile);
+}
+
+export async function readActiveRecord({ viostateRoot, deviceId, workspaceKey, sessionId = '__placeholder__' }) {
+  const paths = buildViostatePaths({ viostateRoot, deviceId, workspaceKey, sessionId });
+  return readJsonIfExists(paths.activeFile);
+}
+
+export async function readLatestSummaryRecord({ viostateRoot, deviceId, workspaceKey, sessionId = '__placeholder__' }) {
+  const paths = buildViostatePaths({ viostateRoot, deviceId, workspaceKey, sessionId });
+  return readJsonIfExists(paths.latestSummaryFile);
+}
+
 export async function readSessionRecord({ viostateRoot, deviceId, workspaceKey, sessionId }) {
   const paths = buildViostatePaths({ viostateRoot, deviceId, workspaceKey, sessionId });
   return readJsonIfExists(paths.sessionFile);
@@ -87,7 +119,34 @@ export async function writeSessionRecord({ viostateRoot, deviceId, workspaceKey,
   await writeJsonAtomic(paths.sessionFile, session);
 }
 
-export async function readLatestCheckpoint(_params) {
-  // TODO: scan checkpoints directory and return newest record.
-  return null;
+export async function readCheckpointRecord({ viostateRoot, deviceId, workspaceKey, checkpointPath = null }) {
+  if (!checkpointPath) {return null;}
+  const filePath = path.join(viostateRoot, 'devices', deviceId, 'workspaces', workspaceKey, checkpointPath);
+  return readJsonIfExists(filePath);
+}
+
+export async function readLatestCheckpoint({ viostateRoot, deviceId, workspaceKey, sessionId }) {
+  const paths = buildViostatePaths({ viostateRoot, deviceId, workspaceKey, sessionId });
+  try {
+    const entries = await fs.readdir(paths.checkpointsDir, { withFileTypes: true });
+    const candidates = entries
+      .filter(entry => entry.isFile() && entry.name.endsWith('.json'))
+      .map(entry => entry.name)
+      .toSorted();
+
+    if (!candidates.length) {return null;}
+
+    const latestName = candidates[candidates.length - 1];
+    const latestPath = path.join(paths.checkpointsDir, latestName);
+    const checkpoint = await readJsonIfExists(latestPath);
+    if (!checkpoint) {return null;}
+
+    return {
+      checkpoint,
+      checkpointPath: `sessions/${sessionId}/checkpoints/${latestName}`,
+      fileName: latestName,
+    };
+  } catch {
+    return null;
+  }
 }

@@ -2,6 +2,11 @@ import { resolveDeviceId, resolveWorkspaceKey, generateSessionId } from './ids.m
 import {
   ensureDeviceRecord,
   ensureWorkspaceRecord,
+  readDeviceRecord,
+  readWorkspaceRecord,
+  readActiveRecord,
+  readLatestSummaryRecord,
+  readLatestCheckpoint,
   readSessionRecord,
   writeSessionRecord,
 } from './records.mjs';
@@ -143,5 +148,63 @@ export async function saveViostateSnapshot({ viostateRoot, input }) {
     activePath: 'active.json',
     summaryPath,
     summaryWritten,
+  };
+}
+
+export async function restoreWorkspaceState({ viostateRoot, deviceId, workspaceKey }) {
+  const [device, workspace, active, latestSummary] = await Promise.all([
+    readDeviceRecord({ viostateRoot, deviceId }),
+    readWorkspaceRecord({ viostateRoot, deviceId, workspaceKey }),
+    readActiveRecord({ viostateRoot, deviceId, workspaceKey }),
+    readLatestSummaryRecord({ viostateRoot, deviceId, workspaceKey }),
+  ]);
+
+  const activeSessionId = active?.activeSessionId || latestSummary?.activeSessionId || null;
+  const session = activeSessionId
+    ? await readSessionRecord({ viostateRoot, deviceId, workspaceKey, sessionId: activeSessionId })
+    : null;
+
+  let latestCheckpoint = null;
+  if (session?.lastCheckpointPath) {
+    latestCheckpoint = await readLatestCheckpoint({
+      viostateRoot,
+      deviceId,
+      workspaceKey,
+      sessionId: activeSessionId,
+    });
+  } else if (activeSessionId) {
+    latestCheckpoint = await readLatestCheckpoint({
+      viostateRoot,
+      deviceId,
+      workspaceKey,
+      sessionId: activeSessionId,
+    });
+  }
+
+  const status = active
+    ? 'ready'
+    : (workspace ? 'partial' : 'missing');
+
+  return {
+    status,
+    deviceId,
+    workspaceKey,
+    device,
+    workspace,
+    active,
+    session,
+    latestCheckpoint: latestCheckpoint?.checkpoint || null,
+    latestCheckpointPath: latestCheckpoint?.checkpointPath || session?.lastCheckpointPath || null,
+    latestSummary,
+    recoveryView: {
+      headline: latestSummary?.headline || active?.currentFocus || session?.title || null,
+      focus: active?.currentFocus || session?.currentFocus || latestSummary?.currentState?.focus || null,
+      task: active?.currentTask || session?.currentTask || latestSummary?.currentState?.task || null,
+      resumeHint: active?.resumeHint || latestSummary?.resumeHint || null,
+      nextSteps: latestSummary?.nextSteps || latestCheckpoint?.checkpoint?.nextSteps || [],
+      decisions: latestSummary?.keyDecisions || latestCheckpoint?.checkpoint?.decisions || session?.recentDecisions || [],
+      blockers: latestCheckpoint?.checkpoint?.blockers || session?.blockers || [],
+      sourceInputs: latestSummary?.sourceInputs || [],
+    },
   };
 }
