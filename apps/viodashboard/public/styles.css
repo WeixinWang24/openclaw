@@ -2341,7 +2341,58 @@ body.animations-off *::after {
   min-height: 0;
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(180px, 0.55fr) auto minmax(0, 1fr);
+}
+
+.sessions-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+}
+
+.sessions-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.session-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,255,198,.12);
+  background: rgba(255,255,255,.02);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+}
+
+.session-item:hover {
+  box-shadow: 0 0 12px rgba(0,255,198,.10);
+}
+
+.session-item.is-selected {
+  border-color: rgba(0,255,198,.32);
+  box-shadow: 0 0 0 1px rgba(0,255,198,.14), 0 0 16px rgba(0,255,198,.08);
+  background: linear-gradient(180deg, rgba(0,255,198,.06), rgba(122,0,255,.06));
+}
+
+.session-item-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-item-title);
+}
+
+.session-item-meta,
+.session-item-preview {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  word-break: break-word;
 }
 
 .explorer-pane.file-browser-panel {

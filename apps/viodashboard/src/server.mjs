@@ -687,6 +687,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (requestUrl.pathname === '/api/sessions' && req.method === 'GET') {
+    bridge.listSessions({ limit: Number(requestUrl.searchParams.get('limit') || 50) || 50 })
+      .then(items => sendJson(res, 200, {
+        ok: true,
+        currentSessionKey: bridge.sessionKey,
+        items,
+      }))
+      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
+    return;
+  }
+
+  const historyMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/history$/);
+  if (historyMatch && req.method === 'GET') {
+    const sessionKey = decodeURIComponent(historyMatch[1]);
+    bridge.fetchSessionHistory(sessionKey, { limit: Number(requestUrl.searchParams.get('limit') || 40) || 40 })
+      .then(messages => sendJson(res, 200, {
+        ok: true,
+        sessionKey,
+        messages,
+      }))
+      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
+    return;
+  }
+
+  const sendMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/send$/);
+  if (sendMatch && req.method === 'POST') {
+    const sessionKey = decodeURIComponent(sendMatch[1]);
+    readJsonRequest(req)
+      .then(payload => bridge.sendChatToSession(sessionKey, String(payload?.text || '')))
+      .then(result => sendJson(res, 200, { ok: true, ...result }))
+      .catch(error => sendJson(res, 400, { ok: false, error: error?.message || String(error) }));
+    return;
+  }
+
   if (requestUrl.pathname === '/api/setup/state' && req.method === 'GET') {
     const claudeState = getClaudeState();
     sendJson(res, 200, evaluateSetupState({ bridgeConnected: bridge.connected, claudeState }));

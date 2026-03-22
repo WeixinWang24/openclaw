@@ -70,6 +70,8 @@ const tokenSaverToggleBtnEl = document.getElementById('tokenSaverToggleBtn');
 const tokenSaverPhase1BtnEl = document.getElementById('tokenSaverPhase1Btn');
 const tokenSaverPhase2BtnEl = document.getElementById('tokenSaverPhase2Btn');
 const fileTreeEl = document.getElementById('fileTree');
+const sessionsListEl = document.getElementById('sessionsList');
+const sessionsRefreshBtnEl = document.getElementById('sessionsRefreshBtn');
 const activeFilePathEl = document.getElementById('activeFilePath');
 const fileEditorEl = document.getElementById('fileEditor');
 const fileBrowserRootEl = document.getElementById('fileBrowserRoot');
@@ -131,6 +133,10 @@ let lastStreamEventAt = 0;
 const taskRegistry = new Map();
 let latestWrapperRuntime = null;
 let lastVisitedDirs = [];
+let dashboardSessions = [];
+let selectedSessionKey = null;
+let gatewayMainSessionKey = null;
+const sessionMessages = new Map();
 let currentDir = '.';
 let currentFilePath = null;
 let currentFileOriginal = '';
@@ -2144,42 +2150,85 @@ function buildContinuePayload() {
   ].join('\n');
 }
 
-function submitChatText(text = '', options = {}) {
+async function submitChatText(text = '', options = {}) {
   const value = String(text || '').trim();
   const outboundText = String(options?.outboundText || value).trim();
   const wsState = !ws ? 'no-ws' : ws.readyState;
-  addDebugLine(`submitChatText: len=${outboundText.length} ws=${wsState}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
-  if (!value || !outboundText || !ws || ws.readyState !== WebSocket.OPEN) {return;}
-  try {
-    addDebugLine('submitChatText: calling ws.send', 'cyan');
-    ws.send(JSON.stringify({ type: 'send', text: outboundText }));
-    addDebugLine('submitChatText: ws.send returned', 'cyan');
-  } catch (error) {
-    addDebugLine(`submitChatText: ws.send threw ${error?.message || error}`, 'pink');
-    throw error;
+  addDebugLine(`submitChatText: len=${outboundText.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
+  if (!value || !outboundText || !selectedSessionKey) {return;}
+
+  if (selectedSessionKey === gatewayMainSessionKey && ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      addDebugLine('submitChatText: calling ws.send (main session)', 'cyan');
+      ws.send(JSON.stringify({ type: 'send', text: outboundText }));
+      addDebugLine('submitChatText: ws.send returned', 'cyan');
+    } catch (error) {
+      addDebugLine(`submitChatText: ws.send threw ${error?.message || error}`, 'pink');
+      throw error;
+    }
+    try {
+      addMessage('user', value);
+    } catch (error) {
+      addDebugLine(`submitChatText: addMessage threw ${error?.message || error}`, 'pink');
+    }
+    try {
+      inputEl.value = '';
+      resizeComposer();
+    } catch (error) {
+      addDebugLine(`submitChatText: composer reset threw ${error?.message || error}`, 'pink');
+    }
+    streamingEl = null;
+    streamingRunId = null;
+    try {
+      setMood('thinking', 'User prompt sent; waiting for final routing.');
+    } catch (error) {
+      addDebugLine(`submitChatText: setMood threw ${error?.message || error}`, 'pink');
+    }
+    try {
+      setRouting('queued', 'phase=queued · mode=thinking');
+    } catch (error) {
+      addDebugLine(`submitChatText: setRouting threw ${error?.message || error}`, 'pink');
+    }
+    return;
   }
-  try {
-    addMessage('user', value);
-  } catch (error) {
-    addDebugLine(`submitChatText: addMessage threw ${error?.message || error}`, 'pink');
-  }
-  try {
-    inputEl.value = '';
-    resizeComposer();
-  } catch (error) {
-    addDebugLine(`submitChatText: composer reset threw ${error?.message || error}`, 'pink');
-  }
+
+  addMessage('user', value);
+  const res = await fetch(`/api/sessions/${encodeURIComponent(selectedSessionKey)}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: outboundText }),
+  });
+  const data = await res.json();
+  if (!res.ok) {throw new Error(data?.error || 'session send failed');}
+  inputEl.value = '';
+  resizeComposer();
+  addDebugLine(`Session send accepted: ${selectedSessionKey}`, 'cyan');
+  setMood('thinking', 'Session message sent; refreshing history.');
+  setRouting('session refresh', selectedSessionKey);
+  window.setTimeout(() => {
+    selectDashboardSession(selectedSessionKey, { force: true }).catch(error => {
+      addDebugLine(`Session refresh failed: ${error?.message || error}`, 'pink');
+    });
+  }, 700);
+}
+
+function clearChat() {
+  if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
   streamingRunId = null;
-  try {
-    setMood('thinking', 'User prompt sent; waiting for final routing.');
-  } catch (error) {
-    addDebugLine(`submitChatText: setMood threw ${error?.message || error}`, 'pink');
+}
+
+function renderSessionMessages(sessionKey, messages = []) {
+  if (!chatEl) {return;}
+  clearChat();
+  for (const message of messages) {
+    addMessage(message.role === 'user' ? 'user' : 'assistant', message.text || '', '', {
+      messageRole: 'history',
+      runId: message.id || null,
+    });
   }
-  try {
-    setRouting('queued', 'phase=queued · mode=thinking');
-  } catch (error) {
-    addDebugLine(`submitChatText: setRouting threw ${error?.message || error}`, 'pink');
+  if (activeFilePathEl) {
+    activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
 }
 
@@ -2257,6 +2306,65 @@ function finalizeStreamingMessage(runId = null, finalText = '') {
   }
 }
 
+function renderSessionsList() {
+  if (!sessionsListEl) {return;}
+  sessionsListEl.innerHTML = '';
+  for (const session of dashboardSessions) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `session-item ${session.key === selectedSessionKey ? 'is-selected' : ''}`.trim();
+    const title = session.label || session.key || 'session';
+    const meta = [session.kind || 'session', session.model || null].filter(Boolean).join(' · ');
+    const preview = (session.preview || '').trim() || 'No recent preview';
+    item.innerHTML = `
+      <div class="session-item-title">${escapeHtml(title)}</div>
+      <div class="session-item-meta">${escapeHtml(meta || 'session')}</div>
+      <div class="session-item-preview">${escapeHtml(preview.slice(0, 140))}</div>
+    `;
+    item.addEventListener('click', () => {
+      selectDashboardSession(session.key).catch(error => {
+        addDebugLine(`Session switch failed: ${error?.message || error}`, 'pink');
+      });
+    });
+    sessionsListEl.appendChild(item);
+  }
+}
+
+async function fetchDashboardSessions() {
+  const res = await fetch('/api/sessions', { cache: 'no-store' });
+  const data = await res.json();
+  if (!res.ok) {throw new Error(data?.error || 'sessions fetch failed');}
+  dashboardSessions = Array.isArray(data?.items) ? data.items : [];
+  if (!selectedSessionKey) {selectedSessionKey = data?.currentSessionKey || dashboardSessions[0]?.key || null;}
+  if (selectedSessionKey && !dashboardSessions.some(item => item.key === selectedSessionKey)) {
+    selectedSessionKey = data?.currentSessionKey || dashboardSessions[0]?.key || null;
+  }
+  renderSessionsList();
+  return data;
+}
+
+async function loadSessionHistory(sessionKey, { force = false } = {}) {
+  if (!sessionKey) {return [];}
+  if (!force && sessionMessages.has(sessionKey)) {return sessionMessages.get(sessionKey) || [];}
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/history?limit=40`, { cache: 'no-store' });
+  const data = await res.json();
+  if (!res.ok) {throw new Error(data?.error || 'session history fetch failed');}
+  const messages = Array.isArray(data?.messages) ? data.messages : [];
+  sessionMessages.set(sessionKey, messages);
+  return messages;
+}
+
+async function selectDashboardSession(sessionKey, { force = false } = {}) {
+  if (!sessionKey) {return;}
+  selectedSessionKey = sessionKey;
+  renderSessionsList();
+  const messages = await loadSessionHistory(sessionKey, { force });
+  renderSessionMessages(sessionKey, messages);
+  if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
+    addDebugLine(`Session selected: ${sessionKey}`, 'cyan');
+  }
+}
+
 function connect() {
   ws = new WebSocket(`ws://${location.host}/ws`);
   ws.addEventListener('open', () => {
@@ -2271,7 +2379,9 @@ function connect() {
       statusEl.textContent = msg.connected ? `gateway connected · ${msg.sessionKey}` : 'gateway connecting…';
       applyDotState(wrapperDotEl, 'link', 'online');
       applyDotState(gatewayDotEl, 'link', msg.connected ? 'online' : 'offline');
+      gatewayMainSessionKey = msg.sessionKey || gatewayMainSessionKey;
       sessionKeyEl.innerHTML = `<span class="semantic-label">session:</span> <span class="semantic-value">${msg.sessionKey || 'unknown'}</span>`;
+      if (!selectedSessionKey && gatewayMainSessionKey) {selectedSessionKey = gatewayMainSessionKey;}
       return;
     }
     if (msg.type === 'ack') {
@@ -2361,6 +2471,10 @@ function connect() {
     if (msg.type === 'chat') {
       const event = msg.event;
       if (ignoreAbortedRunEvent(event)) {return;}
+      if (selectedSessionKey !== gatewayMainSessionKey) {
+        addDebugLine(`Main-session stream event received while viewing ${selectedSessionKey}; skipped live render`, 'cyan');
+        return;
+      }
       applyChatEventToActiveRun(event);
       return;
     }
@@ -2387,7 +2501,9 @@ function connect() {
 
 formEl?.addEventListener('submit', ev => {
   ev.preventDefault();
-  submitChatText(inputEl.value);
+  submitChatText(inputEl.value).catch(error => {
+    addDebugLine(`submit failed: ${error?.message || error}`, 'pink');
+  });
 });
 
 function syncContinueButton() {
@@ -2399,7 +2515,9 @@ function syncContinueButton() {
 
 continueBtnEl?.addEventListener('click', () => {
   if (continueBtnEl?.disabled) {return;}
-  submitChatText('继续', { outboundText: buildContinuePayload() });
+  submitChatText('继续', { outboundText: buildContinuePayload() }).catch(error => {
+    addDebugLine(`continue failed: ${error?.message || error}`, 'pink');
+  });
 });
 
 stopBtnEl?.addEventListener('click', () => {
@@ -2427,12 +2545,16 @@ inputEl?.addEventListener('keydown', event => {
   if (event.key !== 'Enter') {return;}
   if (event.metaKey || event.ctrlKey) {
     event.preventDefault();
-    submitChatText(inputEl.value);
+    submitChatText(inputEl.value).catch(error => {
+      addDebugLine(`submit failed: ${error?.message || error}`, 'pink');
+    });
     return;
   }
   if (event.shiftKey) {
     event.preventDefault();
-    submitChatText('继续', { outboundText: buildContinuePayload() });
+    submitChatText('继续', { outboundText: buildContinuePayload() }).catch(error => {
+      addDebugLine(`continue failed: ${error?.message || error}`, 'pink');
+    });
     return;
   }
 });
@@ -2633,6 +2755,22 @@ setInterval(refreshSafeEditState, 5000);
 syncFileNavButtons();
 void loadFileTree();
 ensureTerminalSession().catch(() => {});
+sessionsRefreshBtnEl?.addEventListener('click', () => {
+  fetchDashboardSessions()
+    .then(() => {
+      if (selectedSessionKey) {return selectDashboardSession(selectedSessionKey, { force: true });}
+      return null;
+    })
+    .catch(error => addDebugLine(`sessions refresh failed: ${error?.message || error}`, 'pink'));
+});
+
+fetchDashboardSessions()
+  .then(() => {
+    if (selectedSessionKey) {return selectDashboardSession(selectedSessionKey, { force: true });}
+    return null;
+  })
+  .catch(error => addDebugLine(`sessions init failed: ${error?.message || error}`, 'pink'));
+
 try { initClaudePanel(); } catch (error) { addDebugLine(`initClaudePanel failed: ${error?.message || error}`, 'pink'); }
 try { renderRunModeChip(); } catch (error) { addDebugLine(`renderRunModeChip failed: ${error?.message || error}`, 'pink'); }
 try { fetchRunMode().catch(() => renderRunModeChip()); } catch (error) { addDebugLine(`fetchRunMode failed: ${error?.message || error}`, 'pink'); }

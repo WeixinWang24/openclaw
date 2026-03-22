@@ -232,7 +232,16 @@ export class GatewayBridge {
         Origin: `http://127.0.0.1:${gatewayPort}`,
       },
     });
-    this.ws.on('message', raw => this.handleMessage(String(raw)));
+    this.ws.on('message', raw => {
+      const text = typeof raw === 'string'
+        ? raw
+        : Buffer.isBuffer(raw)
+          ? raw.toString('utf8')
+          : Array.isArray(raw)
+            ? Buffer.concat(raw).toString('utf8')
+            : '';
+      this.handleMessage(text);
+    });
     this.ws.on('open', () => {
       console.log('[wrapper] gateway ws open');
       this.queueConnect();
@@ -434,6 +443,62 @@ export class GatewayBridge {
     if (Array.isArray(res?.models)) {return res.models;}
     if (Array.isArray(res)) {return res;}
     return [];
+  }
+
+  async listSessions({ limit = 50 } = {}) {
+    if (!this.connected) {throw new Error('gateway not connected');}
+    const res = await gatewayCall('sessions.list', {
+      includeGlobal: false,
+      includeUnknown: false,
+      limit,
+    });
+    const sessions = Array.isArray(res?.sessions) ? res.sessions : [];
+    return sessions.map(session => ({
+      key: session?.key || null,
+      label: session?.label || null,
+      kind: session?.kind || null,
+      model: session?.model || null,
+      provider: session?.modelProvider || null,
+      totalTokens: typeof session?.totalTokens === 'number' ? session.totalTokens : null,
+      contextTokens: typeof session?.contextTokens === 'number' ? session.contextTokens : null,
+      totalTokensFresh: session?.totalTokensFresh !== false,
+      lastActiveAt: session?.updatedAt || session?.lastActiveAt || session?.createdAt || null,
+      lastMessageAt: session?.lastMessageAt || session?.updatedAt || null,
+      messageCount: typeof session?.messageCount === 'number' ? session.messageCount : null,
+      preview: typeof session?.lastMessageText === 'string' ? session.lastMessageText : null,
+    }));
+  }
+
+  async fetchSessionHistory(sessionKey, { limit = 40 } = {}) {
+    if (!this.connected) {throw new Error('gateway not connected');}
+    if (!sessionKey) {throw new Error('sessionKey is required');}
+    const res = await gatewayCall('sessions.get', {
+      key: sessionKey,
+      limit,
+    });
+    const messages = Array.isArray(res?.messages) ? res.messages : [];
+    return messages.map((message, index) => ({
+      id: message?.id || `${sessionKey}:${index}`,
+      role: message?.role || 'assistant',
+      text: parseMessageText(message),
+      createdAt: message?.createdAt || message?.ts || null,
+      raw: message,
+    }));
+  }
+
+  async sendChatToSession(sessionKey, text) {
+    if (!this.connected) {throw new Error('gateway not connected');}
+    if (!sessionKey) {throw new Error('sessionKey is required');}
+    const message = sanitizeVisibleText(String(text ?? ''));
+    if (!message) {throw new Error('text is required');}
+    const idempotencyKey = randomId();
+    await gatewayCall('chat.send', {
+      sessionKey,
+      message,
+      deliver: false,
+      idempotencyKey,
+    });
+    return { runId: idempotencyKey, sessionKey };
   }
 
   getTokenSaverSnapshot() {
