@@ -502,20 +502,22 @@ export class GatewayBridge {
       limit,
     });
     const sessions = Array.isArray(res?.sessions) ? res.sessions : [];
-    return sessions.map(session => ({
-      key: session?.key || null,
-      label: session?.label || null,
-      kind: session?.kind || null,
-      model: session?.model || null,
-      provider: session?.modelProvider || null,
-      totalTokens: typeof session?.totalTokens === 'number' ? session.totalTokens : null,
-      contextTokens: typeof session?.contextTokens === 'number' ? session.contextTokens : null,
-      totalTokensFresh: session?.totalTokensFresh !== false,
-      lastActiveAt: session?.updatedAt || session?.lastActiveAt || session?.createdAt || null,
-      lastMessageAt: session?.lastMessageAt || session?.updatedAt || null,
-      messageCount: typeof session?.messageCount === 'number' ? session.messageCount : null,
-      preview: typeof session?.lastMessageText === 'string' ? session.lastMessageText : null,
-    }));
+    return sessions
+      .map(session => ({
+        key: session?.key || null,
+        label: session?.label || null,
+        kind: session?.kind || null,
+        model: session?.model || null,
+        provider: session?.modelProvider || null,
+        totalTokens: typeof session?.totalTokens === 'number' ? session.totalTokens : null,
+        contextTokens: typeof session?.contextTokens === 'number' ? session.contextTokens : null,
+        totalTokensFresh: session?.totalTokensFresh !== false,
+        lastActiveAt: session?.updatedAt || session?.lastActiveAt || session?.createdAt || null,
+        lastMessageAt: session?.lastMessageAt || session?.updatedAt || null,
+        messageCount: typeof session?.messageCount === 'number' ? session.messageCount : null,
+        preview: typeof session?.lastMessageText === 'string' ? session.lastMessageText : null,
+      }))
+      .filter(session => !String(session?.key || '').includes(':acp:'));
   }
 
   emitSessionUpdated(sessionKey, reason, extra = {}) {
