@@ -140,6 +140,10 @@ let sessionSelectionSeq = 0;
 const sessionMeta = new Map();
 const sessionRefreshTimers = new Map();
 const sessionMessages = new Map();
+const mainSessionStreamBuffer = {
+  runId: null,
+  text: '',
+};
 let currentDir = '.';
 let currentFilePath = null;
 let currentFileOriginal = '';
@@ -433,6 +437,8 @@ function ignoreAbortedRunEvent(event) {
 function applyChatEventToActiveRun(event) {
   if (event.state === 'delta') {
     lastStreamEventAt = Date.now();
+    mainSessionStreamBuffer.runId = event.runId || mainSessionStreamBuffer.runId || null;
+    mainSessionStreamBuffer.text = event.text || mainSessionStreamBuffer.text || '';
     if (event.runId && (!activeRunId || activeRunId !== event.runId)) {
       resetStoppedUiForNewRun();
       activeRunId = event.runId;
@@ -485,6 +491,8 @@ function applyChatEventToActiveRun(event) {
       addDebugLine(`Final run mismatch: active=${String(activeRunId).slice(0, 8)} event=${String(event.runId).slice(0, 8)}`, 'pink');
       forceFinalizeFrontState('final-run-mismatch');
     }
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
     addDebugLine(`Final reply received (${finalText.length || 0} chars).`, 'cyan');
   } else if (event.state === 'error') {
     if (!isMainSessionView()) {
@@ -497,6 +505,8 @@ function applyChatEventToActiveRun(event) {
       addDebugLine(`chat error render failed: ${error?.message || error}`, 'pink');
     }
     if (event.runId) {updateChatRunStatus(event.runId, 'failed');}
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
     activeRunState = 'final';
     activeRunId = null;
     streamingEl = null;
@@ -515,6 +525,8 @@ function applyChatEventToActiveRun(event) {
       addDebugLine(`chat aborted render failed: ${error?.message || error}`, 'pink');
     }
     if (event.runId) {updateChatRunStatus(event.runId, 'aborted');}
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
     activeRunState = 'aborted';
     activeRunId = null;
     streamingEl = null;
@@ -2197,8 +2209,9 @@ async function submitChatText(text = '', options = {}) {
     return;
   }
 
-  addDebugLine(`submitChatText: non-main send queued for ${selectedSessionKey}; waiting for targeted refresh`, 'cyan');
-  const res = await fetch(`/api/sessions/${encodeURIComponent(selectedSessionKey)}/send`, {
+  const targetSessionKey = selectedSessionKey;
+  addDebugLine(`submitChatText: non-main send queued for ${targetSessionKey}; waiting for targeted refresh`, 'cyan');
+  const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: outboundText }),
@@ -2207,15 +2220,27 @@ async function submitChatText(text = '', options = {}) {
   if (!res.ok) {throw new Error(data?.error || 'session send failed');}
   inputEl.value = '';
   resizeComposer();
-  const meta = getSessionMeta(selectedSessionKey);
+  const meta = getSessionMeta(targetSessionKey);
   meta.pending = true;
   meta.dirty = true;
   meta.lastUpdatedAt = Date.now();
   meta.lastReason = 'send-accepted';
-  addDebugLine(`Session send accepted: ${selectedSessionKey}`, 'cyan');
+  const cached = sessionMessages.get(targetSessionKey) || [];
+  const optimisticMessages = [...cached, {
+    id: `optimistic-${Date.now()}`,
+    role: 'user',
+    text: value,
+  }];
+  sessionMessages.set(targetSessionKey, optimisticMessages);
+  if (selectedSessionKey === targetSessionKey) {
+    renderSessionMessages(targetSessionKey, optimisticMessages);
+  }
+  addDebugLine(`Session send accepted: ${targetSessionKey}`, 'cyan');
   setMood('thinking', 'Session message sent; refreshing history.');
-  setRouting('session refresh', selectedSessionKey);
-  scheduleSessionRefresh(selectedSessionKey, 'send-accepted', 150);
+  setRouting('session refresh', targetSessionKey);
+  scheduleSessionRefresh(targetSessionKey, 'send-accepted', 150);
+  scheduleSessionRefresh(targetSessionKey, 'send-followup', 1200);
+  scheduleSessionRefresh(targetSessionKey, 'send-followup-late', 2600);
 }
 
 function isMainSessionView() {
@@ -2226,6 +2251,19 @@ function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
   streamingRunId = null;
+}
+
+function syncMainSessionBufferedStream() {
+  if (!isMainSessionView()) {return;}
+  if (activeRunState !== 'streaming') {return;}
+  if (!mainSessionStreamBuffer.text) {return;}
+  try {
+    const target = ensureStreamingMessageEl(mainSessionStreamBuffer.runId || activeRunId || null, mainSessionStreamBuffer.text);
+    target.textContent = mainSessionStreamBuffer.text;
+    addDebugLine(`syncMainSessionBufferedStream run=${String(mainSessionStreamBuffer.runId || activeRunId || '').slice(0, 8)} len=${mainSessionStreamBuffer.text.length}`, 'cyan');
+  } catch (error) {
+    addDebugLine(`syncMainSessionBufferedStream failed: ${error?.message || error}`, 'pink');
+  }
 }
 
 function renderSessionMessages(sessionKey, messages = []) {
@@ -2239,6 +2277,9 @@ function renderSessionMessages(sessionKey, messages = []) {
       messageRole: 'history',
       runId: message.id || null,
     });
+  }
+  if (sessionKey === gatewayMainSessionKey) {
+    syncMainSessionBufferedStream();
   }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
@@ -2425,11 +2466,13 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   if (!sessionKey) {return;}
   const previousSessionKey = selectedSessionKey;
   const selectionSeq = ++sessionSelectionSeq;
-  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${force ? 'yes' : 'no'}`, 'cyan');
+  const meta = getSessionMeta(sessionKey);
+  const shouldForce = !!force || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && activeRunState === 'streaming');
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
   renderSessionsList();
   const [messages] = await Promise.all([
-    loadSessionHistory(sessionKey, { force, selectionSeq }),
+    loadSessionHistory(sessionKey, { force: shouldForce, selectionSeq }),
     refreshSelectedSessionContext(sessionKey),
   ]);
   if (selectedSessionKey !== sessionKey || selectionSeq !== sessionSelectionSeq) {
@@ -2608,8 +2651,13 @@ function connect() {
       }
       if (selectedSessionKey === gatewayMainSessionKey) {
         applyChatEventToActiveRun(event);
-      } else if (event?.state === 'final' || event?.state === 'error' || event?.state === 'aborted') {
-        scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat');
+      } else {
+        const delay = event?.state === 'delta' ? 80 : 0;
+        scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat', delay);
+        if (event?.state === 'delta') {
+          mainSessionStreamBuffer.runId = event?.runId || mainSessionStreamBuffer.runId || null;
+          mainSessionStreamBuffer.text = event?.text || mainSessionStreamBuffer.text || '';
+        }
       }
       return;
     }
@@ -2669,6 +2717,8 @@ stopBtnEl?.addEventListener('click', () => {
   activeRunId = null;
   activeRunState = 'aborted';
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
+  mainSessionStreamBuffer.runId = null;
+  mainSessionStreamBuffer.text = '';
   markLatestAssistantReplyAborted(stoppedRunId);
   if (isMainSessionView()) {
     addMessage('assistant', '(aborted)');
