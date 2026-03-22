@@ -6,6 +6,22 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 const tokenSaverModule = await import(pathToFileURL(path.join(COMS_ROOT, 'token-saver.mjs')).href);
 const { TokenSaver, sanitizeVisibleText, hasRoadmapBlock, simulateTokenSaverView, buildPhaseOneCompressedPrompt } = tokenSaverModule;
+
+function looksLikeInternalWorkflowNoise(role, text = '') {
+  if (role !== 'assistant') {return false;}
+  const source = String(text || '').trim();
+  if (!source) {return false;}
+  return (
+    /^diff --git\s+/m.test(source) ||
+    /^index [0-9a-f]{7,}\.[0-9a-f]{7,} /m.test(source) ||
+    /^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.test(source) ||
+    /\bFound 0 warnings and 0 errors\./.test(source) ||
+    /\bFinished in \d+ms on \d+ file/.test(source) ||
+    /\[main [0-9a-f]{7,}\]\s+fix\(/.test(source) ||
+    /\[main [0-9a-f]{7,}\]\s+docs\(/.test(source) ||
+    /^No files found matching the given patterns\.?$/m.test(source)
+  );
+}
 import { onUserPrompt } from '../moodBridge.mjs';
 
 const TOKEN_SAVER_DEBUG_DIR = TOKEN_SAVER_DEBUG_ROOT;
@@ -516,7 +532,8 @@ export class GatewayBridge {
         createdAt: message?.createdAt || message?.ts || null,
         raw: message,
       }))
-      .filter(message => (message.role === 'user' || message.role === 'assistant') && String(message.text || '').trim());
+      .filter(message => (message.role === 'user' || message.role === 'assistant') && String(message.text || '').trim())
+      .filter(message => !looksLikeInternalWorkflowNoise(message.role, message.text));
   }
 
   async sendChatToSession(sessionKey, text) {
