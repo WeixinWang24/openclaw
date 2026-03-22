@@ -1919,57 +1919,93 @@ function syncFileNavButtons() {
 }
 
 function escapeHtml(text) { return text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
-function renderChatMarkdown(text = '') {
-  const source = escapeHtml(String(text || ''));
-  const fenced = [];
-  const fencedRe = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g;
-  let html = source.replace(fencedRe, (_, lang = '', code = '') => {
-    const token = `__CODE_BLOCK_${fenced.length}__`;
-    fenced.push(`<pre class="chat-code-block"><code>${code}</code></pre>`);
-    return token;
-  });
-  html = html
-    .replace(/^###\s+(.+)$/gm, '<div class="chat-md-h3">$1</div>')
-    .replace(/^##\s+(.+)$/gm, '<div class="chat-md-h2">$1</div>')
-    .replace(/^#\s+(.+)$/gm, '<div class="chat-md-h1">$1</div>')
-    .replace(/^>\s+(.+)$/gm, '<div class="chat-md-quote">$1</div>')
+
+function renderInlineChatMarkdown(text = '') {
+  return escapeHtml(String(text || ''))
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a class="chat-link" href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
 
-  const lines = html.split('\n');
+function renderChatMarkdown(text = '') {
+  const source = String(text || '').replace(/\r\n?/g, '\n');
+  const parts = [];
+  const fencedRe = /```([a-zA-Z0-9_-]+)?[ \t]*\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = fencedRe.exec(source)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', value: source.slice(lastIndex, match.index) });
+    }
+    parts.push({
+      type: 'code',
+      lang: String(match[1] || '').trim(),
+      value: String(match[2] || ''),
+    });
+    lastIndex = fencedRe.lastIndex;
+  }
+
+  if (lastIndex < source.length) {
+    parts.push({ type: 'text', value: source.slice(lastIndex) });
+  }
+
   const out = [];
-  let inList = false;
-  for (const line of lines) {
-    const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
-    const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
-    if (bullet || numbered) {
-      if (!inList) {
-        out.push('<ul class="chat-md-list">');
-        inList = true;
-      }
-      out.push(`<li>${(bullet || numbered)[1]}</li>`);
+  for (const part of parts) {
+    if (part.type === 'code') {
+      const langAttr = part.lang ? ` data-lang="${escapeHtml(part.lang)}"` : '';
+      out.push(`<pre class="chat-code-block"${langAttr}><code>${escapeHtml(part.value)}</code></pre>`);
       continue;
     }
-    if (inList) {
-      out.push('</ul>');
-      inList = false;
+
+    const lines = String(part.value || '').split('\n');
+    let listType = null;
+
+    const closeList = () => {
+      if (!listType) {return;}
+      out.push(listType === 'ol' ? '</ol>' : '</ul>');
+      listType = null;
+    };
+
+    for (const rawLine of lines) {
+      const line = String(rawLine || '');
+      const trimmed = line.trim();
+      const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+
+      if (bullet || numbered) {
+        const nextListType = numbered ? 'ol' : 'ul';
+        if (listType !== nextListType) {
+          closeList();
+          out.push(nextListType === 'ol' ? '<ol class="chat-md-list">' : '<ul class="chat-md-list">');
+          listType = nextListType;
+        }
+        out.push(`<li>${renderInlineChatMarkdown((bullet || numbered)[1])}</li>`);
+        continue;
+      }
+
+      closeList();
+
+      if (!trimmed) {
+        out.push('<div class="chat-md-space"></div>');
+      } else if (/^###\s+/.test(trimmed)) {
+        out.push(`<div class="chat-md-h3">${renderInlineChatMarkdown(trimmed.replace(/^###\s+/, ''))}</div>`);
+      } else if (/^##\s+/.test(trimmed)) {
+        out.push(`<div class="chat-md-h2">${renderInlineChatMarkdown(trimmed.replace(/^##\s+/, ''))}</div>`);
+      } else if (/^#\s+/.test(trimmed)) {
+        out.push(`<div class="chat-md-h1">${renderInlineChatMarkdown(trimmed.replace(/^#\s+/, ''))}</div>`);
+      } else if (/^>\s+/.test(trimmed)) {
+        out.push(`<div class="chat-md-quote">${renderInlineChatMarkdown(trimmed.replace(/^>\s+/, ''))}</div>`);
+      } else {
+        out.push(`<div class="chat-md-p">${renderInlineChatMarkdown(line)}</div>`);
+      }
     }
-    if (!line.trim()) {
-      out.push('<div class="chat-md-space"></div>');
-    } else if (/^<div class="chat-md-(h1|h2|h3|quote)">/.test(line) || line.startsWith('__CODE_BLOCK_')) {
-      out.push(line);
-    } else {
-      out.push(`<div class="chat-md-p">${line}</div>`);
-    }
+
+    closeList();
   }
-  if (inList) {out.push('</ul>');}
-  html = out.join('');
-  fenced.forEach((block, index) => {
-    html = html.replace(`__CODE_BLOCK_${index}__`, block);
-  });
-  return html;
+
+  return out.join('');
 }
 
 function renderMarkdownHighlight(text, filePath = '') {
