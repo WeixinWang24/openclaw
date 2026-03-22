@@ -1593,6 +1593,8 @@ function applyClaudeStateData(data) {
   const prevRunning = claude.running;
   const prevExitCode = claude.exitCode;
   const prevSessionId = claude.sessionId;
+  const prevOutputStart = Number.isFinite(claude.outputStart) ? claude.outputStart : 0;
+  const prevOutputSize = Number.isFinite(claude.outputSize) ? claude.outputSize : 0;
   claude.sessionId = data.sessionId || 'claude-default';
   claude.cwd = data.cwd || claude.cwd;
   claude.status = data.status || (data.running ? 'running' : 'idle');
@@ -1601,12 +1603,20 @@ function applyClaudeStateData(data) {
   claude.exited = !!data.exited;
   claude.exitCode = data.exitCode ?? null;
   claude.outputTruncated = !!data.outputTruncated;
+  claude.outputStart = Number.isFinite(data.outputStart) ? data.outputStart : 0;
+  claude.outputSize = Number.isFinite(data.outputSize) ? data.outputSize : 0;
   const nextOutput = data.output || '';
-  if (!nextOutput.startsWith(prevOutput)) {resetClaudeTerminalOutput();}
+  const tailWindowShifted = claude.outputStart !== prevOutputStart;
+  const logRewound = claude.outputSize < prevOutputSize;
+  const sessionChanged = claude.sessionId !== prevSessionId;
+  if (sessionChanged || logRewound || tailWindowShifted || !nextOutput.startsWith(prevOutput)) {resetClaudeTerminalOutput();}
   claude.output = nextOutput;
   claude.error = '';
   const chromeChanged = prevStatus !== claude.status || prevRunning !== claude.running || prevExitCode !== claude.exitCode || prevSessionId !== claude.sessionId;
-  if (chromeChanged) {renderClaudeChrome();}
+  if (chromeChanged) {
+    renderClaudeChrome();
+    renderClaudeComposer();
+  }
   if (nextOutput !== prevOutput) {syncClaudeTerminalOutput();}
   if (claude.running) {ensureClaudePolling();}
   else {stopClaudePolling();}

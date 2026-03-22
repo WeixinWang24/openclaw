@@ -64,12 +64,12 @@ function readLogTail(logPath, maxBytes = LOG_TAIL_BYTES) {
       const length = size - start;
       const buffer = Buffer.alloc(length);
       fs.readSync(fd, buffer, 0, length, start);
-      return { text: buffer.toString('utf8'), truncated };
+      return { text: buffer.toString('utf8'), truncated, start, size };
     } finally {
       fs.closeSync(fd);
     }
   } catch {
-    return { text: '', truncated: false };
+    return { text: '', truncated: false, start: 0, size: 0 };
   }
 }
 
