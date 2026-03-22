@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
@@ -16,7 +17,7 @@ export async function readJsonIfExists(filePath) {
 
 export async function writeJsonAtomic(filePath, value) {
   const dir = path.dirname(filePath);
-  const tmp = path.join(dir, `.${path.basename(filePath)}.${Date.now()}.tmp`);
+  const tmp = path.join(dir, `.${path.basename(filePath)}.${Date.now()}.${crypto.randomUUID()}.tmp`);
   await ensureDir(dir);
   await fs.writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
   await fs.rename(tmp, filePath);

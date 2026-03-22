@@ -2,6 +2,7 @@
 // MVP: single current-task model. No persistence yet.
 
 import { createTaskSnapshot, createTaskEvent } from './types.mjs';
+import { persistTaskLifecycleSnapshotBestEffort } from './viostateBridge.mjs';
 
 let currentTask = null;
 let events = [];
@@ -31,6 +32,7 @@ export function setCurrentTask(taskOrOverrides) {
     currentTask.promptSummary || currentTask.title,
     { phase: currentTask.phase },
   ));
+  persistTaskLifecycleSnapshotBestEffort(currentTask, { reason: 'task-started' });
   return currentTask;
 }
 
@@ -100,6 +102,7 @@ export function markFinishedByClaude(message = 'Claude finished execution') {
     message,
     { completionSeenAt: now },
   ));
+  persistTaskLifecycleSnapshotBestEffort(currentTask, { reason: 'finished', message });
   return currentTask;
 }
 
@@ -121,6 +124,7 @@ export function startReview() {
     'Vio started reviewing the completed work',
     { completionAcknowledgedAt: now },
   ));
+  persistTaskLifecycleSnapshotBestEffort(currentTask, { reason: 'review-started' });
   return currentTask;
 }
 
@@ -138,6 +142,7 @@ export function acceptTask(message = 'Work accepted') {
     message,
     { acceptanceStatus: 'accepted' },
   ));
+  persistTaskLifecycleSnapshotBestEffort(currentTask, { reason: 'accepted', message });
   return currentTask;
 }
 
@@ -154,5 +159,6 @@ export function markNeedsFix(message = 'Changes needed') {
     message,
     { acceptanceStatus: 'needs-fix' },
   ));
+  persistTaskLifecycleSnapshotBestEffort(currentTask, { reason: 'needs-fix', message });
   return currentTask;
 }
