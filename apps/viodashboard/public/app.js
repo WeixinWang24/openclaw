@@ -254,7 +254,7 @@ async function toggleRunMode() {
 
 function shouldSuppressDebugLine(text = '') {
   const source = String(text || '');
-  const isHighFrequencySessionNoise = (
+  return (
     source.startsWith('loadSessionHistory cache ') ||
     source.startsWith('loadSessionHistory start ') ||
     source.startsWith('loadSessionHistory resolved ') ||
@@ -263,9 +263,6 @@ function shouldSuppressDebugLine(text = '') {
     source.startsWith('refreshSessionHistory seq=') ||
     source.startsWith('renderSessionMessages active=')
   );
-  if (!isHighFrequencySessionNoise) {return false;}
-  if (source.includes(`active=${selectedSessionKey || 'none'} target=${selectedSessionKey || 'none'}`)) {return false;}
-  return true;
 }
 
 function addDebugLine(text, tone = 'cyan') {
