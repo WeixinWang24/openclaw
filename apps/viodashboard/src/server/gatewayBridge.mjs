@@ -7,6 +7,12 @@ import { pathToFileURL } from 'node:url';
 const tokenSaverModule = await import(pathToFileURL(path.join(COMS_ROOT, 'token-saver.mjs')).href);
 const { TokenSaver, sanitizeVisibleText, hasRoadmapBlock, simulateTokenSaverView, buildPhaseOneCompressedPrompt } = tokenSaverModule;
 
+function stripVisibleHistoryText(text = '') {
+  return String(text || '')
+    .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+GMT[+-]\d+\]\s*/i, '')
+    .trim();
+}
+
 function looksLikeInternalWorkflowNoise(role, text = '') {
   if (role !== 'assistant') {return false;}
   const source = String(text || '').trim();
@@ -540,7 +546,7 @@ export class GatewayBridge {
       .map((message, index) => ({
         id: message?.id || `${sessionKey}:${index}`,
         role: message?.role || 'assistant',
-        text: sanitizeVisibleText(parseMessageText(message)),
+        text: stripVisibleHistoryText(sanitizeVisibleText(parseMessageText(message))),
         createdAt: message?.createdAt || message?.ts || null,
         raw: message,
       }))
