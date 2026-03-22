@@ -252,8 +252,24 @@ async function toggleRunMode() {
   window.setTimeout(tryPoll, 1200);
 }
 
+function shouldSuppressDebugLine(text = '') {
+  const source = String(text || '');
+  const isHighFrequencySessionNoise = (
+    source.startsWith('loadSessionHistory cache ') ||
+    source.startsWith('loadSessionHistory start ') ||
+    source.startsWith('loadSessionHistory resolved ') ||
+    source.startsWith('scheduleSessionRefresh ') ||
+    source.startsWith('sessionRefreshTimerFired ') ||
+    source.startsWith('refreshSessionHistory seq=')
+  );
+  if (!isHighFrequencySessionNoise) {return false;}
+  if (source.includes(`active=${selectedSessionKey || 'none'} target=${selectedSessionKey || 'none'}`)) {return false;}
+  return true;
+}
+
 function addDebugLine(text, tone = 'cyan') {
   if (!debugLogEl) {return;}
+  if (shouldSuppressDebugLine(text)) {return;}
   const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const el = document.createElement('div');
   el.className = `log-line ${tone}`.trim();
