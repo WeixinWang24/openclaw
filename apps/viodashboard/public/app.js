@@ -299,29 +299,23 @@ function formatContextSource(label, data, { staleLabel = false } = {}) {
 function renderContextTelemetry(msg = {}) {
   if (!contextDetailEl) {return;}
   const snapshot = msg.contextSnapshot || null;
-  const diagnostic = msg.diagnosticContext || null;
-  // Prefer diagnostic (real-time context.used/limit) as primary display
+  const diagnostic = msg.diagnosticContext || snapshot?.diagnosticContext || null;
   const parts = [];
   if (diagnostic) {
-    parts.push(formatContextSource('ctx', diagnostic));
+    parts.push(formatContextSource('ctx', diagnostic, { staleLabel: true }));
+  } else if (snapshot?.totalTokens != null && snapshot?.contextTokens != null) {
+    const used = Number(snapshot.totalTokens);
+    const limit = Number(snapshot.contextTokens);
+    const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 1000) / 10) : null;
+    parts.push(formatContextSource('ctx', { used, limit, pct, fresh: snapshot?.totalTokensFresh !== false }, { staleLabel: true }));
   }
-  // sessions.list totalTokens is cumulative, not live context — label accordingly
-  if (snapshot) {
-    const totalTokens = snapshot.totalTokens ?? snapshot.used;
-    const totalLabel = totalTokens != null && Number.isFinite(Number(totalTokens))
-      ? `cumulative: ${formatCompactTokens(Number(totalTokens))}`
-      : 'cumulative: n/a';
-    const limitLabel = snapshot.limit != null && Number.isFinite(Number(snapshot.limit)) && Number(snapshot.limit) > 0
-      ? ` / ${formatCompactTokens(Number(snapshot.limit))} window`
-      : '';
-    const stale = snapshot.fresh === false ? ' stale' : '';
-    parts.push(`${totalLabel}${limitLabel}${stale}`);
+  if (snapshot?.model) {
+    parts.push(snapshot.model);
   }
   if (!parts.length) {parts.push('ctx: n/a');}
   contextDetailEl.textContent = parts.join(' · ');
 
-  // Dot state based on diagnostic used (authoritative) or fallback to snapshot totalTokens
-  const usedForDot = diagnostic?.used ?? snapshot?.totalTokens ?? snapshot?.used ?? null;
+  const usedForDot = diagnostic?.used ?? snapshot?.totalTokens ?? null;
   const dotUsed = usedForDot != null ? Number(usedForDot) : null;
   const dotState = dotUsed == null || !Number.isFinite(dotUsed) ? 'safe' : dotUsed > 200_000 ? 'alert' : dotUsed >= 100_000 ? 'mid' : 'safe';
   applyDotState(contextDotEl, 'window', dotState);
@@ -2330,8 +2324,8 @@ function renderSessionsList() {
     else if (String(session.key || '').includes(':acp:')) {tags.push('acp');}
     if (session.model) {tags.push(session.model);}
     item.innerHTML = `
-      <div class="session-item-title">${escapeHtml(title)}</div>
-      <div class="session-item-meta">${escapeHtml(tags.join(' · ') || (session.kind || 'session'))}</div>
+      <span class="session-item-title">${escapeHtml(title)}</span>
+      <span class="session-item-meta">${escapeHtml(tags.join(' · ') || (session.kind || 'session'))}</span>
     `;
     item.title = session.key || title;
     item.addEventListener('click', () => {
@@ -2367,11 +2361,30 @@ async function loadSessionHistory(sessionKey, { force = false } = {}) {
   return messages;
 }
 
+async function refreshSelectedSessionContext(sessionKey) {
+  if (!sessionKey) {return;}
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/context`, { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok) {throw new Error(data?.error || 'session context fetch failed');}
+    renderContextTelemetry({
+      contextSnapshot: data?.contextSnapshot || null,
+      diagnosticContext: data?.diagnosticContext || null,
+    });
+  } catch (error) {
+    if (contextDetailEl) {contextDetailEl.textContent = `ctx: ${error?.message || error}`;}
+    applyDotState(contextDotEl, 'window', 'danger');
+  }
+}
+
 async function selectDashboardSession(sessionKey, { force = false } = {}) {
   if (!sessionKey) {return;}
   selectedSessionKey = sessionKey;
   renderSessionsList();
-  const messages = await loadSessionHistory(sessionKey, { force });
+  const [messages] = await Promise.all([
+    loadSessionHistory(sessionKey, { force }),
+    refreshSelectedSessionContext(sessionKey),
+  ]);
   renderSessionMessages(sessionKey, messages);
   if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
     addDebugLine(`Session selected: ${sessionKey}`, 'cyan');

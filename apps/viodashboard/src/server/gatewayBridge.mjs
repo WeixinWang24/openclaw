@@ -415,25 +415,35 @@ export class GatewayBridge {
     };
   }
 
-  async fetchSessionContextSnapshot() {
+  async fetchSessionContextSnapshot(sessionKey = this.sessionKey) {
     if (!this.connected) {throw new Error('gateway not connected');}
+    if (!sessionKey) {throw new Error('sessionKey is required');}
     const res = await gatewayCall('sessions.list', {
       includeGlobal: false,
       includeUnknown: false,
       limit: 200,
     });
     const sessions = Array.isArray(res?.sessions) ? res.sessions : [];
-    const row = sessions.find(session => session?.key === this.sessionKey) ?? null;
+    const row = sessions.find(session => session?.key === sessionKey) ?? null;
     if (!row) {return null;}
     const contextTokens = typeof row?.contextTokens === 'number' ? row.contextTokens
       : (typeof res?.defaults?.contextTokens === 'number' ? res.defaults.contextTokens : null);
+    const totalTokens = typeof row?.totalTokens === 'number' ? row.totalTokens : null;
     return {
       key: row.key,
-      totalTokens: typeof row?.totalTokens === 'number' ? row.totalTokens : null,
+      totalTokens,
       contextTokens,
       totalTokensFresh: row?.totalTokensFresh !== false,
       model: typeof row?.model === 'string' ? row.model : null,
       provider: typeof row?.modelProvider === 'string' ? row.modelProvider : null,
+      diagnosticContext: totalTokens != null && contextTokens != null && contextTokens > 0
+        ? {
+            used: totalTokens,
+            limit: contextTokens,
+            pct: Math.min(100, Math.round((totalTokens / contextTokens) * 1000) / 10),
+            fresh: row?.totalTokensFresh !== false,
+          }
+        : null,
     };
   }
 

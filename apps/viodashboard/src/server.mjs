@@ -698,6 +698,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const contextMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/context$/);
+  if (contextMatch && req.method === 'GET') {
+    const sessionKey = decodeURIComponent(contextMatch[1]);
+    bridge.fetchSessionContextSnapshot(sessionKey)
+      .then(snapshot => sendJson(res, 200, {
+        ok: true,
+        sessionKey,
+        contextSnapshot: snapshot,
+        diagnosticContext: snapshot?.diagnosticContext || null,
+      }))
+      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
+    return;
+  }
+
   const historyMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/history$/);
   if (historyMatch && req.method === 'GET') {
     const sessionKey = decodeURIComponent(historyMatch[1]);
