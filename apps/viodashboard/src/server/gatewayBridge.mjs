@@ -508,13 +508,15 @@ export class GatewayBridge {
       limit,
     });
     const messages = Array.isArray(res?.messages) ? res.messages : [];
-    return messages.map((message, index) => ({
-      id: message?.id || `${sessionKey}:${index}`,
-      role: message?.role || 'assistant',
-      text: sanitizeVisibleText(parseMessageText(message)),
-      createdAt: message?.createdAt || message?.ts || null,
-      raw: message,
-    }));
+    return messages
+      .map((message, index) => ({
+        id: message?.id || `${sessionKey}:${index}`,
+        role: message?.role || 'assistant',
+        text: sanitizeVisibleText(parseMessageText(message)),
+        createdAt: message?.createdAt || message?.ts || null,
+        raw: message,
+      }))
+      .filter(message => (message.role === 'user' || message.role === 'assistant') && String(message.text || '').trim());
   }
 
   async sendChatToSession(sessionKey, text) {
