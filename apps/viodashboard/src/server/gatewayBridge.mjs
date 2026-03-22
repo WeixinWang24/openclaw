@@ -511,7 +511,7 @@ export class GatewayBridge {
     return messages.map((message, index) => ({
       id: message?.id || `${sessionKey}:${index}`,
       role: message?.role || 'assistant',
-      text: parseMessageText(message),
+      text: sanitizeVisibleText(parseMessageText(message)),
       createdAt: message?.createdAt || message?.ts || null,
       raw: message,
     }));

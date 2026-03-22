@@ -33,13 +33,20 @@ function stripRoadmapProtocolLeak(text = '') {
     .trim();
 }
 
+function stripInboundMetadataEnvelope(text = '') {
+  let source = String(text || '');
+  source = source.replace(/^Sender \(untrusted metadata\):\s*```json\s*[\r\n]+[\s\S]*?[\r\n]+```\s*/i, '');
+  source = source.replace(/^Sender \(untrusted metadata\):\s*\{[\s\S]*?\}\s*(?=\n\s*\[[A-Z][a-z]{2}\s\d{4}-\d{2}-\d{2}|\n\s*\[[A-Z][a-z]{2}\s|\n\s*[^\s{])/i, '');
+  return source.trim();
+}
+
 function stripNoise(text = '') {
-  return cleanText(stripRoadmapProtocolLeak(stripRoadmapBlock(stripReplyTag(text))));
+  return cleanText(stripInboundMetadataEnvelope(stripRoadmapProtocolLeak(stripRoadmapBlock(stripReplyTag(text)))));
 }
 
 function truncate(text = '', limit = 1000) {
   const source = cleanText(text);
-  if (source.length <= limit) return source;
+  if (source.length <= limit) {return source;}
   const head = Math.max(200, Math.floor(limit * 0.7));
   const tail = Math.max(120, limit - head - 24);
   return `${source.slice(0, head).trim()}\n…\n${source.slice(-tail).trim()}`;
@@ -54,7 +61,7 @@ function summarizeTurns(turns = [], maxChars = 1200) {
   for (const turn of turns) {
     const role = turn.role === 'assistant' ? 'Assistant' : turn.role === 'tool' ? 'Tool' : 'User';
     const text = truncate(turn.text, 240);
-    if (!text) continue;
+    if (!text) {continue;}
     lines.push(`${role}: ${text}`);
   }
   return truncate(lines.join('\n'), maxChars);
@@ -65,7 +72,7 @@ function summarizeToolOutput(text = '', options = {}) {
   const maxToolChars = options.maxToolChars || DEFAULTS.maxToolChars;
   const maxToolHeadChars = options.maxToolHeadChars || DEFAULTS.maxToolHeadChars;
   const maxToolTailChars = options.maxToolTailChars || DEFAULTS.maxToolTailChars;
-  if (!source) return '';
+  if (!source) {return '';}
   const lines = source.split('\n');
   const nonEmpty = lines.filter(Boolean).length;
   const head = source.slice(0, maxToolHeadChars).trim();
@@ -75,8 +82,8 @@ function summarizeToolOutput(text = '', options = {}) {
   summaryBits.push(`nonEmpty=${nonEmpty}`);
   summaryBits.push(`chars=${source.length}`);
   let compact = `Tool output summary (${summaryBits.join(', ')}).`;
-  if (head) compact += `\nHead:\n${head}`;
-  if (tail && tail !== head) compact += `\nTail:\n${tail}`;
+  if (head) {compact += `\nHead:\n${head}`;}
+  if (tail && tail !== head) {compact += `\nTail:\n${tail}`;}
   return truncate(compact, maxToolChars);
 }
 
@@ -109,10 +116,10 @@ export class TokenSaver {
     const uncompressedStart = Math.max(0, this.turns.length - 5);
     for (let index = 0; index < this.turns.length; index += 1) {
       const turn = this.turns[index];
-      if (turn?.role !== 'tool' || turn?.kind !== 'tool') continue;
+      if (turn?.role !== 'tool' || turn?.kind !== 'tool') {continue;}
       const label = turn.toolLabel || 'tool';
       const rawBody = cleanText(turn.fullText || turn.text || '');
-      if (!rawBody) continue;
+      if (!rawBody) {continue;}
       const shouldCompress = this.rules.phase2ToolCompression && index < uncompressedStart;
       const nextBody = shouldCompress
         ? summarizeToolOutput(rawBody, this.options)
@@ -127,7 +134,7 @@ export class TokenSaver {
       console.warn('[token-saver] roadmap block reached assistant ingest; stripping before memory compaction.');
     }
     const normalized = stripNoise(text);
-    if (!normalized) return null;
+    if (!normalized) {return null;}
     const entry = {
       role,
       text: truncate(normalized, this.options.maxMessageChars),
@@ -174,10 +181,10 @@ export class TokenSaver {
 
   ingestTool(label, text, meta = {}) {
     const normalized = stripNoise(text);
-    if (!normalized) return null;
+    if (!normalized) {return null;}
     const safeLabel = label || 'tool';
     const body = truncate(normalized, this.options.maxMessageChars);
-    if (!body) return null;
+    if (!body) {return null;}
     this.stats.toolEvents += 1;
     return this.ingest('tool', `${safeLabel}\n${body}`, {
       ...meta,
@@ -189,10 +196,10 @@ export class TokenSaver {
 
   compact() {
     const maxTurns = Math.max(2, this.options.maxRecentTurns * 2);
-    if (this.turns.length <= maxTurns) return;
+    if (this.turns.length <= maxTurns) {return;}
     const overflow = this.turns.splice(0, this.turns.length - maxTurns);
     const merged = summarizeTurns(overflow, this.options.maxSummaryChars);
-    if (!merged) return;
+    if (!merged) {return;}
     this.summary = this.summary
       ? truncate(`${this.summary}\n${merged}`, this.options.maxSummaryChars)
       : merged;
@@ -202,7 +209,7 @@ export class TokenSaver {
     const current = stripNoise(currentUserText);
     const recentTurns = this.turns.slice(-Math.max(2, this.options.maxRecentTurns * 2));
     const filteredTurns = recentTurns.filter(turn => {
-      if (turn.role !== 'user') return true;
+      if (turn.role !== 'user') {return true;}
       return hashish(turn.text) !== hashish(current);
     });
     const recentText = filteredTurns
@@ -211,8 +218,8 @@ export class TokenSaver {
 
     const sections = [];
     sections.push('You are continuing an active wrapper conversation. Be concise and avoid repeating stale context.');
-    if (this.summary) sections.push(`Working summary:\n${truncate(this.summary, this.options.maxSummaryChars)}`);
-    if (recentText) sections.push(`Recent conversation:\n${truncate(recentText, Math.floor(this.options.maxCombinedChars * 0.6))}`);
+    if (this.summary) {sections.push(`Working summary:\n${truncate(this.summary, this.options.maxSummaryChars)}`);}
+    if (recentText) {sections.push(`Recent conversation:\n${truncate(recentText, Math.floor(this.options.maxCombinedChars * 0.6))}`);}
     sections.push(`Current user message:\n${truncate(current, Math.min(this.options.maxMessageChars, 800))}`);
     return truncate(sections.join('\n\n'), this.options.maxCombinedChars);
   }
@@ -323,15 +330,14 @@ export function simulateTokenSaverView(snapshot = {}, currentUserText = '', road
 export function buildPhaseOneCompressedPrompt(snapshot = {}, currentUserText = '', roadmapInstruction = '') {
   const rules = snapshot?.rules || {};
   const recentTurns = Array.isArray(snapshot?.memory?.recentTurns) ? snapshot.memory.recentTurns : [];
-  const current = cleanText(currentUserText);
   const recentText = recentTurns
     .map(turn => `${turn.role === 'assistant' ? 'Assistant' : turn.role === 'tool' ? 'Tool' : 'User'}: ${truncate(turn.text, 220)}`)
     .join('\n');
   const sections = [
     'You are continuing an active wrapper conversation. Be concise and avoid repeating stale context.',
   ];
-  if (rules.phase1Summary && snapshot?.memory?.summary) sections.push(`Working summary:\n${truncate(snapshot.memory.summary, DEFAULTS.maxSummaryChars)}`);
-  if (recentText) sections.push(`Recent conversation:\n${truncate(recentText, Math.floor(DEFAULTS.maxCombinedChars * 0.6))}`);
+  if (rules.phase1Summary && snapshot?.memory?.summary) {sections.push(`Working summary:\n${truncate(snapshot.memory.summary, DEFAULTS.maxSummaryChars)}`);}
+  if (recentText) {sections.push(`Recent conversation:\n${truncate(recentText, Math.floor(DEFAULTS.maxCombinedChars * 0.6))}`);}
   sections.push(cleanText(roadmapInstruction));
   return truncate(sections.filter(Boolean).join('\n\n'), Math.max(DEFAULTS.maxCombinedChars, 3200));
 }
