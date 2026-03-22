@@ -11,16 +11,28 @@ function looksLikeInternalWorkflowNoise(role, text = '') {
   if (role !== 'assistant') {return false;}
   const source = String(text || '').trim();
   if (!source) {return false;}
-  return (
+  const hasCommitOrLint = (
+    /\bFound 0 warnings and 0 errors\./.test(source) ||
+    /\bFinished in \d+ms on \d+ file/.test(source) ||
+    /\[main [0-9a-f]{7,}\]\s+(?:fix|docs|chore|refactor)\(/.test(source) ||
+    /^No files found matching the given patterns\.?$/m.test(source)
+  );
+  const hasPatchShape = (
     /^diff --git\s+/m.test(source) ||
     /^index [0-9a-f]{7,}\.[0-9a-f]{7,} /m.test(source) ||
     /^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m.test(source) ||
-    /\bFound 0 warnings and 0 errors\./.test(source) ||
-    /\bFinished in \d+ms on \d+ file/.test(source) ||
-    /\[main [0-9a-f]{7,}\]\s+fix\(/.test(source) ||
-    /\[main [0-9a-f]{7,}\]\s+docs\(/.test(source) ||
-    /^No files found matching the given patterns\.?$/m.test(source)
+    /^\+\s*\.filter\(/m.test(source) ||
+    /^\+\s*\.map\(/m.test(source) ||
+    /^\+\s*\.filter\(message =>/m.test(source) ||
+    /^\}\)\);?$/m.test(source) ||
+    /^async sendChatToSession\(/m.test(source)
   );
+  const hasWorkflowNarration = (
+    /这版够保守，可以先提交给你直接 reload 验证/i.test(source) ||
+    /这个方向够明确，我直接提交/i.test(source) ||
+    /我已经把这刀落了/i.test(source)
+  );
+  return hasCommitOrLint || (hasPatchShape && (hasWorkflowNarration || hasCommitOrLint || source.split('\n').length >= 4));
 }
 import { onUserPrompt } from '../moodBridge.mjs';
 
