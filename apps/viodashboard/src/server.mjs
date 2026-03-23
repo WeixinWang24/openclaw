@@ -271,6 +271,7 @@ function choosePersistedRoadmap(nextRoadmap, previousRoadmap) {
 }
 
 const clients = new Set();
+const wsBroadcastTail = [];
 const seenFinalRunIds = new Set();
 const activeRunSeq = new Map();
 let runSequence = 0;
@@ -369,6 +370,17 @@ function buildMoodPacket(mode, extra = {}) {
 }
 
 function broadcast(packet) {
+  try {
+    wsBroadcastTail.push({
+      ts: new Date().toISOString(),
+      type: packet?.type || null,
+      sessionKey: packet?.sessionKey || packet?.event?.sessionKey || null,
+      reason: packet?.reason || null,
+      runId: packet?.runId || packet?.event?.runId || null,
+      state: packet?.state || packet?.event?.state || null,
+    });
+    if (wsBroadcastTail.length > 200) {wsBroadcastTail.splice(0, wsBroadcastTail.length - 200);}
+  } catch {}
   const data = JSON.stringify(packet);
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) {ws.send(data);}
@@ -400,6 +412,10 @@ if (startupRecovery.recovered.length || startupRecovery.warnings.length) {
 
 const bridge = new GatewayBridge({
   onStatus: payload => broadcast({ type: 'status', ...payload }),
+  onSessionUpdated: payload => {
+    console.log('[wrapper] session.updated', JSON.stringify(payload));
+    broadcast({ type: 'session.updated', ...payload });
+  },
   onDiagnosticEvent: event => {
     const used = typeof event?.context?.used === 'number' ? event.context.used : null;
     const limit = typeof event?.context?.limit === 'number' ? event.context.limit : null;
@@ -730,7 +746,7 @@ const server = http.createServer((req, res) => {
     const sessionKey = decodeURIComponent(sendMatch[1]);
     readJsonRequest(req)
       .then(payload => bridge.sendChatToSession(sessionKey, String(payload?.text || '')))
-      .then(result => sendJson(res, 200, { ok: true, ...result }))
+      .then(result => sendJson(res, 200, { ok: true, ...result, sessionUpdatedDebug: bridge.lastSessionUpdated || null }))
       .catch(error => sendJson(res, 400, { ok: false, error: error?.message || String(error) }));
     return;
   }
@@ -1058,12 +1074,18 @@ const server = http.createServer((req, res) => {
 
   if (requestUrl.pathname === '/api/context/compact' && req.method === 'POST') {
     readJsonRequest(req)
-      .then(async () => {
-        const result = await bridge.compactSession();
-        broadcast({ type: 'context.compacted', result });
-        sendJson(res, 200, { ok: true, result });
+      .then(async payload => {
+        const sessionKey = typeof payload?.sessionKey === 'string' ? payload.sessionKey : bridge.sessionKey;
+        const result = await bridge.compactSession(sessionKey);
+        broadcast({ type: 'context.compacted', sessionKey, result });
+        sendJson(res, 200, { ok: true, sessionKey, result });
       })
       .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/debug/ws-tail' && req.method === 'GET') {
+    sendJson(res, 200, { ok: true, items: wsBroadcastTail.slice(-100) });
     return;
   }
 

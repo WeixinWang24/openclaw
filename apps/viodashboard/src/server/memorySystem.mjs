@@ -24,13 +24,20 @@ function summarizeJsonContent(raw, fallbackTitle) {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed?.rules)) {
       const rules = parsed.rules;
+      const roadmapRule = rules.find(rule => String(rule?.rule_id || '') === 'WF-011'
+        || /roadmap\.md/i.test(String(rule?.title || ''))
+        || /roadmap\.md/i.test(String(rule?.description || '')));
       const preview = rules.slice(0, 6).map(rule => {
         const id = rule?.rule_id ? `${rule.rule_id}: ` : '';
         return `${id}${rule?.title || rule?.description || 'untitled rule'}`;
       });
+      if (roadmapRule) {
+        const roadmapPreview = `${roadmapRule.rule_id ? `${roadmapRule.rule_id}: ` : ''}${roadmapRule.title || roadmapRule.description || 'roadmap.md maintenance rule'}`;
+        if (!preview.includes(roadmapPreview)) {preview.push(roadmapPreview);}
+      }
       return {
         title: parsed?.schema?.description || fallbackTitle,
-        summary: `JSON guideline set with ${rules.length} rules.`,
+        summary: `JSON guideline set with ${rules.length} rules.${roadmapRule ? ' Includes a rule requiring roadmap.md maintenance at the project root.' : ''}`,
         preview,
         parsed,
       };

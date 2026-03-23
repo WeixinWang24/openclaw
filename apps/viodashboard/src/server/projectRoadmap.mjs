@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DASHBOARD_APP_ROOT, PROJECT_ROOT } from '../config.mjs';
+import { execFileSync } from 'node:child_process';
+import { DASHBOARD_APP_ROOT, DEFAULT_CLAUDE_CWD, PROJECT_ROOT } from '../config.mjs';
 import { safeProjectPath } from './filesystem.mjs';
 
 const ROADMAP_FILE_NAME = 'roadmap.md';
@@ -13,11 +14,45 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function tryGitTopLevel(startDir) {
+  try {
+    const out = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: startDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+function tryGitChangedFiles(projectRoot) {
+  try {
+    const out = execFileSync('git', ['status', '--short'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return String(out || '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .slice(0, 50)
+      .map(line => line.replace(/^.{1,3}\s+/, '').trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export function resolveProjectRoot(projectRoot = null) {
   const candidate = typeof projectRoot === 'string' && projectRoot.trim()
     ? projectRoot.trim()
-    : DASHBOARD_APP_ROOT;
-  return safeProjectPath(candidate);
+    : DEFAULT_CLAUDE_CWD || DASHBOARD_APP_ROOT;
+  const safeCandidate = safeProjectPath(candidate);
+  const gitRoot = tryGitTopLevel(safeCandidate);
+  return gitRoot ? safeProjectPath(gitRoot) : safeCandidate;
 }
 
 export function getProjectRoadmapPath(projectRoot = null) {
@@ -117,24 +152,27 @@ export function ensureProjectRoadmap({ projectRoot = null, title = null, context
   };
 }
 
-export function appendProjectRoadmapEntry({ projectRoot = null, roadmap = null, replyBody = '', changedFiles = [], notes = '' } = {}) {
+export function appendProjectRoadmapEntry({ projectRoot = null, roadmap = null, replyBody = '', changedFiles = [], notes = '', taskState = null } = {}) {
   const ensured = ensureProjectRoadmap({ projectRoot });
   const roadmapPath = ensured.roadmapPath;
   const timestamp = nowIso();
   const existing = fs.readFileSync(roadmapPath, 'utf8');
   const roadmapItems = summarizeRoadmapItems(roadmap?.items || []);
+  const inferredChangedFiles = Array.isArray(changedFiles) && changedFiles.length ? changedFiles : tryGitChangedFiles(ensured.projectRoot);
   const replyPreview = String(replyBody || '').trim().replace(/\s+/g, ' ').slice(0, 280);
 
   const implementedLines = [
     `- ${timestamp} — Updated project state after a development/review turn.`,
     ...(roadmapItems.length ? roadmapItems.map(item => `  - ${item}`) : []),
-    ...(changedFiles.length ? changedFiles.map(file => `  - changed: ${file}`) : []),
+    ...(inferredChangedFiles.length ? inferredChangedFiles.map(file => `  - changed: ${file}`) : []),
   ].join('\n');
 
   let next = appendImplementedEntry(existing, `${implementedLines}\n`);
 
   const currentStateLines = normalizeBulletLines([
     roadmapItems[0] ? `Current focus: ${roadmapItems[0]}` : 'Current focus: infer from latest implementation turn',
+    taskState?.phase ? `Current phase: ${taskState.phase}` : null,
+    taskState?.blockers ? `Blockers: ${taskState.blockers}` : null,
     notes ? `Latest state note: ${String(notes).trim()}` : null,
     replyPreview ? `Latest reply signal: ${replyPreview}` : null,
   ].filter(Boolean));
@@ -148,8 +186,10 @@ export function appendProjectRoadmapEntry({ projectRoot = null, roadmap = null, 
   next = upsertSection(next, 'Next Steps', nextStepsLines);
 
   const recoveryNotesLines = normalizeBulletLines([
-    `Resume from: ${ensured.roadmapPathRel}`,
+    `Resume from: ${path.basename(ensured.roadmapPath)}`,
+    `Project root: ${ensured.projectRoot}`,
     `Key files to read first: ${['roadmap.md', 'src/server.mjs', 'src/server/projectRoadmap.mjs'].join(', ')}`,
+    `Recent changed files: ${inferredChangedFiles.length ? inferredChangedFiles.slice(0, 8).join(', ') : 'none detected'}`,
     'Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.',
   ]);
   next = upsertSection(next, 'Recovery Notes', recoveryNotesLines);
@@ -165,5 +205,6 @@ export function appendProjectRoadmapEntry({ projectRoot = null, roadmap = null, 
     roadmapPathRel: ensured.roadmapPathRel,
     appendedAt: timestamp,
     itemCount: roadmapItems.length,
+    changedFiles: inferredChangedFiles,
   };
 }

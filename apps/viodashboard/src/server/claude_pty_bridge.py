@@ -6,10 +6,14 @@ import pty
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
 from typing import Optional
+
+DEFAULT_ROWS = 40
+DEFAULT_COLS = 120
 
 
 def usage() -> int:
@@ -119,18 +123,32 @@ def main() -> int:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
 
-    pid, master_fd = pty.fork()
-    if pid == 0:
-        os.chdir(cwd)
-        env = os.environ.copy()
-        env.setdefault('TERM', 'xterm-256color')
-        env.setdefault('COLORTERM', 'truecolor')
-        os.execvpe(command[0], command, env)
-        return 127
+    master_fd, slave_fd = pty.openpty()
+    try:
+        fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack('HHHH', DEFAULT_ROWS, DEFAULT_COLS, 0, 0))
+    except OSError:
+        pass
 
-    state.child_pid = pid
+    env = os.environ.copy()
+    env.setdefault('TERM', 'xterm-256color')
+    env.setdefault('COLORTERM', 'truecolor')
+    env.setdefault('LINES', str(DEFAULT_ROWS))
+    env.setdefault('COLUMNS', str(DEFAULT_COLS))
+
+    child = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+
+    state.child_pid = child.pid
     state.master_fd = master_fd
-    state.append_log(f"[bridge] started pid={os.getpid()} child={pid} cwd={cwd}\n")
+    state.append_log(f"[bridge] started pid={os.getpid()} child={child.pid} cwd={cwd}\n")
     state.write_status('running')
 
     fifo_fd = None
@@ -179,18 +197,10 @@ def main() -> int:
                     pass
 
             if not state.child_exited:
-                try:
-                    waited_pid, status = os.waitpid(pid, os.WNOHANG)
-                except ChildProcessError:
-                    waited_pid, status = pid, 0
-                if waited_pid == pid:
+                child_returncode = child.poll()
+                if child_returncode is not None:
                     state.child_exited = True
-                    if os.WIFEXITED(status):
-                        state.child_exit_code = os.WEXITSTATUS(status)
-                    elif os.WIFSIGNALED(status):
-                        state.child_exit_code = 128 + os.WTERMSIG(status)
-                    else:
-                        state.child_exit_code = 1
+                    state.child_exit_code = child_returncode
                     break
 
         exit_code = state.child_exit_code if state.child_exit_code is not None else 0

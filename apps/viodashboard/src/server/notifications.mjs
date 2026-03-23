@@ -1,16 +1,17 @@
 // Centralized macOS notification system with configurable preferences
-// and click-through support.
+// and notification preference support.
 //
 // Notification categories:
 //   claude-needs-input  — Claude is waiting for user decision in terminal
 //   assistant-final     — Vio/assistant sent a final reply
 //   task-finished       — Claude task completed / handoff ready
+//   auto-open-dashboard — optional fallback that opens the dashboard alongside a notification
 //
 // Click-through: osascript `display notification` does not natively support
-// click-to-open-URL. We use AppleScript `open location` in a do-shell-script
-// fallback after display, which opens the dashboard URL immediately alongside
-// the notification. For true click-to-act, terminal-notifier or a native
-// helper would be required (not currently installed).
+// click-to-open-URL. We therefore keep true click-through disabled. The only
+// available fallback here is an opt-in immediate `open location`, which is off
+// by default because it is disruptive. For true click-to-act, terminal-notifier
+// or a native helper would be required (not currently installed).
 
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,6 +28,7 @@ const DEFAULT_PREFS = {
   'claude-needs-input': true,
   'assistant-final': true,
   'task-finished': true,
+  'auto-open-dashboard': false,
 };
 
 let cachedPrefs = null;
@@ -91,11 +93,11 @@ export function sendNotification({ title, message, category, clickUrl }) {
   const safeMessage = String(message).replace(/"/g, '\\"');
 
   // Build the AppleScript. `display notification` fires the banner.
-  // If clickUrl is provided, we also `open location` so the user's browser
-  // navigates to the dashboard page. This happens immediately — osascript's
-  // display notification has no on-click callback.
+  // By default we do NOT auto-open the dashboard; that behavior is opt-in
+  // because opening pages immediately is disruptive. AppleScript notifications
+  // still have no true on-click callback.
   let script = `display notification "${safeMessage}" with title "${safeTitle}"`;
-  if (clickUrl) {
+  if (clickUrl && prefs['auto-open-dashboard']) {
     const safeUrl = String(clickUrl).replace(/"/g, '\\"');
     script += `\ndelay 0.1\ndo shell script "open '${safeUrl.replace(/'/g, "'\\''")}'"\n`;
   }
