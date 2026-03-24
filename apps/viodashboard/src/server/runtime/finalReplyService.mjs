@@ -74,7 +74,15 @@ export function createFinalReplyService({
       return { suppressed: true, preview, replyBody };
     }
 
-    const result = await sideEffects.onAssistantFinal(replyBody || '');
+    let result = null;
+    let sidecarFinalError = null;
+    try {
+      result = await sideEffects.onAssistantFinal(replyBody || '');
+    } catch (error) {
+      sidecarFinalError = error;
+      console.log('[wrapper] sidecar final bridge failed', error?.message || String(error));
+    }
+
     if (event.runId && event.runId !== state.lastAssistantFinalNotifiedRunIdRef.get()) {
       state.lastAssistantFinalNotifiedRunIdRef.set(event.runId);
       sideEffects.notifyAssistantFinal({
@@ -83,22 +91,38 @@ export function createFinalReplyService({
         dashboardPort: wrapperPort,
       });
     }
+
+    const fallbackMode = state.activeRunSeq.size > 0 ? 'thinking' : 'idle';
+    const finalMode = result?.mode ?? fallbackMode;
+    const finalState = result?.state ?? getRuntimeState().bodyState ?? null;
+    const sidecarFinalErrorDetail = sidecarFinalError?.message || 'unknown sidecar final sync error';
+    const finalDetail = sidecarFinalError
+      ? `final length=${replyBody.length} · sidecar sync failed: ${sidecarFinalErrorDetail}`
+      : `final length=${replyBody.length}`;
+
+    syncRuntimeState({
+      mood: finalMode,
+      phase: 'final',
+      activeRunId: state.activeRunSeq.size ? getRuntimeState().activeRunId : null,
+      bodyState: finalState,
+      source: sidecarFinalError ? 'chat-final-sidecar-error' : 'chat-final',
+    });
     routing.setLastRouting({
-      mode: result?.mode ?? 'unknown',
-      detail: `final length=${replyBody.length}`,
+      mode: finalMode,
+      detail: finalDetail,
       preview,
       phase: 'final',
       runId: event.runId,
     });
-    broadcast(buildMoodPacket(result?.mode ?? 'unknown', {
-      state: result?.state ?? null,
+    broadcast(buildMoodPacket(finalMode, {
+      state: finalState,
       detail: routing.getLastRouting().detail,
       preview,
       phase: 'final',
       runId: event.runId,
-      source: 'chat-final',
+      source: sidecarFinalError ? 'chat-final-sidecar-error' : 'chat-final',
     }));
-    return { suppressed: false, preview, replyBody, result };
+    return { suppressed: false, preview, replyBody, result, sidecarFinalError };
   }
 
   return {

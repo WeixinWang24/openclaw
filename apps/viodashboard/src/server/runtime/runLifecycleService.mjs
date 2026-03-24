@@ -93,11 +93,11 @@ export function createRunLifecycleService({
   }
 
   function handleFinalFailure(event, error) {
-    routing.setLastRouting({ mode: 'error', detail: error?.message || String(error), phase: 'final', runId: event.runId });
-    console.log('[wrapper] sidecar final routing failed', error?.message || String(error));
+    routing.setLastRouting({ mode: 'error', detail: error?.message || String(error), phase: 'final-handler', runId: event.runId });
+    console.log('[wrapper] final handler failed before completion broadcast', error?.message || String(error));
     broadcast(buildMoodPacket('error', {
       detail: routing.getLastRouting().detail,
-      phase: 'final',
+      phase: 'final-handler',
       runId: event.runId,
       source: 'chat-final-error',
     }));
