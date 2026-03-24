@@ -169,6 +169,7 @@ function parseExportAlias(source, symbolName) {
 
 async function loadGatewayCaller() {
   if (gatewayCallerPromise) {return gatewayCallerPromise;}
+  const loadStartedAt = Date.now();
   gatewayCallerPromise = (async () => {
     const candidates = [];
     try {
@@ -189,10 +190,12 @@ async function loadGatewayCaller() {
         const symbolName = candidate.type === 'gateway-rpc' ? 'callGatewayFromCli' : 'callGateway';
         const alias = parseExportAlias(source, symbolName);
         if (!alias) {continue;}
+        const importStartedAt = Date.now();
         const mod = await import(pathToFileURL(candidate.filePath).href);
+        const importDurationMs = Date.now() - importStartedAt;
         const fn = mod?.[alias];
         if (typeof fn !== 'function') {continue;}
-        console.log('[wrapper] resolved OpenClaw gateway helper', JSON.stringify({ source: path.basename(candidate.filePath), symbolName, alias }));
+        console.log('[wrapper] resolved OpenClaw gateway helper', JSON.stringify({ source: path.basename(candidate.filePath), symbolName, alias, importDurationMs, totalResolveDurationMs: Date.now() - loadStartedAt }));
         if (candidate.type === 'gateway-rpc') {
           return async ({ method, params, timeoutMs = 10000, expectFinal = false }) => await fn(method, {
             url: gatewayUrl,
@@ -222,7 +225,11 @@ async function loadGatewayCaller() {
   return gatewayCallerPromise;
 }
 
-async function gatewayCall(method, params, options = {}) {
+export async function warmGatewayCaller() {
+  await loadGatewayCaller();
+}
+
+export async function gatewayCall(method, params, options = {}) {
   const caller = await loadGatewayCaller();
   return await caller({
     method,
@@ -247,6 +254,7 @@ export class GatewayBridge {
     this.connectTimer = null;
     this.hello = null;
     this.connected = false;
+    // Legacy compatibility only. Canonical run tracking is moving into kernel/chatRuntime.
     this.chatRunId = null;
     this.gatewayRunId = null;
     this.sessionKey = 'agent:assistant:main';
@@ -259,6 +267,20 @@ export class GatewayBridge {
     };
     this.tokenSaver = new TokenSaver();
     this.tokenSaver.setRules(this.tokenSaverRules);
+    this.runtimeAdapters = {
+      rpcClient: null,
+      chatRuntime: null,
+      transcriptService: null,
+      chatProjection: null,
+      sessionRegistry: null,
+    };
+  }
+
+  setRuntimeAdapters(adapters = {}) {
+    this.runtimeAdapters = {
+      ...this.runtimeAdapters,
+      ...adapters,
+    };
   }
 
   connect() {
@@ -373,21 +395,13 @@ export class GatewayBridge {
         return;
       }
       if (msg.event === 'chat') {
+        this.runtimeAdapters.rpcClient?.emitRawEvent?.(msg);
         const payload = msg.payload;
         if (!payload) {return;}
         const state = payload.state;
         const runId = payload.runId;
         const eventSessionKey = payload?.sessionKey || msg?.sessionKey || payload?.session?.key || null;
         const isMainSessionEvent = !eventSessionKey || eventSessionKey === this.sessionKey;
-        if (isMainSessionEvent && runId && this.chatRunId && runId !== this.chatRunId) {
-          if (!this.gatewayRunId) {
-            this.gatewayRunId = runId;
-            console.log('[wrapper] adopting gateway runId', runId, 'for idempotencyKey', this.chatRunId);
-          } else if (runId !== this.gatewayRunId) {
-            console.log('[wrapper] ignoring unrelated chat event runId', runId, 'expected', this.gatewayRunId, 'idempotencyKey', this.chatRunId, 'sessionKey', eventSessionKey);
-            return;
-          }
-        }
         const rawText = parseMessageText(payload.message);
         const text = sanitizeVisibleText(rawText);
         const usage = extractUsage(payload);
@@ -502,7 +516,7 @@ export class GatewayBridge {
       limit,
     });
     const sessions = Array.isArray(res?.sessions) ? res.sessions : [];
-    return sessions
+    const items = sessions
       .map(session => ({
         key: session?.key || null,
         label: session?.label || null,
@@ -518,6 +532,8 @@ export class GatewayBridge {
         preview: typeof session?.lastMessageText === 'string' ? session.lastMessageText : null,
       }))
       .filter(session => !String(session?.key || '').includes(':acp:'));
+    this.runtimeAdapters.sessionRegistry?.replaceSessions?.(items);
+    return items;
   }
 
   emitSessionUpdated(sessionKey, reason, extra = {}) {
@@ -537,6 +553,9 @@ export class GatewayBridge {
   }
 
   async fetchSessionHistory(sessionKey, { limit = 40 } = {}) {
+    if (this.runtimeAdapters.transcriptService?.fetchHistory) {
+      return await this.runtimeAdapters.transcriptService.fetchHistory(sessionKey, { limit });
+    }
     if (!this.connected) {throw new Error('gateway not connected');}
     if (!sessionKey) {throw new Error('sessionKey is required');}
     const res = await gatewayCall('sessions.get', {
@@ -567,6 +586,15 @@ export class GatewayBridge {
   }
 
   async sendChatToSession(sessionKey, text) {
+    if (this.runtimeAdapters.chatRuntime?.send) {
+      const result = await this.runtimeAdapters.chatRuntime.send({
+        sessionKey,
+        message: sanitizeVisibleText(String(text ?? '')),
+        deliver: false,
+      });
+      this.emitSessionUpdated(sessionKey, 'send-accepted', { runId: result.runId });
+      return result;
+    }
     if (!this.connected) {throw new Error('gateway not connected');}
     if (!sessionKey) {throw new Error('sessionKey is required');}
     const message = sanitizeVisibleText(String(text ?? ''));
@@ -634,6 +662,16 @@ export class GatewayBridge {
 
   async sendChat(text) {
     console.log('[wrapper] bridge.sendChat enter', JSON.stringify({ connected: this.connected, textLength: String(text ?? '').length, preview: String(text ?? '').slice(0, 120) }));
+    if (this.runtimeAdapters.chatRuntime?.send) {
+      const result = await this.runtimeAdapters.chatRuntime.send({
+        sessionKey: this.sessionKey,
+        message: sanitizeVisibleText(String(text ?? '')),
+        deliver: false,
+      });
+      this.chatRunId = result.runId;
+      this.gatewayRunId = null;
+      return result.runId;
+    }
     if (!this.connected) {throw new Error('gateway not connected');}
     const idempotencyKey = randomId();
     if (hasRoadmapBlock(text)) {

@@ -18,7 +18,7 @@ import { listProjectFiles, readProjectFile, writeProjectFile, safeProjectPath } 
 import { getSafeEditState, performStartupRecovery, runSafeEditSmokeSummary } from './server/safeEdit.mjs';
 import { getCameraTelemetry, getGestureRuntimeState, runCameraCapture, runGestureCycle, runGesturePipeline, updateGestureWatcher } from './server/gesture.mjs';
 import { serveCameraAsset, servePublicFile } from './server/static.mjs';
-import { GatewayBridge, gatewayCall } from './server/gatewayBridge.mjs';
+import { GatewayBridge, gatewayCall, warmGatewayCaller } from './server/gatewayBridge.mjs';
 import { readJsonRequest } from './server/httpUtils.mjs';
 import { createKernelEventBus } from './server/kernel/kernelEventBus.mjs';
 import { createRuntimeDiagnostics } from './server/kernel/runtimeDiagnostics.mjs';
@@ -46,6 +46,13 @@ import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
 
+warmGatewayCaller()
+  .then(() => {
+    console.log('[wrapper] gateway helper prewarmed');
+  })
+  .catch(error => {
+    console.warn('[wrapper] gateway helper prewarm failed', error?.message || String(error));
+  });
 
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
