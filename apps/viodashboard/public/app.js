@@ -135,7 +135,6 @@ const LAST_ASSISTANT_REPLY_BY_SESSION_KEY = 'vio-wrapper-last-assistant-reply-by
 let ws;
 let streamingEl = null;
 let streamingRunId = null;
-const renderedFinalRunIds = new Set();
 let activeRunId = null;
 let activeRunState = 'idle';
 const abortedRunIds = new Set();
@@ -493,110 +492,6 @@ function ignoreAbortedRunEvent(event) {
     return true;
   }
   return false;
-}
-
-function applyChatEventToActiveRun(event) {
-  if (event.state === 'delta') {
-    lastStreamEventAt = Date.now();
-    mainSessionStreamBuffer.runId = event.runId || mainSessionStreamBuffer.runId || null;
-    mainSessionStreamBuffer.text = event.text || mainSessionStreamBuffer.text || '';
-    if (event.runId && (!activeRunId || activeRunId !== event.runId)) {
-      resetStoppedUiForNewRun();
-      activeRunId = event.runId;
-      activeRunState = 'streaming';
-      registerChatRun(event.runId);
-      syncStopButton();
-    }
-    try {
-      setMood('streaming', 'Assistant is streaming live.');
-    } catch (error) {
-      addDebugLine(`chat delta setMood failed: ${error?.message || error}`, 'pink');
-    }
-    try {
-      const target = ensureStreamingMessageEl(event.runId || activeRunId || null, event.text || '');
-      target.textContent = event.text || target.textContent;
-    } catch (error) {
-      addDebugLine(`chat delta render failed: ${error?.message || error}`, 'pink');
-    }
-  } else if (event.state === 'final') {
-    lastStreamEventAt = Date.now();
-    addDebugLine(`Final event run check: active=${String(activeRunId || '').slice(0, 8)} event=${String(event.runId || '').slice(0, 8)}`, 'cyan');
-    const finalText = stripRoadmapBlockForDisplay(event.text || '');
-    if (!String(finalText || '').trim()) {
-      addDebugLine('Ignored empty final event.', 'pink');
-      return;
-    }
-    if (event.runId && renderedFinalRunIds.has(event.runId)) {
-      addDebugLine(`Ignored duplicate final for run ${String(event.runId).slice(0, 8)}.`, 'pink');
-      return;
-    }
-    if (event.runId) {
-      renderedFinalRunIds.add(event.runId);
-      if (renderedFinalRunIds.size > 200) {renderedFinalRunIds.clear();}
-    }
-    try {
-      finalizeStreamingMessage(event.runId || activeRunId || null, finalText);
-    } catch (error) {
-      addDebugLine(`chat final render failed: ${error?.message || error}`, 'pink');
-    }
-    try {
-      persistLatestAssistantReply(finalText, { runId: event.runId, aborted: false, sessionKey: gatewayMainSessionKey || selectedSessionKey || null });
-      addDebugLine(`Latest reply updated for run ${String(event.runId || '').slice(0, 8)}`, 'cyan');
-    } catch (error) {
-      addDebugLine(`chat final persist failed: ${error?.message || error}`, 'pink');
-    }
-    if (event.runId) {updateChatRunStatus(event.runId, 'completed');}
-    if (!activeRunId || !event.runId || event.runId === activeRunId) {
-      forceFinalizeFrontState('final-event');
-    } else {
-      addDebugLine(`Final run mismatch: active=${String(activeRunId).slice(0, 8)} event=${String(event.runId).slice(0, 8)}`, 'pink');
-      forceFinalizeFrontState('final-run-mismatch');
-    }
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    addDebugLine(`Final reply received (${finalText.length || 0} chars).`, 'cyan');
-  } else if (event.state === 'error') {
-    if (!isMainSessionView()) {
-      addDebugLine(`Ignored main-session chat error render while viewing ${selectedSessionKey || 'none'}`, 'pink');
-      return;
-    }
-    try {
-      addMessage('assistant', `Chat error: ${event.payload?.errorMessage || 'unknown error'}`);
-    } catch (error) {
-      addDebugLine(`chat error render failed: ${error?.message || error}`, 'pink');
-    }
-    if (event.runId) {updateChatRunStatus(event.runId, 'failed');}
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    activeRunState = 'final';
-    activeRunId = null;
-    streamingEl = null;
-    streamingRunId = null;
-    syncStopButton();
-    syncContinueButton();
-    addDebugLine(`Chat error: ${event.payload?.errorMessage || 'unknown error'}`, 'pink');
-  } else if (event.state === 'aborted') {
-    if (!isMainSessionView()) {
-      addDebugLine(`Ignored main-session chat aborted render while viewing ${selectedSessionKey || 'none'}`, 'pink');
-      return;
-    }
-    try {
-      addMessage('assistant', '(aborted)');
-    } catch (error) {
-      addDebugLine(`chat aborted render failed: ${error?.message || error}`, 'pink');
-    }
-    if (event.runId) {updateChatRunStatus(event.runId, 'aborted');}
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    activeRunState = 'aborted';
-    activeRunId = null;
-    streamingEl = null;
-    streamingRunId = null;
-    markLatestAssistantReplyAborted(event.runId || null, gatewayMainSessionKey || selectedSessionKey || null);
-    syncStopButton();
-    syncContinueButton();
-    addDebugLine('Chat run aborted.', 'pink');
-  }
 }
 
 function loadPrefs() {
@@ -2618,115 +2513,6 @@ function applyProjectionTranscriptPacket(msg = {}) {
   }
 }
 
-function applyChatEventToSessionHistory(sessionKey, event = {}) {
-  if (!sessionKey) {return;}
-  const runState = getSessionRunState(sessionKey);
-  if (event.state === 'delta') {
-    runState.runId = event.runId || runState.runId || null;
-    runState.streamText = event.text || runState.streamText || '';
-    runState.state = 'streaming';
-    if (selectedSessionKey === sessionKey) {
-      const target = ensureStreamingMessageEl(runState.runId, runState.streamText);
-      target.textContent = runState.streamText;
-    }
-    return;
-  }
-  if (event.state === 'final') {
-    const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
-    if (finalText) {
-      appendSessionMessage(sessionKey, {
-        id: event.runId || `final-${Date.now()}`,
-        runId: event.runId || null,
-        role: 'assistant',
-        text: finalText,
-      });
-      persistLatestAssistantReply(finalText, { runId: event.runId, aborted: false, sessionKey });
-    }
-    runState.runId = null;
-    runState.streamText = '';
-    runState.state = 'final';
-    if (selectedSessionKey === sessionKey) {
-      finalizeStreamingMessage(event.runId || null, finalText);
-    }
-    return;
-  }
-  if (event.state === 'aborted') {
-    const abortedText = String(event.text || runState.streamText || '').trim();
-    if (abortedText) {
-      appendSessionMessage(sessionKey, {
-        id: event.runId || `aborted-${Date.now()}`,
-        runId: event.runId || null,
-        role: 'assistant',
-        text: abortedText,
-      });
-    }
-    runState.runId = null;
-    runState.streamText = '';
-    runState.state = 'aborted';
-    if (selectedSessionKey === sessionKey) {
-      finalizeStreamingMessage(event.runId || null, abortedText);
-    }
-    return;
-  }
-  if (event.state === 'error') {
-    runState.runId = null;
-    runState.streamText = '';
-    runState.state = 'error';
-  }
-}
-
-function finalizeMainSessionBackgroundState(event = {}) {
-  const state = String(event?.state || '');
-  const runId = event?.runId || activeRunId || null;
-  if (state === 'final') {
-    const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
-    if (finalText) {
-      try {
-        persistLatestAssistantReply(finalText, { runId, aborted: false, sessionKey: gatewayMainSessionKey || null });
-      } catch (error) {
-        addDebugLine(`background final persist failed: ${error?.message || error}`, 'pink');
-      }
-    }
-    if (runId) {updateChatRunStatus(runId, 'completed');}
-    activeRunState = 'final';
-    activeRunId = null;
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    streamingEl = null;
-    streamingRunId = null;
-    lastStreamEventAt = 0;
-    syncStopButton();
-    syncContinueButton();
-    return;
-  }
-  if (state === 'error') {
-    if (runId) {updateChatRunStatus(runId, 'failed');}
-    activeRunState = 'final';
-    activeRunId = null;
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    streamingEl = null;
-    streamingRunId = null;
-    lastStreamEventAt = 0;
-    syncStopButton();
-    syncContinueButton();
-    return;
-  }
-  if (state === 'aborted') {
-    if (runId) {updateChatRunStatus(runId, 'aborted');}
-    markLatestAssistantReplyAborted(runId, gatewayMainSessionKey || null);
-    activeRunState = 'aborted';
-    activeRunId = null;
-    mainSessionStreamBuffer.runId = null;
-    mainSessionStreamBuffer.text = '';
-    streamingEl = null;
-    streamingRunId = null;
-    lastStreamEventAt = 0;
-    syncStopButton();
-    syncContinueButton();
-  }
-}
-
 function syncMainSessionBufferedStream() {
   if (!isMainSessionView()) {return;}
   if (activeRunState !== 'streaming') {return;}
@@ -2827,22 +2613,6 @@ function ensureStreamingMessageEl(runId = null, text = '') {
   streamingEl = el;
   streamingRunId = runId || null;
   return el;
-}
-
-function finalizeStreamingMessage(runId = null, finalText = '') {
-  const target = getStreamingMessageEl(runId);
-  if (target) {
-    target.innerHTML = renderChatMarkdown(finalText);
-    target.classList.remove('stream');
-    const row = target.closest('.msg-row');
-    if (row) {row.dataset.messageRole = 'final';}
-  } else {
-    addMessage('assistant', finalText, '', { runId, messageRole: 'final' });
-  }
-  if (!runId || streamingRunId === runId) {
-    streamingEl = null;
-    streamingRunId = null;
-  }
 }
 
 function sessionDisplayTitle(session = {}) {
@@ -3279,28 +3049,46 @@ function connect() {
       if (ignoreAbortedRunEvent(event)) {return;}
       const eventSessionKey = event?.sessionKey || gatewayMainSessionKey || null;
       if (!eventSessionKey) {return;}
-      if (eventSessionKey !== gatewayMainSessionKey) {
-        applyChatEventToSessionHistory(eventSessionKey, event);
-        if (event?.state === 'final' || event?.state === 'aborted' || event?.state === 'error') {
-          scheduleSessionRefresh(eventSessionKey, event?.state || 'chat-event-finalize', 1200);
-        }
+
+      const meta = getSessionMeta(eventSessionKey);
+      meta.dirty = true;
+      meta.lastReason = `legacy-chat:${event?.state || 'unknown'}`;
+      meta.lastUpdatedAt = Date.now();
+      if (eventSessionKey === selectedSessionKey) {
+        meta.pending = true;
+      }
+
+      const runState = getSessionRunState(eventSessionKey);
+      if (event?.state === 'delta') {
+        runState.runId = event?.runId || runState.runId || null;
+        runState.streamText = event?.text || runState.streamText || '';
+        runState.state = 'streaming';
+        addDebugLine(`legacy chat delta parked for ${eventSessionKey}`, 'cyan');
         return;
       }
-      if (selectedSessionKey === gatewayMainSessionKey) {
-        applyChatEventToActiveRun(event);
-      } else {
-        if (event?.state === 'delta') {
-          const meta = getSessionMeta(gatewayMainSessionKey);
-          meta.dirty = true;
-          meta.lastReason = event?.state || 'main-chat';
-          meta.lastUpdatedAt = Date.now();
-          mainSessionStreamBuffer.runId = event?.runId || mainSessionStreamBuffer.runId || null;
-          mainSessionStreamBuffer.text = event?.text || mainSessionStreamBuffer.text || '';
-        } else {
-          finalizeMainSessionBackgroundState(event);
-          scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat', 0);
+
+      if (event?.state === 'final' || event?.state === 'aborted' || event?.state === 'error') {
+        if (event?.state === 'final') {
+          const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
+          if (finalText) {
+            try {
+              persistLatestAssistantReply(finalText, { runId: event.runId || null, aborted: false, sessionKey: eventSessionKey });
+            } catch (error) {
+              addDebugLine(`legacy final persist failed: ${error?.message || error}`, 'pink');
+            }
+          }
         }
+        if (event?.state === 'aborted') {
+          markLatestAssistantReplyAborted(event.runId || null, eventSessionKey);
+        }
+        runState.runId = null;
+        runState.streamText = '';
+        runState.state = event.state;
+        scheduleSessionRefresh(eventSessionKey, `legacy-chat:${event.state}`, eventSessionKey === selectedSessionKey ? 0 : 1200);
+        return;
       }
+
+      scheduleSessionRefresh(eventSessionKey, `legacy-chat:${event?.state || 'event'}`, eventSessionKey === selectedSessionKey ? 0 : 400);
       return;
     }
   } catch (error) {
@@ -3640,5 +3428,8 @@ distRebuildBtnEl?.addEventListener('click', rebuildDist);
 wrapperRestartBtnEl?.addEventListener('click', restartWrapper);
 gatewayRestartBtnEl?.addEventListener('click', restartGateway);
 contextCompactBtnEl?.addEventListener('click', compactContext);
+window.__VIO_APP_LOADED__ = true;
+try { connect(); } catch (error) { addDebugLine(`connect failed: ${error?.message || error}`, 'pink'); }
+ontextCompactBtnEl?.addEventListener('click', compactContext);
 window.__VIO_APP_LOADED__ = true;
 try { connect(); } catch (error) { addDebugLine(`connect failed: ${error?.message || error}`, 'pink'); }
