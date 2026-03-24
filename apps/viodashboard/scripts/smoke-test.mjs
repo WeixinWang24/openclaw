@@ -140,6 +140,18 @@ await test('GET /api/sessions/:key/context returns context envelope', async () =
   assert(Array.isArray(json?.activeRuns), 'activeRuns missing');
 });
 
+await test('GET /api/diagnostics/sessions/:key/view returns projection envelope', async () => {
+  const sessionKey = latestSessionsPayload?.currentSessionKey || latestSessionsPayload?.items?.[0]?.key;
+  assert(typeof sessionKey === 'string' && sessionKey.length > 0, 'no session key available for projection view test');
+  const { res, json } = await fetchJson(`/api/diagnostics/sessions/${encodeURIComponent(sessionKey)}/view`);
+  assert(res.ok, `expected 200, got ${res.status}`);
+  assert(json?.ok === true, 'projection view ok missing');
+  assert(json?.sessionKey === sessionKey, 'projection view key mismatch');
+  assert(typeof json?.view === 'object' && json.view !== null, 'projection view payload missing');
+  assert(Array.isArray(json?.view?.messages), 'projection view messages missing');
+  assert(Array.isArray(json?.activeRuns), 'projection view activeRuns missing');
+});
+
 await test('POST /api/roadmap/history/clear requires explicit confirm', async () => {
   const { res, json } = await fetchJson('/api/roadmap/history/clear', {
     method: 'POST',
