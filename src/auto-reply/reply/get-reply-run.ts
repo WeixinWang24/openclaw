@@ -393,17 +393,7 @@ export async function runPreparedReply(
   let prefixedCommandBody = mediaNote
     ? [mediaNote, mediaReplyHint, prefixedBody ?? ""].filter(Boolean).join("\n").trim()
     : prefixedBody;
-  const workflowPlanningGateText = shouldRequireWorkflowPlanningGate({
-    userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
-    workspaceDir,
-  })
-    ? buildWorkflowPlanningGateText(
-        selectWorkflowForPlanning({
-          userTask: rawBodyTrimmed || baseBodyTrimmedRaw || prefixedCommandBody,
-          workspaceDir,
-        }),
-      )
-    : "";
+  const workflowPlanningGateText = "";
   if (workflowPlanningGateText) {
     prefixedCommandBody = `${workflowPlanningGateText}\n\n${prefixedCommandBody}`.trim();
   }
