@@ -1178,6 +1178,34 @@ button.chip:disabled {
   color: #ff8d8d;
 }
 
+.composer-voice-device {
+  font-size: 11px;
+  color: rgba(230, 241, 255, 0.45);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.composer-voice-level {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.composer-voice-level-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #6fe7d2, #ff8ab7);
+  border-radius: 3px;
+  transition: width 60ms ease-out;
+}
+
 .composer-voice-live-transcript {
   flex: 1 0 100%;
   width: 100%;

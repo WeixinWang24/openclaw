@@ -26,6 +26,9 @@ const chatAttachBtnEl = document.getElementById('chatAttachBtn');
 const voiceInputBtnEl = document.getElementById('voiceInputBtn');
 const voiceInputStatusEl = document.getElementById('voiceInputStatus');
 const voiceLiveTranscriptEl = document.getElementById('voiceLiveTranscript');
+const voiceInputDeviceEl = document.getElementById('voiceInputDevice');
+const voiceLevelMeterEl = document.getElementById('voiceLevelMeter');
+const voiceLevelBarEl = document.getElementById('voiceLevelBar');
 const chatAttachmentsPreviewEl = document.getElementById('chatAttachmentsPreview');
 const continueBtnEl = document.getElementById('continueBtn');
 const stopBtnEl = document.getElementById('stopBtn');
@@ -109,6 +112,7 @@ const replyCaptureSetupBtnEl = document.getElementById('replyCaptureSetupBtn');
 const replySendToVioBtnEl = document.getElementById('replySendToVioBtn');
 const replySaveBtnEl = document.getElementById('replySaveBtn');
 const replyDoneBtnEl = document.getElementById('replyDoneBtn');
+const replyDeleteBtnEl = document.getElementById('replyDeleteBtn');
 const replyOpenSourceBtnEl = document.getElementById('replyOpenSourceBtn');
 const claudeStatusBadgeEl = document.getElementById('claudeStatusBadge');
 const claudeCwdInputEl = document.getElementById('claudeCwdInput');
@@ -179,6 +183,11 @@ const voiceInputState = {
   finalizing: false,
   stoppedAt: 0,
   aborted: false,
+  // audio analysis (level meter)
+  audioContext: null,
+  analyser: null,
+  sourceNode: null,
+  levelRafId: null,
 };
 let currentDir = '.';
 let currentFilePath = null;
@@ -738,7 +747,67 @@ function stopVoiceMediaStream() {
   voiceInputState.stream = null;
 }
 
+function stopVoiceLevelMeter() {
+  if (voiceInputState.levelRafId != null) {
+    cancelAnimationFrame(voiceInputState.levelRafId);
+    voiceInputState.levelRafId = null;
+  }
+  try { voiceInputState.sourceNode?.disconnect(); } catch {}
+  voiceInputState.sourceNode = null;
+  voiceInputState.analyser = null;
+  if (voiceInputState.audioContext && voiceInputState.audioContext.state !== 'closed') {
+    voiceInputState.audioContext.close().catch(() => {});
+  }
+  voiceInputState.audioContext = null;
+  if (voiceLevelMeterEl) {voiceLevelMeterEl.hidden = true;}
+  if (voiceLevelBarEl) {voiceLevelBarEl.style.width = '0%';}
+  if (voiceInputDeviceEl) {voiceInputDeviceEl.hidden = true; voiceInputDeviceEl.textContent = '';}
+}
+
+function startVoiceLevelMeter(stream) {
+  stopVoiceLevelMeter();
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.5;
+    const source = ctx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    voiceInputState.audioContext = ctx;
+    voiceInputState.analyser = analyser;
+    voiceInputState.sourceNode = source;
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    if (voiceLevelMeterEl) {voiceLevelMeterEl.hidden = false;}
+    function tick() {
+      if (!voiceInputState.analyser) {return;}
+      analyser.getByteFrequencyData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) {sum += buf[i];}
+      const avg = sum / buf.length;
+      const pct = Math.min(100, Math.round((avg / 180) * 100));
+      if (voiceLevelBarEl) {voiceLevelBarEl.style.width = pct + '%';}
+      voiceInputState.levelRafId = requestAnimationFrame(tick);
+    }
+    voiceInputState.levelRafId = requestAnimationFrame(tick);
+  } catch (e) {
+    console.warn('[voice] level meter init failed', e);
+  }
+}
+
+function showVoiceInputDevice(stream) {
+  if (!voiceInputDeviceEl) {return;}
+  try {
+    const audioTrack = stream.getAudioTracks()[0];
+    const label = audioTrack?.label;
+    if (label) {
+      voiceInputDeviceEl.textContent = label;
+      voiceInputDeviceEl.hidden = false;
+    }
+  } catch {}
+}
+
 function resetVoiceInputState() {
+  stopVoiceLevelMeter();
   stopVoiceMediaStream();
   voiceInputState.stream = null;
   voiceInputState.recorder = null;
@@ -823,6 +892,9 @@ async function startVoiceRecording() {
     voiceInputState.finalizing = false;
     voiceInputState.stoppedAt = 0;
     voiceInputState.aborted = false;
+
+    startVoiceLevelMeter(stream);
+    showVoiceInputDevice(stream);
 
     recorder.addEventListener('dataavailable', event => {
       if (!event.data || event.data.size === 0) {return;}
@@ -922,6 +994,7 @@ function stopVoiceRecording() {
   voiceInputState.recording = false;
   voiceInputState.transcribing = true;
   voiceInputState.finalizing = true;
+  stopVoiceLevelMeter();
   setVoiceInputStatus('Stopping… waiting for the last chunk.', 'working');
   recorder.stop();
 }
@@ -2313,6 +2386,38 @@ async function markReplyDone(id) {
   renderRepliesList();
   renderReplyDetail();
   addDebugLine(`Reply marked done: ${id}`, 'cyan');
+}
+
+async function deleteReply(id) {
+  const item = repliesState.items.find(entry => entry.id === id);
+  if (!item) {return;}
+  const ok = window.confirm(`Delete reply "${item.title || id}"?`);
+  if (!ok) {return;}
+
+  const res = await fetch(`/api/external-replies/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const errorMessage = String(data?.error || 'Failed to delete reply');
+    const normalized = errorMessage.toLowerCase();
+    if (!(res.status === 404 || normalized.includes('reply not found') || normalized.includes('not found'))) {
+      throw new Error(errorMessage);
+    }
+    addDebugLine(`Reply already gone on server: ${id}`, 'pink');
+  } else {
+    addDebugLine(`Reply deleted: ${id}`, 'cyan');
+  }
+
+  const nextItems = repliesState.items.filter(entry => entry.id !== id);
+  repliesState.items = nextItems;
+  if (repliesState.selectedId === id) {
+    repliesState.selectedId = nextItems[0]?.id || null;
+  }
+  renderRepliesList();
+  renderReplyDetail();
+  await fetchRepliesList();
 }
 
 function openReplySource(id) {
@@ -4036,6 +4141,13 @@ replyDoneBtnEl?.addEventListener('click', () => {
   if (repliesState.selectedId) {
     markReplyDone(repliesState.selectedId).catch(error => {
       addDebugLine(`Mark done failed: ${error?.message || error}`, 'pink');
+    });
+  }
+});
+replyDeleteBtnEl?.addEventListener('click', () => {
+  if (repliesState.selectedId) {
+    deleteReply(repliesState.selectedId).catch(error => {
+      addDebugLine(`Delete reply failed: ${error?.message || error}`, 'pink');
     });
   }
 });

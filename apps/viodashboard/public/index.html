@@ -107,6 +107,7 @@
                         <button id="replySendToVioBtn" type="button" class="chip state-thinking">Send to Vio</button>
                         <button id="replySaveBtn" type="button" class="chip state-idle">Save to workspace</button>
                         <button id="replyDoneBtn" type="button" class="chip state-idle">Mark done</button>
+                        <button id="replyDeleteBtn" type="button" class="chip state-idle">Delete</button>
                         <button id="replyOpenSourceBtn" type="button" class="chip state-idle">Open source</button>
                       </div>
                     </section>
@@ -203,6 +204,8 @@ Terminal ready.</div>
                       <button id="chatAttachBtn" type="button" class="chip state-idle composer-attach-btn">Attach</button>
                       <button id="voiceInputBtn" type="button" class="chip state-idle composer-voice-btn" aria-pressed="false">🎙️ Voice</button>
                       <div id="voiceInputStatus" class="composer-voice-status" aria-live="polite">Click Voice to record</div>
+                      <div id="voiceInputDevice" class="composer-voice-device" hidden></div>
+                      <div id="voiceLevelMeter" class="composer-voice-level" hidden><div id="voiceLevelBar" class="composer-voice-level-bar"></div></div>
                       <div id="voiceLiveTranscript" class="composer-voice-live-transcript" hidden aria-live="polite"></div>
                     </div>
                     <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
