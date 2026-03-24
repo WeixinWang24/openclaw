@@ -2916,7 +2916,8 @@ function connect() {
     }
     if (msg.type === 'ack') {
       resetStoppedUiForNewRun();
-      const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
+      const sessionKey = gatewayMainSessionKey || selectedSessionKey || null;
+      const runState = getSessionRunState(sessionKey);
       runState.runId = msg.runId || runState.runId || null;
       runState.state = 'streaming';
       stopRequestedAt = null;
@@ -2935,14 +2936,23 @@ function connect() {
     }
     if (msg.type === 'error') {
       const errorText = msg.error || 'wrapper error';
-      if (isMainSessionView()) {
+      const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
+      const runState = getSessionRunState(sessionKey);
+      runState.state = 'error';
+      runState.streamText = '';
+      if (sessionKey) {
         try {
-          addMessage('assistant', `Error: ${errorText}`);
+          appendSessionMessage(sessionKey, {
+            id: `error:${Date.now()}`,
+            role: 'assistant',
+            text: `Error: ${errorText}`,
+            status: 'error',
+          });
         } catch (error) {
-          addDebugLine(`ws error render failed: ${error?.message || error}`, 'pink');
+          addDebugLine(`ws error session append failed: ${error?.message || error}`, 'pink');
         }
       } else {
-        addDebugLine(`Ignored wrapper error render while viewing ${selectedSessionKey || 'none'}: ${errorText}`, 'pink');
+        addDebugLine(`Ignored wrapper error without session target: ${errorText}`, 'pink');
       }
       const fallbackMode = latestWrapperRuntime?.lightOutput || latestWrapperRuntime?.mood || 'idle';
       try {
@@ -2956,6 +2966,8 @@ function connect() {
         addDebugLine(`ws error setRouting failed: ${error?.message || error}`, 'pink');
       }
       streamingEl = null;
+      syncStopButton();
+      syncContinueButton();
       return;
     }
     if (msg.type === 'tokens') {
