@@ -2554,7 +2554,7 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
   }
 }
 
-function applyProjectionViewToSession(sessionKey, view = null) {
+function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
   if (!sessionKey || !view || !Array.isArray(view.messages)) {return;}
   const normalized = view.messages
     .map(message => ({
@@ -2586,7 +2586,7 @@ function applyProjectionViewToSession(sessionKey, view = null) {
 
   sessionMessages.set(sessionKey, normalized);
   reconcileRunStateFromMessages(sessionKey, normalized, view?.runs ? 'projection-view' : 'transcript-view');
-  if (selectedSessionKey === sessionKey) {
+  if (selectedSessionKey === sessionKey && options.render !== false) {
     renderSessionMessages(sessionKey, normalized);
   }
 }
@@ -2602,7 +2602,10 @@ function applyKernelRunViewPacket(msg = {}) {
     runState.runId = runId;
   }
 
-  if (event?.type === 'run.delta') {
+  const isSelectedSession = selectedSessionKey === sessionKey;
+  const isDelta = event?.type === 'run.delta';
+
+  if (isDelta) {
     runState.state = 'streaming';
     runState.streamText = sanitizeDisplayedChatText(String(event?.accumulatedText || event?.textDelta || ''));
   } else if (event?.type === 'run.final') {
@@ -2617,11 +2620,18 @@ function applyKernelRunViewPacket(msg = {}) {
   }
 
   if (msg?.view) {
-    applyProjectionViewToSession(sessionKey, msg.view);
+    applyProjectionViewToSession(sessionKey, msg.view, { render: !(isSelectedSession && isDelta) });
+    if (isSelectedSession && isDelta) {
+      patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+    }
     return;
   }
 
-  if (selectedSessionKey === sessionKey) {
+  if (isSelectedSession) {
+    if (isDelta) {
+      patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+      return;
+    }
     renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
   }
 }
@@ -2632,6 +2642,15 @@ function applyProjectionTranscriptPacket(msg = {}) {
   if (msg?.view) {
     applyProjectionViewToSession(sessionKey, msg.view);
   }
+}
+
+function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
+  if (!chatEl || selectedSessionKey !== sessionKey || !runId) {return false;}
+  const row = chatEl.querySelector(`.msg-row.assistant[data-run-id="${CSS.escape(String(runId))}"][data-status="streaming"]`);
+  const msgEl = row?.querySelector('.msg.assistant');
+  if (!msgEl) {return false;}
+  msgEl.innerHTML = renderChatMarkdown(text || '');
+  return true;
 }
 
 function renderSessionMessages(sessionKey, messages = []) {

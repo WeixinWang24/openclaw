@@ -43,16 +43,10 @@ function normalizeVisibleRole(role = '') {
   return null;
 }
 
-function clampText(text = '', maxChars = 4000) {
-  const source = String(text || '');
-  if (source.length <= maxChars) {return source;}
-  return `${source.slice(0, maxChars)}\n\n[truncated ${source.length - maxChars} chars]`;
-}
-
 function normalizeHistoryMessage(message, index, sessionKey) {
   const role = normalizeVisibleRole(message?.role || 'assistant');
   if (!role) {return null;}
-  const text = clampText(parseMessageText(message), 4000).trim();
+  const text = String(parseMessageText(message) || '').trim();
   if (!text) {return null;}
   return {
     id: message?.id || `${sessionKey}:${index}`,
