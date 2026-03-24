@@ -2438,8 +2438,15 @@ async function sendToSelectedSession(outboundText, { userText = '' } = {}) {
     moodDetail: 'Session message sent; waiting for live session events.',
     routingSummary: 'session live',
     routingDetail: targetSessionKey,
-    refreshDelay: 2000,
+    refreshDelay: 0,
   });
+  if (data?.view) {
+    try {
+      applyProjectionViewToSession(targetSessionKey, data.view);
+    } catch (error) {
+      addDebugLine(`sendToSelectedSession: immediate projection apply failed: ${error?.message || error}`, 'pink');
+    }
+  }
   return { ok: true, mode: 'http', sessionKey: targetSessionKey, runId: data?.runId || null };
 }
 
