@@ -2943,8 +2943,14 @@ function connect() {
       applyDotState(gatewayDotEl, 'link', msg.connected ? 'online' : 'offline');
       gatewayMainSessionKey = msg.sessionKey || gatewayMainSessionKey;
       sessionKeyEl.innerHTML = `<span class="semantic-label">session:</span> <span class="semantic-value">${msg.sessionKey || 'unknown'}</span>`;
-      if (!selectedSessionKey && gatewayMainSessionKey && !sessionHistoryInflight.has(gatewayMainSessionKey)) {
-        selectedSessionKey = gatewayMainSessionKey;
+      if (gatewayMainSessionKey && !sessionHistoryInflight.has(gatewayMainSessionKey)) {
+        const shouldHydrateMain = !selectedSessionKey || selectedSessionKey === gatewayMainSessionKey;
+        if (shouldHydrateMain && !sessionMessages.has(gatewayMainSessionKey)) {
+          selectedSessionKey = gatewayMainSessionKey;
+          selectDashboardSession(gatewayMainSessionKey, { force: true }).catch(error => {
+            addDebugLine(`main session hydrate failed: ${error?.message || error}`, 'pink');
+          });
+        }
       }
       return;
     }
