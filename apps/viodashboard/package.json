@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.mjs",
     "smoke": "node scripts/smoke-test.mjs",
-    "check": "node --check src/server.mjs && node --check public/app.js && node --check public/telemetry.js && node --check scripts/smoke-test.mjs",
+    "check": "node --check src/server.mjs && node --check public/app.js && node --check public/telemetry.js && node --check scripts/smoke-test.mjs && node --check scripts/assert-kernel-run-contract.mjs",
+    "assert:kernel-run-contract": "node scripts/assert-kernel-run-contract.mjs",
     "demo:assert": "node src/server/orchestrator/run-demo-assertions.mjs"
   },
   "dependencies": {
