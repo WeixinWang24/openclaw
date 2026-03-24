@@ -50,7 +50,7 @@ import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
-import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
+import { createChatDeltaCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
 import { createFinalReplyService } from './server/runtime/finalReplyService.mjs';
@@ -340,23 +340,7 @@ const finalReplyService = createFinalReplyService({
   syncRuntimeState: runtimeMoodStateService.syncRuntimeState,
   wrapperPort,
 });
-const handleChatEvent = createChatEventCoordinator({
-  bridge: { get sessionKey() { return bridge.sessionKey; } },
-  broadcast,
-  state: {
-    tokenStats,
-    seenFinalRunIds,
-    activeRunSeq,
-    runSequenceRef: { get: () => runSequence },
-    lastAssistantFinalNotifiedRunIdRef: {
-      get: () => runtimeSessionState.getLastAssistantFinalNotifiedRunId(),
-      set: value => {
-        runtimeSessionState.setLastAssistantFinalNotifiedRunId(value);
-      },
-    },
-  },
-  tokenUsageService,
-  finalReplyService,
+const handleChatDeltaEvent = createChatDeltaCoordinator({
   runLifecycleService,
 });
 
@@ -389,7 +373,7 @@ bridge = new GatewayBridge({
   onQueuedMood: (runId, sidecarResult = null) => {
     runLifecycleService.handleQueued(runId, sidecarResult);
   },
-  onChatEvent: handleChatEvent,
+  onChatDelta: handleChatDeltaEvent,
 });
 bridge.setRuntimeAdapters({
   rpcClient,

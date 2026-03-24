@@ -240,8 +240,8 @@ export async function gatewayCall(method, params, options = {}) {
 }
 
 export class GatewayBridge {
-  constructor({ onChatEvent, onStatus, onQueuedMood, onDiagnosticEvent, onSessionUpdated } = {}) {
-    this.onChatEvent = onChatEvent;
+  constructor({ onChatDelta, onStatus, onQueuedMood, onDiagnosticEvent, onSessionUpdated } = {}) {
+    this.onChatDelta = onChatDelta;
     this.onStatus = onStatus;
     this.onQueuedMood = onQueuedMood;
     this.onDiagnosticEvent = onDiagnosticEvent;
@@ -411,7 +411,7 @@ export class GatewayBridge {
         }
         if (state === 'final' && text && this.tokenSaverEnabled && isMainSessionEvent) {this.tokenSaver.ingest('assistant', text);}
         if (state === 'delta') {
-          this.onChatEvent?.({ state, runId, sessionKey: eventSessionKey, text, rawText, payload, usage });
+          this.onChatDelta?.({ state, runId, sessionKey: eventSessionKey, text, rawText, payload, usage });
         }
         if (runId && isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
           writeRunIndexEntry(runId, {
