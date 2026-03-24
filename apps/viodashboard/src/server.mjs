@@ -10,7 +10,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile, execFileSync } from 'node:child_process';
-import { WebSocketServer } from 'ws';
 import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
 import { sendJson } from './server/httpUtils.mjs';
@@ -42,7 +41,7 @@ import { handleTaskRoutes } from './server/routes/taskRoutes.mjs';
 import { handleMemoryRoutes } from './server/routes/memoryRoutes.mjs';
 import { handleNotificationRoutes } from './server/routes/notificationRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
-import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
+import { startServerRuntime } from './server/runtime/serverBootstrap.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
 import { getOrCreateTerminalSession, getTerminalSession } from './server/terminalSessions.mjs';
 import { evaluateSetupState } from './server/setupState.mjs';
@@ -50,7 +49,6 @@ import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
-import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
@@ -665,66 +663,15 @@ const server = http.createServer((req, res) => {
   servePublicFile(requestUrl, res);
 });
 
-// Push Claude terminal state to all connected clients when output changes.
-// Also sync real task lifecycle into agentTasks on each tick,
-// stream output deltas into task logs, and broadcast task state changes.
-let lastBroadcastClaudeOutput = null;
-let lastBroadcastTaskSnapshot = null;
-setInterval(() => {
-  try {
-    const state = getClaudeState();
-
-    // Pipe new Claude output into the agentTask log layer
-    if (state.output && state.output !== lastBroadcastClaudeOutput) {
-      const prevLen = (lastBroadcastClaudeOutput || '').length;
-      const delta = state.output.slice(prevLen);
-      if (delta.length > 0) {
-        // Feed meaningful output deltas (skip tiny whitespace-only changes)
-        const trimmed = delta.trim();
-        if (trimmed.length > 0) {
-          onClaudeOutput(trimmed);
-        }
-      }
-    }
-
-    // Sync agentTasks with live Claude session state (detects exit -> handoff)
-    syncRealTaskFromClaudeState(state);
-
-    if (clients.size === 0) {
-      // Still track output position even with no clients
-      if (state.output !== lastBroadcastClaudeOutput) {
-        lastBroadcastClaudeOutput = state.output;
-      }
-      return;
-    }
-
-    if (state.output !== lastBroadcastClaudeOutput) {
-      lastBroadcastClaudeOutput = state.output;
-      broadcast({ type: 'claude-state', ...state });
-    }
-
-    // Broadcast task state changes over WebSocket for real-time UI updates
-    const task = getCurrentTask();
-    const taskKey = task ? `${task.id}:${task.status}:${task.phase}:${task.updatedAt}` : null;
-    if (taskKey !== lastBroadcastTaskSnapshot) {
-      lastBroadcastTaskSnapshot = taskKey;
-      broadcast({ type: 'agent-task', task: task || null });
-    }
-  } catch {}
-}, 200);
-
-const wss = new WebSocketServer({ server, path: '/ws' });
-attachWsConnectionHandler({
-  wss,
+startServerRuntime({
+  server,
+  wrapperPort,
+  appDisplayName: APP_DISPLAY_NAME,
   broadcastHub,
   bridge,
   buildTokensPacket,
   getClaudeState,
-  getCurrentTask,
   buildMoodPacket: runtimeMoodStateService.buildMoodPacket,
   lastRoutingRef: () => runtimeSessionState.getLastRouting(),
-});
-
-server.listen(wrapperPort, () => {
-  console.log(`${APP_DISPLAY_NAME} running at http://127.0.0.1:${wrapperPort}`);
+  broadcast,
 });
