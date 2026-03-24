@@ -45,6 +45,7 @@ import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
 import { createFinalReplyService } from './server/runtime/finalReplyService.mjs';
 import { createRunLifecycleService } from './server/runtime/runLifecycleService.mjs';
+import { createRoadmapStateService } from './server/runtime/roadmapStateService.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -212,80 +213,12 @@ function loadDistBuildInfo() {
   };
 }
 
-function loadRoadmapData() {
-  try {
-    if (!fs.existsSync(ROADMAP_DATA_PATH)) {return null;}
-    return JSON.parse(fs.readFileSync(ROADMAP_DATA_PATH, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-function saveRoadmapData(payload) {
-  const dir = DATA_DIR;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(ROADMAP_DATA_PATH, JSON.stringify(payload, null, 2), 'utf8');
-}
-
-
-function loadRoadmapHistory() {
-  try {
-    if (!fs.existsSync(ROADMAP_HISTORY_DATA_PATH)) {return [];}
-    const raw = JSON.parse(fs.readFileSync(ROADMAP_HISTORY_DATA_PATH, 'utf8'));
-    return Array.isArray(raw) ? raw : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveRoadmapHistory(items) {
-  const dir = DATA_DIR;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(ROADMAP_HISTORY_DATA_PATH, JSON.stringify(items, null, 2), 'utf8');
-}
-
-function pushRoadmapHistory(previousRoadmap) {
-  if (!previousRoadmap || !previousRoadmap.id) {return;}
-  const history = loadRoadmapHistory();
-  if (history.some(item => item?.id === previousRoadmap.id)) {return;}
-  history.unshift(previousRoadmap);
-  saveRoadmapHistory(history.slice(0, 60));
-}
-
-function roadmapHasItems(roadmap) {
-  return !!(roadmap && Array.isArray(roadmap.items) && roadmap.items.length);
-}
-
-function choosePersistedRoadmap(nextRoadmap, previousRoadmap) {
-  if (nextRoadmap?.sourceType === 'assistant-structured') {
-    return {
-      roadmap: nextRoadmap,
-      reason: roadmapHasItems(nextRoadmap) ? 'updated-structured' : 'accepted-empty-structured',
-      replacedPrevious: !!(previousRoadmap && previousRoadmap.id !== nextRoadmap.id),
-    };
-  }
-  if (roadmapHasItems(nextRoadmap)) {
-    return {
-      roadmap: nextRoadmap,
-      reason: 'updated',
-      replacedPrevious: !!(previousRoadmap && previousRoadmap.id !== nextRoadmap.id),
-    };
-  }
-  if (roadmapHasItems(previousRoadmap)) {
-    return {
-      roadmap: previousRoadmap,
-      reason: 'preserved-previous-non-empty',
-      replacedPrevious: false,
-    };
-  }
-  return {
-    roadmap: nextRoadmap,
-    reason: 'accepted-empty-no-previous',
-    replacedPrevious: false,
-  };
-}
-
 const broadcastHub = createBroadcastHub();
+const roadmapStateService = createRoadmapStateService({
+  dataDir: DATA_DIR,
+  roadmapDataPath: ROADMAP_DATA_PATH,
+  roadmapHistoryDataPath: ROADMAP_HISTORY_DATA_PATH,
+});
 const runtimeSessionState = createRuntimeSessionState();
 const { tokenStats, seenFinalRunIds, activeRunSeq } = runtimeSessionState;
 let runSequence = 0;
@@ -518,12 +451,7 @@ const finalReplyService = createFinalReplyService({
       },
     },
   },
-  roadmap: {
-    loadRoadmapData,
-    choosePersistedRoadmap,
-    pushRoadmapHistory,
-    saveRoadmapData,
-  },
+  roadmap: roadmapStateService,
   routing: {
     getLastRouting: () => runtimeSessionState.getLastRouting(),
     setLastRouting: value => {
@@ -745,7 +673,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (requestUrl.pathname === '/api/roadmap' && req.method === 'GET') {
-    const roadmap = loadRoadmapData();
+    const roadmap = roadmapStateService.loadRoadmapData();
     sendJson(res, 200, { ok: true, roadmap });
     return;
   }
@@ -818,7 +746,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (requestUrl.pathname === '/api/roadmap/history' && req.method === 'GET') {
-    const items = loadRoadmapHistory();
+    const items = roadmapStateService.loadRoadmapHistory();
     sendJson(res, 200, { ok: true, items });
     return;
   }
@@ -827,7 +755,7 @@ const server = http.createServer((req, res) => {
     readJsonRequest(req)
       .then(payload => {
         if (payload?.confirm !== true) {throw new Error('confirm=true is required to clear roadmap history');}
-        saveRoadmapHistory([]);
+        roadmapStateService.saveRoadmapHistory([]);
         broadcast({ type: 'roadmap.history.cleared' });
         sendJson(res, 200, { ok: true, cleared: true, count: 0 });
       })
