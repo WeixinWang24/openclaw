@@ -747,11 +747,11 @@ export class GatewayBridge {
     });
     this.chatRunId = idempotencyKey;
     this.gatewayRunId = null;
-    const sidecarResult = await onUserPrompt().catch(error => {
+    const promptSideEffect = await onUserPrompt().catch(error => {
       console.log('[wrapper] sidecar task-start failed', error?.message || String(error));
       return null;
     });
-    this.onQueuedMood?.(idempotencyKey, sidecarResult);
+    this.onQueuedMood?.(idempotencyKey, promptSideEffect);
     console.log(`[wrapper] token-saver ${this.tokenSaverEnabled ? 'enabled' : 'disabled'} stats`, JSON.stringify({
       ...sendStats,
       beforeLogPath,

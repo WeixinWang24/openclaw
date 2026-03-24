@@ -6,6 +6,7 @@ export function attachWsConnectionHandler({
   getClaudeState,
   getCurrentTask,
   buildMoodPacket,
+  getRuntimeState,
   lastRoutingRef,
 }) {
   wss.on('connection', ws => {
@@ -16,13 +17,15 @@ export function attachWsConnectionHandler({
     try { ws.send(JSON.stringify({ type: 'claude-state', ...getClaudeState() })); } catch {}
     try { ws.send(JSON.stringify({ type: 'agent-task', task: getCurrentTask() || null })); } catch {}
 
+    const runtimeState = typeof getRuntimeState === 'function' ? getRuntimeState() : null;
     const lastRouting = lastRoutingRef();
-    ws.send(JSON.stringify(buildMoodPacket(lastRouting.mode, {
-      state: null,
+    ws.send(JSON.stringify(buildMoodPacket(runtimeState?.mood || lastRouting.mode, {
+      state: runtimeState?.bodyState ?? null,
       detail: lastRouting.detail,
       preview: lastRouting.preview,
-      phase: lastRouting.phase,
-      runId: lastRouting.runId,
+      phase: runtimeState?.phase ?? lastRouting.phase,
+      runId: runtimeState?.activeRunId ?? lastRouting.runId,
+      source: 'ws-bootstrap',
     })));
 
     ws.on('message', async raw => {

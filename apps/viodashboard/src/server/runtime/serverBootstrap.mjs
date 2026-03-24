@@ -11,6 +11,7 @@ export function startServerRuntime({
   buildTokensPacket,
   getClaudeState,
   buildMoodPacket,
+  getRuntimeState,
   lastRoutingRef,
   broadcast,
 }) {
@@ -65,6 +66,7 @@ export function startServerRuntime({
     getClaudeState,
     getCurrentTask,
     buildMoodPacket,
+    getRuntimeState,
     lastRoutingRef,
   });
 

@@ -736,7 +736,7 @@ function _persistLatestReplyRoadmap(text = '') {
 
 function setMood(mode, detail = '', runtime = null) {
   if (runtime && typeof runtime === 'object') {latestWrapperRuntime = runtime;}
-  const value = mode || runtime?.lightOutput || runtime?.mood || 'idle';
+  const value = mode || runtime?.mood || runtime?.lightOutput || 'idle';
   const state = value === 'thinking' ? 'thinking' : value === 'waiting' ? 'waiting' : value === 'error' ? 'error' : value === 'streaming' ? 'streaming' : 'idle';
   if (moodEl) {moodEl.innerHTML = `<span class="semantic-label">mood:</span> <span class="semantic-value">${value}</span>`;}
   if (moodMiniEl) {moodMiniEl.innerHTML = `<span class="semantic-value state-text-${state}">${value}</span>`;}
@@ -826,15 +826,6 @@ async function refreshVioBodyState() {
     const data = await res.json();
     if (!res.ok) {throw new Error(data.error || 'VioBody state unavailable');}
     setEnvironmentTelemetry(data);
-
-    const runtime = data.wrapper_runtime || latestWrapperRuntime || null;
-    const effectiveOutput = data.effective_light_output || runtime?.lightOutput || data.light_output || data.current_status || 'idle';
-    const detail = `Body state: ${data.current_status || effectiveOutput} · light ${data.light_output || effectiveOutput}`;
-
-    if (runtime && Number(runtime.activeRunCount || 0) === 0) {
-      setMood(effectiveOutput, detail, runtime);
-      setRouting(effectiveOutput === 'idle' ? 'settled' : effectiveOutput, `phase=${runtime.phase || 'idle'} · mode=${effectiveOutput}`);
-    }
   } catch {
     if (environmentDetailEl) {environmentDetailEl.innerHTML = '<span class="semantic-value">unavailable</span>';}
     if (nightLogicDetailEl) {nightLogicDetailEl.innerHTML = '<span class="semantic-value">unavailable</span>';}
@@ -3040,7 +3031,7 @@ function connect() {
       } else {
         addDebugLine(`Ignored wrapper error without session target: ${errorText}`, 'pink');
       }
-      const fallbackMode = latestWrapperRuntime?.lightOutput || latestWrapperRuntime?.mood || 'idle';
+      const fallbackMode = latestWrapperRuntime?.mood || latestWrapperRuntime?.lightOutput || 'idle';
       try {
         setMood(fallbackMode, `send failed: ${errorText}`, latestWrapperRuntime || null);
       } catch (error) {
@@ -3074,7 +3065,7 @@ function connect() {
       const phase = msg.detail?.phase || runtime?.phase || null;
       const proxy = routingProxyLabel(mode, phase);
       try {
-        setMood(mode, `Body state: ${state.current_status || mode} · light ${runtime?.lightOutput || state.light_output || mode}`, runtime);
+        setMood(mode, `runtime phase: ${phase || 'n/a'} · mode ${mode}`, runtime);
       } catch (error) {
         addDebugLine(`ws mood setMood failed: ${error?.message || error}`, 'pink');
       }

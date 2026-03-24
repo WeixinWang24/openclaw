@@ -673,6 +673,7 @@ startServerRuntime({
   buildTokensPacket,
   getClaudeState,
   buildMoodPacket: runtimeMoodStateService.buildMoodPacket,
+  getRuntimeState: () => runtimeMoodStateService.getRuntimeState(),
   lastRoutingRef: () => runtimeSessionState.getLastRouting(),
   broadcast,
 });
