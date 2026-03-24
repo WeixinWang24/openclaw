@@ -72,18 +72,18 @@ try:
         best_of=5,
         vad_filter=True,
         condition_on_previous_text=True,
-        initial_prompt="以下内容可能包含中文和 English，请按原语言准确转写，不要翻译。",
+        initial_prompt="中文为主，夹英文术语。",
     )
 
     if not text:
         text, info = run_transcribe(
             task="transcribe",
-            language=None,
+            language="zh",
             beam_size=1,
             best_of=1,
             vad_filter=False,
             condition_on_previous_text=False,
-            initial_prompt="以下内容可能包含中文和 English，请按原语言准确转写，不要翻译。",
+            initial_prompt="中文为主，夹英文术语。",
         )
 
     print(json.dumps({
