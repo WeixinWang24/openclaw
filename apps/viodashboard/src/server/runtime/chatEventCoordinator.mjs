@@ -29,6 +29,7 @@ export function createChatEventCoordinator({
     const shouldBroadcastLegacyChat = (() => {
       const eventSessionKey = event?.sessionKey || bridge.sessionKey || null;
       if (!eventSessionKey) {return false;}
+      if (event.state !== 'delta') {return false;}
       return eventSessionKey === bridge.sessionKey;
     })();
 
