@@ -41,6 +41,7 @@ import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs
 import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
+import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -282,11 +283,9 @@ function choosePersistedRoadmap(nextRoadmap, previousRoadmap) {
 }
 
 const broadcastHub = createBroadcastHub();
-const seenFinalRunIds = new Set();
-const activeRunSeq = new Map();
+const runtimeSessionState = createRuntimeSessionState();
+const { tokenStats, seenFinalRunIds, activeRunSeq } = runtimeSessionState;
 let runSequence = 0;
-let lastRouting = { mode: 'n/a', detail: 'no final reply routed yet' };
-let lastAssistantFinalNotifiedRunId = null;
 let runtimeGatewayReadPrewarmStarted = false;
 let runtimeState = {
   mood: 'idle',
@@ -299,22 +298,6 @@ let runtimeState = {
   source: 'bootstrap',
   updatedAt: new Date().toISOString(),
 };
-let tokenStats = {
-  last: null,
-  totalInput: 0,
-  totalOutput: 0,
-  totalCacheRead: 0,
-  totalCacheWrite: 0,
-  total: 0,
-  baselineReady: false,
-  modelName: null,
-  modelProvider: null,
-  modelLimit: null,
-  modelUsagePercent: null,
-  contextSnapshot: null,
-  diagnosticContext: null,
-};
-
 function normalizeMood(mode) {
   if (mode === 'thinking' || mode === 'streaming' || mode === 'waiting' || mode === 'error') {return mode;}
   return 'idle';
@@ -503,9 +486,9 @@ const handleChatEvent = createChatEventCoordinator({
     activeRunSeq,
     runSequenceRef: { get: () => runSequence },
     lastAssistantFinalNotifiedRunIdRef: {
-      get: () => lastAssistantFinalNotifiedRunId,
+      get: () => runtimeSessionState.getLastAssistantFinalNotifiedRunId(),
       set: value => {
-        lastAssistantFinalNotifiedRunId = value;
+        runtimeSessionState.setLastAssistantFinalNotifiedRunId(value);
       },
     },
   },
@@ -516,9 +499,9 @@ const handleChatEvent = createChatEventCoordinator({
     saveRoadmapData,
   },
   routing: {
-    getLastRouting: () => lastRouting,
+    getLastRouting: () => runtimeSessionState.getLastRouting(),
     setLastRouting: value => {
-      lastRouting = value;
+      runtimeSessionState.setLastRouting(value);
     },
   },
   sideEffects: {
@@ -1350,7 +1333,7 @@ attachWsConnectionHandler({
   getClaudeState,
   getCurrentTask,
   buildMoodPacket,
-  lastRoutingRef: () => lastRouting,
+  lastRoutingRef: () => runtimeSessionState.getLastRouting(),
 });
 
 server.listen(wrapperPort, () => {
