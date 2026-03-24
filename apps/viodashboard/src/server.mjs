@@ -49,6 +49,7 @@ import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
+import { handleVoiceRoutes } from './server/routes/voiceRoutes.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
@@ -56,6 +57,7 @@ import { createFinalReplyService } from './server/runtime/finalReplyService.mjs'
 import { createRunLifecycleService } from './server/runtime/runLifecycleService.mjs';
 import { createRoadmapStateService } from './server/runtime/roadmapStateService.mjs';
 import { createRuntimeMoodStateService } from './server/runtime/runtimeMoodStateService.mjs';
+import { transcribeAudioBase64 } from './server/voiceTranscription.mjs';
 
 function safeStat(filePath) {
   try {
@@ -635,6 +637,15 @@ const server = http.createServer((req, res) => {
     req,
     res,
     requestUrl,
+  })) {
+    return;
+  }
+
+  if (handleVoiceRoutes({
+    req,
+    res,
+    requestUrl,
+    transcribeAudioBase64,
   })) {
     return;
   }

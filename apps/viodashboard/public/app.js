@@ -23,6 +23,8 @@ const formEl = document.getElementById('composer');
 const inputEl = document.getElementById('input');
 const chatAttachmentInputEl = document.getElementById('chatAttachmentInput');
 const chatAttachBtnEl = document.getElementById('chatAttachBtn');
+const voiceInputBtnEl = document.getElementById('voiceInputBtn');
+const voiceInputStatusEl = document.getElementById('voiceInputStatus');
 const chatAttachmentsPreviewEl = document.getElementById('chatAttachmentsPreview');
 const continueBtnEl = document.getElementById('continueBtn');
 const stopBtnEl = document.getElementById('stopBtn');
@@ -156,6 +158,14 @@ const sessionHistoryInflight = new Map();
 const sessionRunState = new Map();
 const sessionLoadingState = new Map();
 let chatAttachments = [];
+const voiceInputState = {
+  stream: null,
+  recorder: null,
+  chunks: [],
+  recording: false,
+  transcribing: false,
+  mimeType: 'audio/webm',
+};
 let currentDir = '.';
 let currentFilePath = null;
 let currentFileOriginal = '';
@@ -644,6 +654,112 @@ function resizeClaudeComposer() {
 
 function formatStamp(date = new Date()) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function setVoiceInputStatus(message, tone = 'idle') {
+  if (voiceInputStatusEl) {
+    voiceInputStatusEl.textContent = message || 'Click Voice to record';
+    voiceInputStatusEl.dataset.tone = tone;
+  }
+  if (voiceInputBtnEl) {
+    voiceInputBtnEl.classList.remove('state-idle', 'state-thinking', 'state-streaming', 'state-error');
+    voiceInputBtnEl.classList.add(
+      tone === 'recording' ? 'state-streaming' : tone === 'working' ? 'state-thinking' : tone === 'error' ? 'state-error' : 'state-idle',
+    );
+    voiceInputBtnEl.setAttribute('aria-pressed', voiceInputState.recording ? 'true' : 'false');
+    voiceInputBtnEl.disabled = !!voiceInputState.transcribing;
+    voiceInputBtnEl.textContent = voiceInputState.recording ? '⏹️ Stop' : '🎙️ Voice';
+  }
+}
+
+function stopVoiceMediaStream() {
+  const tracks = Array.isArray(voiceInputState.stream?.getTracks?.()) ? voiceInputState.stream.getTracks() : [];
+  for (const track of tracks) {track.stop();}
+  voiceInputState.stream = null;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const payload = result.includes(',') ? result.split(',')[1] : '';
+      if (!payload) {
+        reject(new Error('Recorded audio could not be encoded.'));
+        return;
+      }
+      resolve(payload);
+    });
+    reader.addEventListener('error', () => reject(new Error('Failed to read recorded audio.')));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function startVoiceRecording() {
+  if (!voiceInputBtnEl || voiceInputState.recording || voiceInputState.transcribing) {return;}
+  if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
+    setVoiceInputStatus('This browser does not support microphone recording here.', 'error');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    const recorder = new MediaRecorder(stream, { mimeType });
+    voiceInputState.stream = stream;
+    voiceInputState.recorder = recorder;
+    voiceInputState.chunks = [];
+    voiceInputState.recording = true;
+    voiceInputState.mimeType = mimeType;
+    recorder.addEventListener('dataavailable', event => {
+      if (event.data && event.data.size > 0) {voiceInputState.chunks.push(event.data);}
+    });
+    recorder.addEventListener('stop', () => {
+      void stopVoiceRecordingAndTranscribe();
+    }, { once: true });
+    recorder.start();
+    setVoiceInputStatus('Recording… click Stop when done.', 'recording');
+  } catch (error) {
+    stopVoiceMediaStream();
+    voiceInputState.recording = false;
+    voiceInputState.recorder = null;
+    setVoiceInputStatus(error?.message || 'Microphone access failed.', 'error');
+  }
+}
+
+async function stopVoiceRecordingAndTranscribe() {
+  if (voiceInputState.transcribing) {return;}
+  voiceInputState.recording = false;
+  voiceInputState.transcribing = true;
+  setVoiceInputStatus('Transcribing…', 'working');
+  try {
+    const blob = new Blob(voiceInputState.chunks, { type: voiceInputState.mimeType || 'audio/webm' });
+    voiceInputState.chunks = [];
+    if (!blob.size) {throw new Error('No audio was captured. Try again.');}
+    const audioBase64 = await blobToBase64(blob);
+    const res = await fetch('/api/voice/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioBase64, mimeType: blob.type || voiceInputState.mimeType || 'audio/webm' }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const parts = [data?.error || 'Voice transcription failed.', data?.hint].filter(Boolean);
+      throw new Error(parts.join(' '));
+    }
+    const transcript = String(data?.transcript || '').trim();
+    if (!transcript) {throw new Error('No speech was detected.');}
+    const prefix = inputEl.value && !/\s$/.test(inputEl.value) ? `${inputEl.value.trim()} ` : inputEl.value;
+    inputEl.value = `${prefix || ''}${transcript}`;
+    resizeComposer();
+    inputEl.focus();
+    setVoiceInputStatus('Transcript inserted into the input box.', 'idle');
+  } catch (error) {
+    setVoiceInputStatus(error?.message || 'Voice transcription failed.', 'error');
+  } finally {
+    stopVoiceMediaStream();
+    voiceInputState.recorder = null;
+    voiceInputState.transcribing = false;
+  }
 }
 
 function avatarLabel(role) { return role === 'user' ? 'X' : 'V'; }
@@ -2364,7 +2480,7 @@ function isContinueAnchorWrappedText(text = '') {
 function getLatestSessionAssistantFinalMeta(sessionKey = null) {
   const targetSessionKey = sessionKey || selectedSessionKey || null;
   const messages = Array.isArray(sessionMessages.get(targetSessionKey)) ? sessionMessages.get(targetSessionKey) : [];
-  const latestAssistantFinal = [...messages].reverse().find(item => item?.role === 'assistant' && item?.status === 'final') || null;
+  const latestAssistantFinal = [...messages].toReversed().find(item => item?.role === 'assistant' && item?.status === 'final') || null;
   if (!latestAssistantFinal) {
     return { text: '', runId: null, aborted: false, sessionKey: targetSessionKey };
   }
@@ -3449,6 +3565,17 @@ chatAttachBtnEl?.addEventListener('click', () => {
   chatAttachmentInputEl?.click();
 });
 
+voiceInputBtnEl?.addEventListener('click', async () => {
+  if (voiceInputState.transcribing) {return;}
+  const recorder = voiceInputState.recorder;
+  if (voiceInputState.recording && recorder && recorder.state !== 'inactive') {
+    setVoiceInputStatus('Stopping recording…', 'working');
+    recorder.stop();
+    return;
+  }
+  await startVoiceRecording();
+});
+
 chatAttachmentInputEl?.addEventListener('change', event => {
   handleChatAttachmentFiles(event.target?.files || []);
 });
@@ -3699,6 +3826,7 @@ fileEditorEl?.addEventListener('scroll', syncEditorHighlight);
 
 resizeComposer();
 resizeClaudeComposer();
+setVoiceInputStatus('Click Voice to record', 'idle');
 applyLayoutPrefs();
 fetchServerConfig().catch(() => {});
 bindFoldPersistence(cameraFoldEl, 'cameraFoldOpen', false);

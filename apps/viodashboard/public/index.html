@@ -194,6 +194,8 @@ Terminal ready.</div>
                     <div class="composer-toolbar">
                       <input id="chatAttachmentInput" class="agent-chat__file-input" type="file" accept="image/*,.pdf,.txt,.md,.doc,.docx,.rtf,.csv,.json,.yaml,.yml" multiple />
                       <button id="chatAttachBtn" type="button" class="chip state-idle composer-attach-btn">Attach</button>
+                      <button id="voiceInputBtn" type="button" class="chip state-idle composer-voice-btn" aria-pressed="false">🎙️ Voice</button>
+                      <div id="voiceInputStatus" class="composer-voice-status" aria-live="polite">Click Voice to record</div>
                     </div>
                     <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
                   </div>

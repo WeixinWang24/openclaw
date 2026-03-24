@@ -1112,6 +1112,29 @@ button.chip:disabled {
   min-height: 36px;
 }
 
+.composer-voice-btn {
+  min-height: 36px;
+}
+
+.composer-voice-status {
+  min-width: 0;
+  color: rgba(230, 241, 255, 0.66);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.composer-voice-status[data-tone="recording"] {
+  color: #ff8ab7;
+}
+
+.composer-voice-status[data-tone="working"] {
+  color: #6fe7d2;
+}
+
+.composer-voice-status[data-tone="error"] {
+  color: #ff8d8d;
+}
+
 #input,
 .composer textarea {
   width: 100%;
