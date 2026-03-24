@@ -935,8 +935,7 @@ function connect() {
       renderHero();
       updateHistoryClearButtons();
     }
-    if (packet.type === 'chat' && packet.event?.state === 'final') {addLog(`final · ${String(packet.event?.text || '').slice(0, 120)}`);}
-    if (packet.type === 'chat' && packet.event?.state === 'error') {addLog(`error · ${packet.event?.payload?.errorMessage || 'chat error'}`);}
+    if (packet.type === 'chat' && packet.event?.state === 'delta') {addLog(`legacy delta · ${String(packet.event?.text || '').slice(0, 120)}`);}
     if (packet.type === 'roadmap') {
       renderWorkingPackages();
       renderHistoryPanels();

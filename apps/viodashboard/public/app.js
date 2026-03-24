@@ -2238,28 +2238,6 @@ function openDirectory(dirPath) {
   void loadFileTree(dirPath);
 }
 
-function persistLatestAssistantReply(text = '', meta = {}) {
-  try {
-    warnRoadmapLeak('persistLatestAssistantReply(input)', text);
-    const normalized = stripRoadmapBlockForDisplay(String(text || '')).trim();
-    if (!normalized) {return;}
-    if (meta?.aborted === true) {return;}
-    const payload = {
-      text: normalized,
-      runId: meta?.runId || null,
-      aborted: false,
-      sessionKey: meta?.sessionKey || selectedSessionKey || null,
-      updatedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify(payload));
-    const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
-    if (payload.sessionKey) {
-      bySession[payload.sessionKey] = payload;
-      localStorage.setItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY, JSON.stringify(bySession));
-    }
-  } catch {}
-}
-
 function markLatestAssistantReplyAborted(runId = null, sessionKey = null) {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null') || {};
@@ -3114,45 +3092,24 @@ function connect() {
       const eventSessionKey = event?.sessionKey || gatewayMainSessionKey || null;
       if (!eventSessionKey) {return;}
 
+      if (event?.state !== 'delta') {
+        addDebugLine(`Ignored legacy chat ${event?.state || 'event'} for ${eventSessionKey}; kernel/projection is authoritative`, 'cyan');
+        return;
+      }
+
       const meta = getSessionMeta(eventSessionKey);
       meta.dirty = true;
-      meta.lastReason = `legacy-chat:${event?.state || 'unknown'}`;
+      meta.lastReason = 'legacy-chat:delta';
       meta.lastUpdatedAt = Date.now();
       if (eventSessionKey === selectedSessionKey) {
         meta.pending = true;
       }
 
       const runState = getSessionRunState(eventSessionKey);
-      if (event?.state === 'delta') {
-        runState.runId = event?.runId || runState.runId || null;
-        runState.streamText = event?.text || runState.streamText || '';
-        runState.state = 'streaming';
-        addDebugLine(`legacy chat delta parked for ${eventSessionKey}`, 'cyan');
-        return;
-      }
-
-      if (event?.state === 'final' || event?.state === 'aborted' || event?.state === 'error') {
-        if (event?.state === 'final') {
-          const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
-          if (finalText) {
-            try {
-              persistLatestAssistantReply(finalText, { runId: event.runId || null, aborted: false, sessionKey: eventSessionKey });
-            } catch (error) {
-              addDebugLine(`legacy final persist failed: ${error?.message || error}`, 'pink');
-            }
-          }
-        }
-        if (event?.state === 'aborted') {
-          markLatestAssistantReplyAborted(event.runId || null, eventSessionKey);
-        }
-        runState.runId = null;
-        runState.streamText = '';
-        runState.state = event.state;
-        scheduleSessionRefresh(eventSessionKey, `legacy-chat:${event.state}`, eventSessionKey === selectedSessionKey ? 0 : 1200);
-        return;
-      }
-
-      scheduleSessionRefresh(eventSessionKey, `legacy-chat:${event?.state || 'event'}`, eventSessionKey === selectedSessionKey ? 0 : 400);
+      runState.runId = event?.runId || runState.runId || null;
+      runState.streamText = event?.text || runState.streamText || '';
+      runState.state = 'streaming';
+      addDebugLine(`legacy chat delta parked for ${eventSessionKey}`, 'cyan');
       return;
     }
   } catch (error) {

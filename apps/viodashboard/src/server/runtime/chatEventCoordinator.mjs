@@ -34,7 +34,7 @@ export function createChatEventCoordinator({
     })();
 
     if (shouldBroadcastLegacyChat && !(isEmptyFinal || isDuplicateFinal)) {
-      broadcast({ type: 'chat', event: clientEvent, source: 'legacy.onChatEvent' });
+      broadcast({ type: 'chat', event: clientEvent, source: 'legacy.delta-compat' });
     }
     if (event.state === 'delta') {
       runLifecycleService.handleDelta(event);
