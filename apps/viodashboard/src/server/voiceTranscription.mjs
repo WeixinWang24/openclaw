@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { DATA_DIR } from '../config.mjs';
 
 const TRANSCRIBE_TIMEOUT_MS = 180000;
-const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'medium';
+const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'small';
 
 function decodeBase64Payload(audioBase64 = '') {
   const cleaned = String(audioBase64 || '').trim();
