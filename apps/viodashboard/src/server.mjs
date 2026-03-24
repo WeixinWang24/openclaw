@@ -31,6 +31,7 @@ import { handleChatRoutes } from './server/routes/chatRoutes.mjs';
 import { handleSessionRoutes } from './server/routes/sessionRoutes.mjs';
 import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
 import { handleRoadmapRoutes } from './server/routes/roadmapRoutes.mjs';
+import { handleSetupRoutes } from './server/routes/setupRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -544,41 +545,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/setup/state' && req.method === 'GET') {
-    const claudeState = getClaudeState();
-    sendJson(res, 200, evaluateSetupState({ bridgeConnected: bridge.connected, claudeState }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/setup/action' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(async body => {
-        const action = body && typeof body.action === 'string' ? body.action.trim() : '';
-        if (!action) {
-          sendJson(res, 400, { ok: false, error: 'missing "action" field' });
-          return;
-        }
-        const result = await handleSetupAction({
-          action,
-          bridgeConnected: bridge.connected,
-          claudeState: getClaudeState(),
-        });
-        // dashboard-service-restart: send response first, then schedule the restart.
-        const shouldReload = result._reload === true;
-        const { _reload: _, ...safeResult } = result;
-        sendJson(res, shouldReload ? 202 : 200, safeResult);
-        if (shouldReload) {
-          setTimeout(() => {
-            // Setup wizard reload only needs a service restart, not a full
-            // bootout/bootstrap cycle. Running reload.sh from inside the
-            // launchd-managed wrapper can unload the current job before the
-            // helper finishes, leaving the dashboard down. `kickstart -k`
-            // restarts the existing job in place and is safe to trigger here.
-            execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
-          }, 120);
-        }
-      })
-      .catch(error => sendJson(res, 400, { ok: false, error: error?.message || String(error) }));
+  if (handleSetupRoutes({
+    req,
+    res,
+    requestUrl,
+    bridgeConnected: bridge.connected,
+    getClaudeState,
+    evaluateSetupState,
+    handleSetupAction,
+    restartService: () => {
+      execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
+    },
+  })) {
     return;
   }
 
