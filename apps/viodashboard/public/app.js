@@ -1,5 +1,4 @@
 // Main browser UI for VioDashboard: chat, telemetry, camera controls, and file browser.
-const DEFAULT_CLAUDE_CWD = '';
 const CLAUDE_TERMINAL_INIT_ERROR = 'Claude terminal failed to initialize; PTY text fallback has been removed.';
 const serverConfig = {
   defaultClaudeCwd: '',
@@ -87,8 +86,19 @@ const terminalDetachBtnEl = document.getElementById('terminalDetachBtn');
 const terminalTerminateBtnEl = document.getElementById('terminalTerminateBtn');
 const consoleTabTerminalEl = document.getElementById('consoleTabTerminal');
 const consoleTabClaudeEl = document.getElementById('consoleTabClaude');
+const consoleTabRepliesEl = document.getElementById('consoleTabReplies');
 const consolePaneTerminalEl = document.getElementById('consolePaneTerminal');
 const consolePaneClaudeEl = document.getElementById('consolePaneClaude');
+const consolePaneRepliesEl = document.getElementById('consolePaneReplies');
+const repliesListEl = document.getElementById('repliesList');
+const replyDetailEl = document.getElementById('replyDetail');
+const replyEmptyEl = document.getElementById('replyEmpty');
+const replyRefreshBtnEl = document.getElementById('replyRefreshBtn');
+const replyIngestTestBtnEl = document.getElementById('replyIngestTestBtn');
+const replySendToVioBtnEl = document.getElementById('replySendToVioBtn');
+const replySaveBtnEl = document.getElementById('replySaveBtn');
+const replyDoneBtnEl = document.getElementById('replyDoneBtn');
+const replyOpenSourceBtnEl = document.getElementById('replyOpenSourceBtn');
 const claudeStatusBadgeEl = document.getElementById('claudeStatusBadge');
 const claudeCwdInputEl = document.getElementById('claudeCwdInput');
 const claudeStartBtnEl = document.getElementById('claudeStartBtn');
@@ -120,6 +130,7 @@ let _lastSafeEditState = null;
 const LAST_REPLY_ROADMAP_KEY = 'vio-wrapper-last-reply-roadmap-v1';
 const STRUCTURED_ROADMAP_KEY = 'vio-wrapper-roadmap-v2';
 const LAST_ASSISTANT_REPLY_KEY = 'vio-wrapper-last-assistant-reply-v1';
+const LAST_ASSISTANT_REPLY_BY_SESSION_KEY = 'vio-wrapper-last-assistant-reply-by-session-v1';
 
 let ws;
 let streamingEl = null;
@@ -137,9 +148,13 @@ let dashboardSessions = [];
 let selectedSessionKey = null;
 let gatewayMainSessionKey = null;
 let sessionSelectionSeq = 0;
+let sessionHistoryRequestSeq = 0;
 const sessionMeta = new Map();
 const sessionRefreshTimers = new Map();
 const sessionMessages = new Map();
+const sessionHistoryInflight = new Map();
+const sessionRunState = new Map();
+const sessionLoadingState = new Map();
 const mainSessionStreamBuffer = {
   runId: null,
   text: '',
@@ -155,13 +170,21 @@ const consoleTabs = {
   active: 'claude',
 };
 
+const repliesState = {
+  items: [],
+  selectedId: null,
+  loading: false,
+  detailLoading: false,
+  error: '',
+};
+
 const runModeState = {
   mode: 'source',
   switching: false,
 };
 
 function getDefaultClaudeCwd() {
-  return serverConfig.defaultClaudeCwd || serverConfig.openclawRepoRoot || serverConfig.projectRoot || DEFAULT_CLAUDE_CWD || '.';
+  return String(currentDir || '.').trim() || '.';
 }
 
 function isPlaceholderClaudeCwd(value) {
@@ -493,7 +516,7 @@ function applyChatEventToActiveRun(event) {
       addDebugLine(`chat final render failed: ${error?.message || error}`, 'pink');
     }
     try {
-      persistLatestAssistantReply(finalText, { runId: event.runId, aborted: false });
+      persistLatestAssistantReply(finalText, { runId: event.runId, aborted: false, sessionKey: gatewayMainSessionKey || selectedSessionKey || null });
       addDebugLine(`Latest reply updated for run ${String(event.runId || '').slice(0, 8)}`, 'cyan');
     } catch (error) {
       addDebugLine(`chat final persist failed: ${error?.message || error}`, 'pink');
@@ -545,7 +568,7 @@ function applyChatEventToActiveRun(event) {
     activeRunId = null;
     streamingEl = null;
     streamingRunId = null;
-    markLatestAssistantReplyAborted(event.runId || null);
+    markLatestAssistantReplyAborted(event.runId || null, gatewayMainSessionKey || selectedSessionKey || null);
     syncStopButton();
     syncContinueButton();
     addDebugLine('Chat run aborted.', 'pink');
@@ -1480,22 +1503,13 @@ async function fetchServerConfig() {
     Object.assign(serverConfig, data?.config || {});
     renderSetupBanner();
     const nextDefaultCwd = getDefaultClaudeCwd();
-    const shouldRefreshClaudeState = isPlaceholderClaudeCwd(claude.cwd) || claude.cwd !== nextDefaultCwd;
-    if (isPlaceholderClaudeCwd(claude.cwd)) {
-      claude.cwd = nextDefaultCwd;
-    }
+    claude.cwd = nextDefaultCwd;
     if (fileBrowserRootEl && serverConfig.projectRoot) {fileBrowserRootEl.textContent = serverConfig.projectRoot;}
     renderClaudeChrome();
-    if (shouldRefreshClaudeState) {
-      fetchClaudeState().catch(error => {
-        claude.error = error?.message || String(error);
-        renderClaudeChrome();
-      }).finally(() => {
-        queueClaudeAutoStart();
-      });
-    } else {
-      queueClaudeAutoStart();
-    }
+    fetchClaudeState().catch(error => {
+      claude.error = error?.message || String(error);
+      renderClaudeChrome();
+    });
   } catch (error) {
     addDebugLine(`config fetch failed: ${error?.message || error}`, 'pink');
   }
@@ -1652,27 +1666,8 @@ function stopClaudePolling() {
   }
 }
 
-function shouldAutoStartClaude() {
-  const cwd = (claude.cwd || getDefaultClaudeCwd()).trim();
-  return !isPlaceholderClaudeCwd(cwd)
-    && consoleTabs.active === 'claude'
-    && !claude.running
-    && !claude.loading
-    && claude.status !== 'starting'
-    && !claude.autoStartAttempted;
-}
-
 function queueClaudeAutoStart() {
-  if (!shouldAutoStartClaude()) {return;}
-  claude.autoStartAttempted = true;
-  window.setTimeout(() => {
-    const cwd = (claude.cwd || getDefaultClaudeCwd()).trim();
-    if (isPlaceholderClaudeCwd(cwd) || claude.running || claude.loading || claude.status === 'starting') {return;}
-    startClaude().catch(error => {
-      claude.error = error?.message || String(error);
-      renderClaudePanel();
-    });
-  }, 120);
+  return;
 }
 
 async function startClaude() {
@@ -1708,6 +1703,7 @@ async function startClaude() {
 
 async function stopClaude() {
   flushClaudeInputBuffer().catch(() => {});
+  syncClaudeCwdToExplorer({ force: true });
   claude.loading = true;
   claude.error = '';
   renderClaudePanel();
@@ -1731,6 +1727,7 @@ async function stopClaude() {
 async function restartClaude() {
   claude.inputBuffer = '';
   if (claude.inputFlushTimer) {clearTimeout(claude.inputFlushTimer); claude.inputFlushTimer = null;}
+  syncClaudeCwdToExplorer({ force: true });
   claude.loading = true;
   claude.error = '';
   claude.cwd = (claudeCwdInputEl?.value || getDefaultClaudeCwd()).trim() || getDefaultClaudeCwd();
@@ -1833,14 +1830,193 @@ async function compactContext() {
   }
 }
 
+function buildMockReplies() {
+  return [
+    {
+      id: 'reply_mock_1',
+      source: 'chatgpt-web',
+      provider: 'openai',
+      title: 'Summarize the current dashboard bug',
+      promptText: 'Please summarize the likely causes of the session switching bug.',
+      replyText: 'The most likely cause is a stale client-side render path combined with session history refresh races.',
+      sourceUrl: 'https://chatgpt.com/c/mock-1',
+      capturedAt: new Date(Date.now() - 1000 * 60 * 8).toISOString(),
+      status: 'new',
+    },
+    {
+      id: 'reply_mock_2',
+      source: 'chatgpt-web',
+      provider: 'openai',
+      title: 'Implementation plan for replies inbox',
+      promptText: 'Design an MVP external replies inbox inside VioDashboard.',
+      replyText: 'Build a dedicated Replies pane with summary list, detail card, inbox persistence, ingest API, and simple actions.',
+      sourceUrl: 'https://chatgpt.com/c/mock-2',
+      capturedAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+      status: 'done',
+    },
+  ];
+}
+
+function formatReplyTime(value) {
+  if (!value) {return 'unknown time';}
+  try {
+    return new Date(value).toLocaleString('zh-CN', { hour12: false });
+  } catch {
+    return String(value);
+  }
+}
+
+function getSelectedReply() {
+  return repliesState.items.find(item => item.id === repliesState.selectedId) || null;
+}
+
+function renderRepliesList() {
+  if (!repliesListEl) {return;}
+  repliesListEl.innerHTML = '';
+
+  if (!repliesState.items.length) {
+    repliesListEl.innerHTML = '<div class="reply-empty">No replies yet.</div>';
+    return;
+  }
+
+  for (const item of repliesState.items) {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = `reply-list-item ${item.id === repliesState.selectedId ? 'is-selected' : ''}`.trim();
+    el.innerHTML = `
+      <div class="reply-list-title">${escapeHtml(item.title || item.source || item.id)}</div>
+      <div class="reply-list-meta">${escapeHtml(item.source || 'unknown')} · ${escapeHtml(formatReplyTime(item.capturedAt))}</div>
+      <div class="reply-list-preview">${escapeHtml(String(item.replyText || '').slice(0, 140))}</div>
+    `;
+    el.addEventListener('click', () => selectReply(item.id));
+    repliesListEl.appendChild(el);
+  }
+}
+
+function renderReplyDetail() {
+  if (!replyDetailEl || !replyEmptyEl) {return;}
+  const item = getSelectedReply();
+
+  if (!item) {
+    replyEmptyEl.hidden = false;
+    replyDetailEl.hidden = true;
+    replyDetailEl.innerHTML = '';
+    return;
+  }
+
+  replyEmptyEl.hidden = true;
+  replyDetailEl.hidden = false;
+
+  const statusClass = item.status === 'done' ? 'reply-status-done' : 'reply-status-new';
+  replyDetailEl.innerHTML = `
+    <article class="reply-card">
+      <div class="reply-card-header">
+        <div>
+          <div class="reply-card-title">${escapeHtml(item.title || item.id)}</div>
+          <div class="reply-card-meta">${escapeHtml(item.provider || 'unknown')} · ${escapeHtml(formatReplyTime(item.capturedAt))}</div>
+        </div>
+        <span class="reply-badge ${statusClass}">${escapeHtml(item.status || 'new')}</span>
+      </div>
+
+      <div class="reply-card-body">
+        <div class="reply-section">
+          <div class="reply-section-label">Source</div>
+          <div class="reply-section-content">${escapeHtml(item.sourceUrl || item.source || 'unknown')}</div>
+        </div>
+
+        <div class="reply-section">
+          <div class="reply-section-label">Prompt</div>
+          <div class="reply-section-content">${escapeHtml(item.promptText || '')}</div>
+        </div>
+
+        <div class="reply-section">
+          <div class="reply-section-label">Reply</div>
+          <div class="reply-section-content">${escapeHtml(item.replyText || '')}</div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function selectReply(id) {
+  repliesState.selectedId = id;
+  renderRepliesList();
+  renderReplyDetail();
+}
+
+async function fetchRepliesList() {
+  repliesState.loading = true;
+  repliesState.error = '';
+  try {
+    repliesState.items = buildMockReplies();
+    if (!repliesState.selectedId || !repliesState.items.some(item => item.id === repliesState.selectedId)) {
+      repliesState.selectedId = repliesState.items[0]?.id || null;
+    }
+  } catch (error) {
+    repliesState.error = error?.message || String(error);
+    repliesState.items = [];
+    repliesState.selectedId = null;
+  } finally {
+    repliesState.loading = false;
+    renderRepliesList();
+    renderReplyDetail();
+  }
+}
+
+async function ingestTestReply() {
+  repliesState.items = [
+    {
+      id: `reply_mock_${Date.now()}`,
+      source: 'chatgpt-web',
+      provider: 'openai',
+      title: 'Test ingested reply',
+      promptText: 'This is a mock prompt injected from the Replies pane.',
+      replyText: 'This is a mock reply used to validate the Replies pane UI before backend wiring.',
+      sourceUrl: 'https://chatgpt.com/c/test-ingest',
+      capturedAt: new Date().toISOString(),
+      status: 'new',
+    },
+    ...repliesState.items,
+  ];
+  repliesState.selectedId = repliesState.items[0]?.id || null;
+  renderRepliesList();
+  renderReplyDetail();
+}
+
+async function sendReplyToVio(id) {
+  addDebugLine(`Replies mock action: send to Vio ${id}`, 'cyan');
+}
+
+async function saveReplyToWorkspace(id) {
+  addDebugLine(`Replies mock action: save to workspace ${id}`, 'cyan');
+}
+
+async function markReplyDone(id) {
+  const item = repliesState.items.find(entry => entry.id === id);
+  if (!item) {return;}
+  item.status = 'done';
+  renderRepliesList();
+  renderReplyDetail();
+  addDebugLine(`Replies mock action: mark done ${id}`, 'cyan');
+}
+
+function openReplySource(id) {
+  const item = repliesState.items.find(entry => entry.id === id);
+  if (!item?.sourceUrl) {return;}
+  window.open(item.sourceUrl, '_blank', 'noopener,noreferrer');
+}
+
 function setConsoleTab(tab) {
-  consoleTabs.active = tab === 'claude' ? 'claude' : 'terminal';
+  consoleTabs.active = tab === 'claude' ? 'claude' : tab === 'replies' ? 'replies' : 'terminal';
   const isTerminal = consoleTabs.active === 'terminal';
   const isClaude = consoleTabs.active === 'claude';
+  const isReplies = consoleTabs.active === 'replies';
   consoleTabTerminalEl?.classList.toggle('is-active', isTerminal);
   consoleTabClaudeEl?.classList.toggle('is-active', isClaude);
+  consoleTabRepliesEl?.classList.toggle('is-active', isReplies);
   consolePaneTerminalEl?.classList.toggle('is-active', isTerminal);
   consolePaneClaudeEl?.classList.toggle('is-active', isClaude);
+  consolePaneRepliesEl?.classList.toggle('is-active', isReplies);
   if (isClaude) {
     renderClaudePanel();
     if (claude.running) {ensureClaudePolling();}
@@ -1851,12 +2027,18 @@ function setConsoleTab(tab) {
       claude.term?.focus();
       if (!claude.term && claudeComposerInputEl) {claudeComposerInputEl.focus();}
     });
+    return;
+  }
+  if (isReplies) {
+    renderRepliesList();
+    renderReplyDetail();
   }
 }
 
 function bindConsoleTabEvents() {
   consoleTabTerminalEl?.addEventListener('click', () => setConsoleTab('terminal'));
   consoleTabClaudeEl?.addEventListener('click', () => setConsoleTab('claude'));
+  consoleTabRepliesEl?.addEventListener('click', () => setConsoleTab('replies'));
 }
 
 function bindClaudeEvents() {
@@ -2112,11 +2294,26 @@ async function loadFileTree(dir = currentDir) {
     currentDir = data.currentDir || '.';
     if (fileBrowserRootEl) {fileBrowserRootEl.textContent = currentDir;}
     if (terminalCwdEl) {terminalCwdEl.textContent = currentDir;}
+    syncClaudeCwdToExplorer();
     renderFileTree(data.entries || []);
     syncFileNavButtons();
   } catch (error) {
     fileTreeEl.innerHTML = `<div class="event-sub"><span class="semantic-value">${error.message || error}</span></div>`;
   }
+}
+
+function syncClaudeCwdToExplorer({ force = false } = {}) {
+  const explorerDir = String(currentDir || '.').trim() || '.';
+  const currentClaudeCwd = String(claude.cwd || '').trim();
+  const inputValue = String(claudeCwdInputEl?.value || '').trim();
+  const shouldAdopt = force || isPlaceholderClaudeCwd(currentClaudeCwd) || currentClaudeCwd === inputValue;
+  if (!shouldAdopt) {return false;}
+  claude.cwd = explorerDir;
+  if (claudeCwdInputEl && document.activeElement !== claudeCwdInputEl) {
+    claudeCwdInputEl.value = explorerDir;
+  }
+  renderClaudeChrome();
+  return true;
 }
 
 function openDirectory(dirPath) {
@@ -2130,42 +2327,60 @@ function persistLatestAssistantReply(text = '', meta = {}) {
     const normalized = stripRoadmapBlockForDisplay(String(text || '')).trim();
     if (!normalized) {return;}
     if (meta?.aborted === true) {return;}
-    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify({
+    const payload = {
       text: normalized,
       runId: meta?.runId || null,
       aborted: false,
+      sessionKey: meta?.sessionKey || selectedSessionKey || null,
       updatedAt: new Date().toISOString(),
-    }));
+    };
+    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify(payload));
+    const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
+    if (payload.sessionKey) {
+      bySession[payload.sessionKey] = payload;
+      localStorage.setItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY, JSON.stringify(bySession));
+    }
   } catch {}
 }
 
-function markLatestAssistantReplyAborted(runId = null) {
+function markLatestAssistantReplyAborted(runId = null, sessionKey = null) {
   try {
     const raw = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null') || {};
-    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify({
+    const next = {
       ...raw,
       runId: runId || raw.runId || null,
       aborted: true,
+      sessionKey: sessionKey || raw.sessionKey || selectedSessionKey || null,
       updatedAt: new Date().toISOString(),
-    }));
+    };
+    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify(next));
+    const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
+    if (next.sessionKey) {
+      bySession[next.sessionKey] = next;
+      localStorage.setItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY, JSON.stringify(bySession));
+    }
   } catch {}
 }
 
-function getPersistedLatestAssistantReplyMeta() {
+function getPersistedLatestAssistantReplyMeta(sessionKey = null) {
   try {
-    const raw = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null');
+    const targetSessionKey = sessionKey || selectedSessionKey || null;
+    const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
+    const sessionScoped = targetSessionKey ? bySession[targetSessionKey] : null;
+    const raw = sessionScoped || JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null') || {};
     return {
       text: String(raw?.text || '').trim(),
       runId: raw?.runId || null,
       aborted: raw?.aborted === true,
+      sessionKey: raw?.sessionKey || targetSessionKey || null,
     };
   } catch {
-    return { text: '', runId: null, aborted: false };
+    return { text: '', runId: null, aborted: false, sessionKey: sessionKey || selectedSessionKey || null };
   }
 }
 
-function _getPersistedLatestAssistantReply() {
-  return getPersistedLatestAssistantReplyMeta().text;
+function _getPersistedLatestAssistantReply(sessionKey = null) {
+  return getPersistedLatestAssistantReplyMeta(sessionKey).text;
 }
 
 function tailSnippet(text = '', maxChars = 1200) {
@@ -2176,7 +2391,7 @@ function tailSnippet(text = '', maxChars = 1200) {
 }
 
 function buildContinuePayload() {
-  const latest = getPersistedLatestAssistantReplyMeta();
+  const latest = getPersistedLatestAssistantReplyMeta(selectedSessionKey || null);
   const lastAssistantReply = latest.text;
   warnRoadmapLeak('buildContinuePayload(source)', lastAssistantReply);
   if (!lastAssistantReply || latest.aborted || activeRunState === 'streaming' || activeRunState === 'aborting') {return '继续';}
@@ -2234,7 +2449,13 @@ async function submitChatText(text = '', options = {}) {
   }
 
   const targetSessionKey = selectedSessionKey;
-  addDebugLine(`submitChatText: non-main send queued for ${targetSessionKey}; waiting for targeted refresh`, 'cyan');
+  addDebugLine(`submitChatText: non-main send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
+  const optimisticId = `optimistic-${Date.now()}`;
+  appendSessionMessage(targetSessionKey, {
+    id: optimisticId,
+    role: 'user',
+    text: value,
+  });
   const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2249,22 +2470,14 @@ async function submitChatText(text = '', options = {}) {
   meta.dirty = true;
   meta.lastUpdatedAt = Date.now();
   meta.lastReason = 'send-accepted';
-  const cached = sessionMessages.get(targetSessionKey) || [];
-  const optimisticMessages = [...cached, {
-    id: `optimistic-${Date.now()}`,
-    role: 'user',
-    text: value,
-  }];
-  sessionMessages.set(targetSessionKey, optimisticMessages);
-  if (selectedSessionKey === targetSessionKey) {
-    renderSessionMessages(targetSessionKey, optimisticMessages);
-  }
-  addDebugLine(`Session send accepted: ${targetSessionKey}`, 'cyan');
-  setMood('thinking', 'Session message sent; refreshing history.');
-  setRouting('session refresh', targetSessionKey);
-  scheduleSessionRefresh(targetSessionKey, 'send-accepted', 150);
-  scheduleSessionRefresh(targetSessionKey, 'send-followup', 1200);
-  scheduleSessionRefresh(targetSessionKey, 'send-followup-late', 2600);
+  const runState = getSessionRunState(targetSessionKey);
+  runState.runId = data?.runId || runState.runId || null;
+  runState.streamText = '';
+  runState.state = 'streaming';
+  addDebugLine(`Session send accepted: ${targetSessionKey} run=${String(data?.runId || '').slice(0, 8) || '-'} `, 'cyan');
+  setMood('thinking', 'Session message sent; waiting for live session events.');
+  setRouting('session live', targetSessionKey);
+  scheduleSessionRefresh(targetSessionKey, 'send-history-reconcile', 2000);
 }
 
 function isMainSessionView() {
@@ -2275,6 +2488,116 @@ function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
   streamingRunId = null;
+}
+
+function getSessionRunState(sessionKey) {
+  if (!sessionKey) {return { runId: null, streamText: '', state: 'idle' };}
+  if (!sessionRunState.has(sessionKey)) {
+    sessionRunState.set(sessionKey, {
+      runId: null,
+      streamText: '',
+      state: 'idle',
+    });
+  }
+  return sessionRunState.get(sessionKey);
+}
+
+function normalizeDashboardMessageRole(message = {}) {
+  const role = typeof message?.role === 'string' ? message.role : '';
+  const lowered = role.toLowerCase();
+  if (lowered === 'user') {return 'user';}
+  if (lowered === 'assistant') {return 'assistant';}
+  if (lowered === 'system') {return 'system';}
+  if (lowered === 'toolresult' || lowered === 'tool_result' || lowered === 'tool' || lowered === 'function') {return 'tool';}
+  if (message?.toolCallId || message?.tool_call_id || message?.toolName || message?.tool_name) {return 'tool';}
+  return role || 'unknown';
+}
+
+function roleForChatBubble(message = {}) {
+  const normalized = normalizeDashboardMessageRole(message);
+  if (normalized === 'user') {return 'user';}
+  if (normalized === 'assistant') {return 'assistant';}
+  if (normalized === 'system') {return 'system';}
+  if (normalized === 'tool') {return 'tool';}
+  return 'system';
+}
+
+function shouldDisplayChatMessage(message = {}) {
+  return normalizeDashboardMessageRole(message) !== 'tool';
+}
+
+function appendSessionMessage(sessionKey, message) {
+  if (!sessionKey || !message || typeof message !== 'object') {return;}
+  if (!shouldDisplayChatMessage(message)) {return;}
+  const cached = sessionMessages.get(sessionKey) || [];
+  const nextId = message.id || null;
+  const runId = message.runId || nextId || null;
+  let deduped = nextId ? cached.filter(item => item?.id !== nextId) : [...cached];
+  if (runId && message.role === 'assistant') {
+    deduped = deduped.filter(item => !(item?.role === 'assistant' && (item?.runId === runId || item?.id === runId)));
+  }
+  deduped.push(message);
+  sessionMessages.set(sessionKey, deduped);
+  if (selectedSessionKey === sessionKey) {
+    renderSessionMessages(sessionKey, deduped);
+  }
+}
+
+function applyChatEventToSessionHistory(sessionKey, event = {}) {
+  if (!sessionKey) {return;}
+  const runState = getSessionRunState(sessionKey);
+  if (event.state === 'delta') {
+    runState.runId = event.runId || runState.runId || null;
+    runState.streamText = event.text || runState.streamText || '';
+    runState.state = 'streaming';
+    if (selectedSessionKey === sessionKey) {
+      const target = ensureStreamingMessageEl(runState.runId, runState.streamText);
+      target.textContent = runState.streamText;
+    }
+    return;
+  }
+  if (event.state === 'final') {
+    const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
+    if (finalText) {
+      appendSessionMessage(sessionKey, {
+        id: event.runId || `final-${Date.now()}`,
+        runId: event.runId || null,
+        role: 'assistant',
+        text: finalText,
+      });
+      persistLatestAssistantReply(finalText, { runId: event.runId, aborted: false, sessionKey });
+    }
+    runState.runId = null;
+    runState.streamText = '';
+    runState.state = 'final';
+    if (selectedSessionKey === sessionKey) {
+      finalizeStreamingMessage(event.runId || null, finalText);
+    }
+    return;
+  }
+  if (event.state === 'aborted') {
+    const abortedText = String(event.text || runState.streamText || '').trim();
+    if (abortedText) {
+      appendSessionMessage(sessionKey, {
+        id: event.runId || `aborted-${Date.now()}`,
+        runId: event.runId || null,
+        role: 'assistant',
+        text: abortedText,
+      });
+    }
+    runState.runId = null;
+    runState.streamText = '';
+    runState.state = 'aborted';
+    if (selectedSessionKey === sessionKey) {
+      finalizeStreamingMessage(event.runId || null, abortedText);
+    }
+    return;
+  }
+  if (event.state === 'error') {
+    runState.runId = null;
+    runState.streamText = '';
+    runState.state = 'error';
+  }
 }
 
 function syncMainSessionBufferedStream() {
@@ -2292,18 +2615,28 @@ function syncMainSessionBufferedStream() {
 
 function renderSessionMessages(sessionKey, messages = []) {
   if (!chatEl) {return;}
-  const lastMessage = Array.isArray(messages) && messages.length ? messages[messages.length - 1] : null;
+  const sourceMessages = Array.isArray(messages) ? messages : [];
+  const visibleMessages = sessionKey === gatewayMainSessionKey ? [] : sourceMessages;
+  const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${Array.isArray(messages) ? messages.length : 0} last=${lastPreview || '<empty>'}`, 'cyan');
+  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
   clearChat();
-  for (const message of messages) {
-    addMessage(message.role === 'user' ? 'user' : 'assistant', message.text || '', '', {
-      messageRole: 'history',
-      runId: message.id || null,
+  for (const message of visibleMessages) {
+    if (!shouldDisplayChatMessage(message)) {continue;}
+    const bubbleRole = roleForChatBubble(message);
+    addMessage(bubbleRole, message.text || '', '', {
+      messageRole: normalizeDashboardMessageRole(message),
+      runId: message.runId || message.id || null,
     });
   }
   if (sessionKey === gatewayMainSessionKey) {
     syncMainSessionBufferedStream();
+  } else {
+    const runState = getSessionRunState(sessionKey);
+    if (runState?.state === 'streaming' && runState?.streamText) {
+      const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
+      target.textContent = runState.streamText;
+    }
   }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
@@ -2317,7 +2650,7 @@ function addMessage(role, text, extraClass = '', options = {}) {
   if (options.messageRole) {row.dataset.messageRole = String(options.messageRole);}
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`.trim();
-  const avatarSrc = avatarImageSrc(role);
+  const avatarSrc = (role === 'user' || role === 'assistant') ? avatarImageSrc(role) : null;
   if (avatarSrc) {
     const img = document.createElement('img');
     img.className = 'avatar-img';
@@ -2333,7 +2666,8 @@ function addMessage(role, text, extraClass = '', options = {}) {
   bubbleWrap.className = 'bubble-wrap';
   const meta = document.createElement('div');
   meta.className = `msg-meta ${role}`.trim();
-  meta.textContent = `${role === 'user' ? 'Xin' : 'Vio'} · ${formatStamp()}`;
+  const speaker = role === 'user' ? 'Xin' : role === 'assistant' ? 'Vio' : role === 'tool' ? 'Tool' : 'System';
+  meta.textContent = `${speaker} · ${formatStamp()}`;
   const el = document.createElement('div');
   el.className = `msg ${role} ${extraClass}`.trim();
   el.innerHTML = renderChatMarkdown(text);
@@ -2447,6 +2781,36 @@ function getSessionMeta(sessionKey) {
   return sessionMeta.get(sessionKey);
 }
 
+function setSessionLoading(sessionKey, loading) {
+  if (!sessionKey) {return;}
+  if (loading) {sessionLoadingState.set(sessionKey, true);}
+  else {sessionLoadingState.delete(sessionKey);}
+}
+
+function renderSessionLoadingPlaceholder(sessionKey) {
+  if (!chatEl) {return;}
+  chatEl.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'msg-row system';
+  row.dataset.messageRole = 'loading';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar system';
+  avatar.textContent = '…';
+  const bubbleWrap = document.createElement('div');
+  bubbleWrap.className = 'bubble-wrap';
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta system';
+  meta.textContent = `Loading · ${formatStamp()}`;
+  const el = document.createElement('div');
+  el.className = 'msg system session-loading';
+  el.textContent = `Loading session ${sessionKey || 'unknown'}…`;
+  bubbleWrap.appendChild(meta);
+  bubbleWrap.appendChild(el);
+  row.appendChild(avatar);
+  row.appendChild(bubbleWrap);
+  chatEl.appendChild(row);
+}
+
 async function loadSessionHistory(sessionKey, { force = false, selectionSeq = null } = {}) {
   if (!sessionKey) {return [];}
   if (!force && sessionMessages.has(sessionKey)) {
@@ -2455,18 +2819,66 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
     addDebugLine(`loadSessionHistory cache seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${cached.length} last=${cachedLast || '<empty>'}`, 'cyan');
     return cached;
   }
-  addDebugLine(`loadSessionHistory start seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} force=${force ? 'yes' : 'no'}`, 'cyan');
+  const requestSeq = ++sessionHistoryRequestSeq;
+  sessionHistoryInflight.set(sessionKey, requestSeq);
+  setSessionLoading(sessionKey, true);
+  addDebugLine(`loadSessionHistory start seq=${selectionSeq ?? '-'} req=${requestSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} force=${force ? 'yes' : 'no'}`, 'cyan');
   const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/history?limit=40`, { cache: 'no-store' });
   const data = await res.json();
-  if (!res.ok) {throw new Error(data?.error || 'session history fetch failed');}
-  const messages = Array.isArray(data?.messages) ? data.messages : [];
+  if (!res.ok) {
+    if (sessionHistoryInflight.get(sessionKey) === requestSeq) {sessionHistoryInflight.delete(sessionKey);}
+    setSessionLoading(sessionKey, false);
+    throw new Error(data?.error || 'session history fetch failed');
+  }
+  let messages = Array.isArray(data?.messages)
+    ? data.messages
+        .map(message => ({
+          ...message,
+          role: normalizeDashboardMessageRole(message),
+          runId: message?.runId || message?.id || null,
+        }))
+        .filter(shouldDisplayChatMessage)
+    : [];
+  const currentInflightSeq = sessionHistoryInflight.get(sessionKey);
+  const lastPreview = messages.length ? String(messages[messages.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
+  if (currentInflightSeq !== requestSeq) {
+    setSessionLoading(sessionKey, false);
+    addDebugLine(`loadSessionHistory stale-response seq=${selectionSeq ?? '-'} req=${requestSeq} currentReq=${currentInflightSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${messages.length} last=${lastPreview || '<empty>'}`, 'pink');
+    return sessionMessages.get(sessionKey) || messages;
+  }
+  sessionHistoryInflight.delete(sessionKey);
+  setSessionLoading(sessionKey, false);
+  const runState = getSessionRunState(sessionKey);
+  if (runState?.runId) {
+    const existing = sessionMessages.get(sessionKey) || [];
+    const existingAssistantForRun = existing.find(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
+    const historyHasAssistantForRun = messages.some(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
+    const optimisticUsers = existing.filter(item => String(item?.id || '').startsWith('optimistic-'));
+    if (optimisticUsers.length) {
+      const seenOptimisticText = new Set(messages.filter(item => item?.role === 'user').map(item => String(item?.text || '')));
+      for (const optimistic of optimisticUsers) {
+        const optimisticText = String(optimistic?.text || '');
+        if (optimisticText && !seenOptimisticText.has(optimisticText)) {
+          messages.push(optimistic);
+          seenOptimisticText.add(optimisticText);
+        }
+      }
+    }
+    if (existingAssistantForRun && !historyHasAssistantForRun) {
+      messages.push(existingAssistantForRun);
+    }
+  }
   sessionMessages.set(sessionKey, messages);
+  if (!runState?.runId) {
+    runState.runId = null;
+    runState.streamText = '';
+    runState.state = 'idle';
+  }
   const meta = getSessionMeta(sessionKey);
   meta.dirty = false;
   meta.pending = false;
   meta.lastUpdatedAt = Date.now();
-  const lastPreview = messages.length ? String(messages[messages.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
-  addDebugLine(`loadSessionHistory resolved seq=${selectionSeq ?? '-'} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${messages.length} last=${lastPreview || '<empty>'}`, 'cyan');
+  addDebugLine(`loadSessionHistory resolved seq=${selectionSeq ?? '-'} req=${requestSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${messages.length} last=${lastPreview || '<empty>'}`, 'cyan');
   return messages;
 }
 
@@ -2491,9 +2903,16 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const previousSessionKey = selectedSessionKey;
   const selectionSeq = ++sessionSelectionSeq;
   const meta = getSessionMeta(sessionKey);
-  const shouldForce = !!force || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && activeRunState === 'streaming');
-  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'}`, 'cyan');
+  const switchedSession = !!previousSessionKey && previousSessionKey !== sessionKey;
+  const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && activeRunState === 'streaming');
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
+  clearChat();
+  setSessionLoading(sessionKey, true);
+  renderSessionLoadingPlaceholder(sessionKey);
+  if (activeFilePathEl) {
+    activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
+  }
   renderSessionsList();
   const [messages] = await Promise.all([
     loadSessionHistory(sessionKey, { force: shouldForce, selectionSeq }),
@@ -2523,7 +2942,7 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
   if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq) {
     renderSessionMessages(sessionKey, messages);
   } else {
-    addDebugLine(`refreshSessionHistory stale seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
+    addDebugLine(`refreshSessionHistory offscreen seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'cyan');
   }
   return messages;
 }
@@ -2661,7 +3080,8 @@ function connect() {
       const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
       addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
       if (!sessionKey) {return;}
-      scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated');
+      const delay = sessionKey === gatewayMainSessionKey ? 0 : 1200;
+      scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
       return;
     }
     if (msg.type === 'chat') {
@@ -2670,17 +3090,24 @@ function connect() {
       const eventSessionKey = event?.sessionKey || gatewayMainSessionKey || null;
       if (!eventSessionKey) {return;}
       if (eventSessionKey !== gatewayMainSessionKey) {
-        scheduleSessionRefresh(eventSessionKey, event?.state || 'chat-event');
+        applyChatEventToSessionHistory(eventSessionKey, event);
+        if (event?.state === 'final' || event?.state === 'aborted' || event?.state === 'error') {
+          scheduleSessionRefresh(eventSessionKey, event?.state || 'chat-event-finalize', 1200);
+        }
         return;
       }
       if (selectedSessionKey === gatewayMainSessionKey) {
         applyChatEventToActiveRun(event);
       } else {
-        const delay = event?.state === 'delta' ? 80 : 0;
-        scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat', delay);
         if (event?.state === 'delta') {
+          const meta = getSessionMeta(gatewayMainSessionKey);
+          meta.dirty = true;
+          meta.lastReason = event?.state || 'main-chat';
+          meta.lastUpdatedAt = Date.now();
           mainSessionStreamBuffer.runId = event?.runId || mainSessionStreamBuffer.runId || null;
           mainSessionStreamBuffer.text = event?.text || mainSessionStreamBuffer.text || '';
+        } else {
+          scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat', 0);
         }
       }
       return;
@@ -2743,7 +3170,7 @@ stopBtnEl?.addEventListener('click', () => {
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
   mainSessionStreamBuffer.runId = null;
   mainSessionStreamBuffer.text = '';
-  markLatestAssistantReplyAborted(stoppedRunId);
+  markLatestAssistantReplyAborted(stoppedRunId, selectedSessionKey || gatewayMainSessionKey || null);
   if (isMainSessionView()) {
     addMessage('assistant', '(aborted)');
   } else {
@@ -2909,6 +3336,26 @@ tokenSaverPhase2BtnEl?.addEventListener('click', async () => {
     tokenSaverPhase2BtnEl.disabled = false;
   }
 });
+replyRefreshBtnEl?.addEventListener('click', () => {
+  fetchRepliesList().catch(error => {
+    addDebugLine(`Replies refresh failed: ${error?.message || error}`, 'pink');
+  });
+});
+replyIngestTestBtnEl?.addEventListener('click', () => {
+  ingestTestReply().catch?.(() => {});
+});
+replySendToVioBtnEl?.addEventListener('click', () => {
+  if (repliesState.selectedId) {void sendReplyToVio(repliesState.selectedId);}
+});
+replySaveBtnEl?.addEventListener('click', () => {
+  if (repliesState.selectedId) {void saveReplyToWorkspace(repliesState.selectedId);}
+});
+replyDoneBtnEl?.addEventListener('click', () => {
+  if (repliesState.selectedId) {void markReplyDone(repliesState.selectedId);}
+});
+replyOpenSourceBtnEl?.addEventListener('click', () => {
+  if (repliesState.selectedId) {openReplySource(repliesState.selectedId);}
+});
 fileUndoBtnEl?.addEventListener('click', () => {
   if (!fileEditorEl) {return;}
   fileEditorEl.value = currentFileOriginal || '';
@@ -2984,6 +3431,9 @@ fetchDashboardSessions()
   })
   .catch(error => addDebugLine(`sessions init failed: ${error?.message || error}`, 'pink'));
 
+fetchRepliesList().catch(error => {
+  addDebugLine(`Replies init failed: ${error?.message || error}`, 'pink');
+});
 try { initClaudePanel(); } catch (error) { addDebugLine(`initClaudePanel failed: ${error?.message || error}`, 'pink'); }
 try { renderRunModeChip(); } catch (error) { addDebugLine(`renderRunModeChip failed: ${error?.message || error}`, 'pink'); }
 try { fetchRunMode().catch(() => renderRunModeChip()); } catch (error) { addDebugLine(`fetchRunMode failed: ${error?.message || error}`, 'pink'); }

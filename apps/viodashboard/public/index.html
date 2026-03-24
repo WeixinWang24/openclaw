@@ -84,6 +84,7 @@
                 <div class="console-tabs">
                   <button id="consoleTabTerminal" type="button" class="console-tab is-active">Terminal</button>
                   <button id="consoleTabClaude" type="button" class="console-tab">Claude</button>
+                  <button id="consoleTabReplies" type="button" class="console-tab">Replies</button>
                 </div>
               </div>
 
@@ -135,6 +136,37 @@ Terminal ready.</div>
                   </form>
 
                   <div id="claudeError" class="claude-error"></div>
+                </div>
+
+                <div id="consolePaneReplies" class="console-pane replies-pane">
+                  <div class="replies-pane-header">
+                    <div>
+                      <div class="card-title">Replies</div>
+                      <div class="card-sub">External web replies inbox</div>
+                    </div>
+                    <div class="replies-toolbar">
+                      <button id="replyRefreshBtn" type="button" class="chip state-idle">Refresh</button>
+                      <button id="replyIngestTestBtn" type="button" class="chip state-idle">Test ingest</button>
+                    </div>
+                  </div>
+
+                  <div class="replies-layout">
+                    <aside class="replies-sidebar">
+                      <div id="repliesList" class="replies-list"></div>
+                    </aside>
+
+                    <section class="replies-detail-wrap">
+                      <div id="replyEmpty" class="reply-empty">No reply selected.</div>
+                      <div id="replyDetail" class="reply-detail" hidden></div>
+
+                      <div class="reply-actions">
+                        <button id="replySendToVioBtn" type="button" class="chip state-thinking">Send to Vio</button>
+                        <button id="replySaveBtn" type="button" class="chip state-idle">Save to workspace</button>
+                        <button id="replyDoneBtn" type="button" class="chip state-idle">Mark done</button>
+                        <button id="replyOpenSourceBtn" type="button" class="chip state-idle">Open source</button>
+                      </div>
+                    </section>
+                  </div>
                 </div>
               </div>
             </section>
@@ -240,11 +272,14 @@ Terminal ready.</div>
               const msg = JSON.parse(ev.data);
               if (msg.type === 'chat') {
                 const text = msg?.event?.message?.text || msg?.event?.text || '';
-                const role = msg?.event?.message?.role || msg?.event?.role || 'assistant';
+                const rawRole = msg?.event?.message?.role || msg?.event?.role || 'assistant';
+                const loweredRole = String(rawRole || '').toLowerCase();
+                const role = loweredRole === 'user' ? 'user' : loweredRole === 'assistant' ? 'assistant' : loweredRole === 'system' ? 'system' : (loweredRole === 'tool' || loweredRole === 'function' || loweredRole === 'toolresult' || loweredRole === 'tool_result') ? 'tool' : 'assistant';
+                if (role === 'tool') {return;}
                 if (chat && text) {
                   const row = document.createElement('div');
                   row.className = `msg-row ${role}`;
-                  row.innerHTML = `<div class="avatar">${role === 'user' ? 'X' : 'V'}</div><div class="msg-bubble-wrap"><div class="msg-meta ${role}">${role === 'user' ? 'Xin' : 'Vio'}</div><div class="msg ${role}"></div></div>`;
+                  row.innerHTML = `<div class="avatar ${role}">${role === 'user' ? 'X' : role === 'assistant' ? 'V' : 'S'}</div><div class="bubble-wrap"><div class="msg-meta ${role}">${role === 'user' ? 'Xin' : role === 'assistant' ? 'Vio' : 'System'}</div><div class="msg ${role}"></div></div>`;
                   row.querySelector('.msg').textContent = text;
                   chat.appendChild(row);
                   chat.scrollTop = chat.scrollHeight;
@@ -262,7 +297,7 @@ Terminal ready.</div>
           if (!text || !ws || ws.readyState !== 1) {return;}
           const row = document.createElement('div');
           row.className = 'msg-row user';
-          row.innerHTML = `<div class="avatar">X</div><div class="msg-bubble-wrap"><div class="msg-meta user">Xin</div><div class="msg user"></div></div>`;
+          row.innerHTML = `<div class="avatar user">X</div><div class="bubble-wrap"><div class="msg-meta user">Xin</div><div class="msg user"></div></div>`;
           row.querySelector('.msg').textContent = text;
           chat?.appendChild(row);
           chat.scrollTop = chat.scrollHeight;

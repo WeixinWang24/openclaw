@@ -556,10 +556,14 @@ export class GatewayBridge {
         const role = String(message.role || '');
         const text = String(message.text || '').trim();
         if (!text) {return false;}
-        if (role === 'toolResult' || role === 'tool' || role === 'system') {return false;}
-        return role === 'user' || role === 'assistant';
+        return role === 'user' || role === 'assistant' || role === 'toolResult' || role === 'tool' || role === 'system';
       })
-      .filter(message => !looksLikeInternalWorkflowNoise(message.role, message.text));
+      .filter(message => {
+        if (message.role === 'assistant') {
+          return !looksLikeInternalWorkflowNoise(message.role, message.text);
+        }
+        return true;
+      });
   }
 
   async sendChatToSession(sessionKey, text) {
@@ -722,7 +726,7 @@ export class GatewayBridge {
       runIndexPath,
       snapshot: this.getTokenSaverSnapshot(),
     }));
-    console.log('[wrapper] gatewayCall(chat.send) start', JSON.stringify({ sessionKey: this.sessionKey, idempotencyKey, textLength: originalUserText.length }));
+    console.log('[wrapper] gatewayCall(chat.send) start', JSON.stringify({ sessionKey: this.sessionKey, idempotencyKey, textLength: originalUserText.length, textHead: String(originalUserText || '').slice(0, 220) }));
     const chatSendRes = await gatewayCall('chat.send', {
       sessionKey: this.sessionKey,
       message: originalUserText,
