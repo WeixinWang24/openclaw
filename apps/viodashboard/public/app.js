@@ -495,7 +495,7 @@ function syncStopButton() {
 function resetStoppedUiForNewRun() {
   clearStreamingMessageEl();
   lastStreamEventAt = 0;
-  const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
+  const runState = getSessionRunState(getActiveViewedSessionKey());
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
     runState.state = 'idle';
   }
@@ -504,7 +504,7 @@ function resetStoppedUiForNewRun() {
 }
 
 function forceFinalizeFrontState(reason = 'unknown') {
-  const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
+  const sessionKey = getActiveViewedSessionKey();
   const runState = getSessionRunState(sessionKey);
   addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || '').slice(0, 8)}`, 'pink');
   clearStreamingMessageEl(runState?.runId || null);
@@ -2344,6 +2344,10 @@ function isMainSessionView() {
   return !!selectedSessionKey && !!gatewayMainSessionKey && selectedSessionKey === gatewayMainSessionKey;
 }
 
+function getActiveViewedSessionKey() {
+  return selectedSessionKey || gatewayMainSessionKey || null;
+}
+
 function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
@@ -2892,7 +2896,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const switchedSession = !!previousSessionKey && previousSessionKey !== sessionKey;
   const hasCachedMessages = sessionMessages.has(sessionKey);
   const selectedRun = getSessionRunState(sessionKey);
-  const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && selectedRun.state === 'streaming');
+  const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || selectedRun.state === 'streaming';
   addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
   clearChat();
@@ -3014,7 +3018,7 @@ function connect() {
     }
     if (msg.type === 'ack') {
       resetStoppedUiForNewRun();
-      const sessionKey = gatewayMainSessionKey || selectedSessionKey || null;
+      const sessionKey = getActiveViewedSessionKey();
       const runState = getSessionRunState(sessionKey);
       runState.runId = msg.runId || runState.runId || null;
       runState.state = 'streaming';
@@ -3034,7 +3038,7 @@ function connect() {
     }
     if (msg.type === 'error') {
       const errorText = msg.error || 'wrapper error';
-      const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
+      const sessionKey = getActiveViewedSessionKey();
       const runState = getSessionRunState(sessionKey);
       runState.state = 'error';
       runState.streamText = '';
@@ -3116,7 +3120,7 @@ function connect() {
       const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
       addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
       if (!sessionKey) {return;}
-      const delay = sessionKey === gatewayMainSessionKey ? 0 : 1200;
+      const delay = sessionKey === selectedSessionKey ? 0 : 1200;
       scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
       return;
     }
@@ -3415,8 +3419,8 @@ void refreshSafeEditState();
 syncTerminalTaskButtons();
 syncContinueButton();
 setInterval(() => {
-  const mainRunState = getSessionRunState(gatewayMainSessionKey || selectedSessionKey || null);
-  if (mainRunState.state === 'streaming' && lastStreamEventAt && (Date.now() - lastStreamEventAt) > 10000) {
+  const viewedRunState = getSessionRunState(getActiveViewedSessionKey());
+  if (viewedRunState.state === 'streaming' && lastStreamEventAt && (Date.now() - lastStreamEventAt) > 10000) {
     forceFinalizeFrontState('stream-watchdog-timeout');
   }
 }, 2000);
@@ -3444,7 +3448,7 @@ fetchDashboardSessions()
     if (selectedSessionKey && sessionMessages.has(selectedSessionKey)) {
       return selectDashboardSession(selectedSessionKey, { force: false });
     }
-    renderSessionIdlePlaceholder(selectedSessionKey || gatewayMainSessionKey || null);
+    renderSessionIdlePlaceholder(getActiveViewedSessionKey());
     addDebugLine(`sessions init loaded list only; deferred history for ${selectedSessionKey || 'none'}`, 'cyan');
     return null;
   })
