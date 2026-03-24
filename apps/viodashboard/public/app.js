@@ -2622,14 +2622,20 @@ function applyKernelRunViewPacket(msg = {}) {
   if (msg?.view) {
     applyProjectionViewToSession(sessionKey, msg.view, { render: !(isSelectedSession && isDelta) });
     if (isSelectedSession && isDelta) {
-      patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+      const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+      if (!patched) {
+        renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+      }
     }
     return;
   }
 
   if (isSelectedSession) {
     if (isDelta) {
-      patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+      const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+      if (!patched) {
+        renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+      }
       return;
     }
     renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
