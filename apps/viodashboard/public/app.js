@@ -2340,46 +2340,12 @@ async function submitChatText(text = '', options = {}) {
   addDebugLine(`submitChatText: len=${outboundText.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
   if (!value || !outboundText || !selectedSessionKey) {return;}
 
-  if (selectedSessionKey === gatewayMainSessionKey && ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      addDebugLine('submitChatText: calling ws.send (main session)', 'cyan');
-      ws.send(JSON.stringify({ type: 'send', text: outboundText }));
-      addDebugLine('submitChatText: ws.send returned', 'cyan');
-    } catch (error) {
-      addDebugLine(`submitChatText: ws.send threw ${error?.message || error}`, 'pink');
-      throw error;
-    }
-    applyPostSendUiState(selectedSessionKey, {
-      userText: value,
-      optimistic: true,
-      debugLabel: 'Main send queued',
-      moodDetail: 'User prompt sent; waiting for final routing.',
-      routingSummary: 'queued',
-      routingDetail: 'phase=queued · mode=thinking',
-      refreshDelay: 0,
-    });
-    return;
-  }
-
-  const targetSessionKey = selectedSessionKey;
-  addDebugLine(`submitChatText: non-main send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
-  const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: outboundText }),
-  });
-  const data = await res.json();
-  if (!res.ok) {throw new Error(data?.error || 'session send failed');}
-  applyPostSendUiState(targetSessionKey, {
+  const sendResult = await sendToSelectedSession(outboundText, {
     userText: value,
-    runId: data?.runId || null,
-    optimistic: true,
-    debugLabel: 'Session send accepted',
-    moodDetail: 'Session message sent; waiting for live session events.',
-    routingSummary: 'session live',
-    routingDetail: targetSessionKey,
-    refreshDelay: 2000,
   });
+  if (!sendResult?.ok) {
+    throw new Error(sendResult?.error || 'session send failed');
+  }
 }
 
 function isMainSessionView() {
@@ -2390,6 +2356,56 @@ function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
   streamingRunId = null;
+}
+
+async function sendToSelectedSession(outboundText, { userText = '' } = {}) {
+  const targetSessionKey = selectedSessionKey;
+  if (!targetSessionKey) {
+    return { ok: false, error: 'sessionKey is required' };
+  }
+
+  if (targetSessionKey === gatewayMainSessionKey && ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      addDebugLine('sendToSelectedSession: calling ws.send (main session)', 'cyan');
+      ws.send(JSON.stringify({ type: 'send', text: outboundText }));
+      addDebugLine('sendToSelectedSession: ws.send returned', 'cyan');
+    } catch (error) {
+      addDebugLine(`sendToSelectedSession: ws.send threw ${error?.message || error}`, 'pink');
+      throw error;
+    }
+    applyPostSendUiState(targetSessionKey, {
+      userText,
+      optimistic: true,
+      debugLabel: 'Main send queued',
+      moodDetail: 'User prompt sent; waiting for final routing.',
+      routingSummary: 'queued',
+      routingDetail: 'phase=queued · mode=thinking',
+      refreshDelay: 0,
+    });
+    return { ok: true, mode: 'ws', sessionKey: targetSessionKey };
+  }
+
+  addDebugLine(`sendToSelectedSession: http send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
+  const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: outboundText }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    return { ok: false, error: data?.error || 'session send failed', sessionKey: targetSessionKey };
+  }
+  applyPostSendUiState(targetSessionKey, {
+    userText,
+    runId: data?.runId || null,
+    optimistic: true,
+    debugLabel: 'Session send accepted',
+    moodDetail: 'Session message sent; waiting for live session events.',
+    routingSummary: 'session live',
+    routingDetail: targetSessionKey,
+    refreshDelay: 2000,
+  });
+  return { ok: true, mode: 'http', sessionKey: targetSessionKey, runId: data?.runId || null };
 }
 
 function applyPostSendUiState(sessionKey, {
