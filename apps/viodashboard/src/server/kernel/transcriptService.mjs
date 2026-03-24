@@ -15,21 +15,34 @@ function sanitizeTranscriptText(text = '') {
   return stripCliSenderEnvelope(stripReplyTagHeader(text));
 }
 
+function collapseContinuePromptForDisplay(text = '', role = '') {
+  const source = String(text || '').trim();
+  if (role !== 'user') {return source;}
+  if (/^继续上一条 assistant 回复里最后明确提出的事情。/u.test(source)) {
+    return '继续';
+  }
+  return source;
+}
+
 function parseMessageText(message) {
   if (!message || typeof message !== 'object') {return '';}
-  if (typeof message.text === 'string') {return sanitizeTranscriptText(message.text);}
-  if (typeof message.content === 'string') {return sanitizeTranscriptText(message.content);}
+  const role = normalizeVisibleRole(message?.role || 'assistant') || '';
+  if (typeof message.text === 'string') {return collapseContinuePromptForDisplay(sanitizeTranscriptText(message.text), role);}
+  if (typeof message.content === 'string') {return collapseContinuePromptForDisplay(sanitizeTranscriptText(message.content), role);}
   if (Array.isArray(message.content)) {
-    return sanitizeTranscriptText(
-      message.content
-        .map(part => {
-          if (typeof part?.text === 'string') {return part.text;}
-          if (typeof part?.outputText === 'string') {return part.outputText;}
-          if (typeof part?.output === 'string') {return part.output;}
-          return '';
-        })
-        .filter(Boolean)
-        .join('\n'),
+    return collapseContinuePromptForDisplay(
+      sanitizeTranscriptText(
+        message.content
+          .map(part => {
+            if (typeof part?.text === 'string') {return part.text;}
+            if (typeof part?.outputText === 'string') {return part.outputText;}
+            if (typeof part?.output === 'string') {return part.output;}
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n'),
+      ),
+      role,
     );
   }
   return '';

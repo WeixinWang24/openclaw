@@ -1021,7 +1021,7 @@ button.chip:disabled {
   min-width: 0;
   align-self: flex-end;
   margin-left: auto;
-  text-align: right;
+  text-align: left;
   overflow-wrap: anywhere;
   word-break: break-word;
   color: var(--text-chat-user);
@@ -1387,7 +1387,7 @@ button.chip:disabled {
   width: auto;
   max-width: min(calc(100% - 76px), 1500px);
   margin-left: auto;
-  justify-items: end;
+  justify-items: start;
 }
 
 .avatar {

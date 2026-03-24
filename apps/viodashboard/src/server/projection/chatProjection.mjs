@@ -3,6 +3,15 @@ import { KERNEL_CHANNELS } from '../kernel/kernelEventBus.mjs';
 export function createChatProjection({ eventBus }) {
   const viewsBySession = new Map();
 
+  function collapseContinuePromptForDisplay(text = '', role = '') {
+    const source = String(text || '').trim();
+    if (role !== 'user') {return source;}
+    if (/^继续上一条 assistant 回复里最后明确提出的事情。/u.test(source)) {
+      return '继续';
+    }
+    return source;
+  }
+
   function ensureSessionView(sessionKey) {
     if (!viewsBySession.has(sessionKey)) {
       viewsBySession.set(sessionKey, {
@@ -44,7 +53,7 @@ export function createChatProjection({ eventBus }) {
       view.messages.push({
         id: `user:${runId}`,
         role: 'user',
-        text: event.message,
+        text: collapseContinuePromptForDisplay(event.message, 'user'),
         kind: 'message',
         status: 'final',
         createdAt: new Date(event.ts || Date.now()).toISOString(),
