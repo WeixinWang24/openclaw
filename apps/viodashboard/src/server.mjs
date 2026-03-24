@@ -32,6 +32,7 @@ import { handleSessionRoutes } from './server/routes/sessionRoutes.mjs';
 import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
 import { handleRoadmapRoutes } from './server/routes/roadmapRoutes.mjs';
 import { handleSetupRoutes } from './server/routes/setupRoutes.mjs';
+import { handleDistRoutes } from './server/routes/distRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -560,21 +561,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/dist-info' && req.method === 'GET') {
-    const info = loadDistBuildInfo();
-    sendJson(res, 200, { ok: true, info });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/dist-rebuild' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(() => {
-        sendJson(res, 202, { ok: true, rebuilding: true });
-        setTimeout(() => {
-          execFile(PNPM_BIN, ['build'], { cwd: OPENCLAW_REPO_ROOT, env: process.env }, () => {});
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+  if (handleDistRoutes({
+    req,
+    res,
+    requestUrl,
+    loadDistBuildInfo,
+    rebuildDist: () => {
+      execFile(PNPM_BIN, ['build'], { cwd: OPENCLAW_REPO_ROOT, env: process.env }, () => {});
+    },
+  })) {
     return;
   }
 
