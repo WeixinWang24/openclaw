@@ -2433,13 +2433,6 @@ function applyPostSendUiState(sessionKey, {
   refreshDelay = 2000,
 } = {}) {
   if (!sessionKey) {return;}
-  if (optimistic && userText) {
-    appendSessionMessage(sessionKey, {
-      id: `optimistic-${Date.now()}`,
-      role: 'user',
-      text: userText,
-    });
-  }
   try {
     inputEl.value = '';
     resizeComposer();
