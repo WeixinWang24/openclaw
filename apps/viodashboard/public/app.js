@@ -428,14 +428,38 @@ function allocExecTaskId() {
   return `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function getSelectedSessionRunState() {
+  if (!selectedSessionKey) {
+    return { sessionKey: null, isMain: false, runId: null, state: 'idle', stoppable: false };
+  }
+  if (isMainSessionView()) {
+    return {
+      sessionKey: selectedSessionKey,
+      isMain: true,
+      runId: activeRunId || null,
+      state: activeRunState || 'idle',
+      stoppable: true,
+    };
+  }
+  const runState = getSessionRunState(selectedSessionKey);
+  return {
+    sessionKey: selectedSessionKey,
+    isMain: false,
+    runId: runState?.runId || null,
+    state: runState?.state || 'idle',
+    stoppable: false,
+  };
+}
+
 function syncStopButton() {
+  const selectedRun = getSelectedSessionRunState();
   if (stopBtnEl) {
-    stopBtnEl.hidden = !(activeRunId && activeRunState === 'streaming');
-    stopBtnEl.textContent = activeRunState === 'aborting' ? 'Stopping...' : 'Stop';
-    stopBtnEl.disabled = activeRunState === 'aborting';
+    stopBtnEl.hidden = !(selectedRun.isMain && selectedRun.runId && selectedRun.state === 'streaming');
+    stopBtnEl.textContent = selectedRun.state === 'aborting' ? 'Stopping...' : 'Stop';
+    stopBtnEl.disabled = selectedRun.state === 'aborting';
   }
   if (stopStatusBadgeEl) {
-    const showStopped = activeRunState === 'aborted';
+    const showStopped = selectedRun.isMain && selectedRun.state === 'aborted';
     stopStatusBadgeEl.hidden = !showStopped;
     stopStatusBadgeEl.textContent = showStopped ? 'Stopped' : 'Stopped';
   }
@@ -2561,6 +2585,39 @@ function appendSessionMessage(sessionKey, message) {
   }
 }
 
+function applyProjectionViewToSession(sessionKey, view = null) {
+  if (!sessionKey || !view || !Array.isArray(view.messages)) {return;}
+  const normalized = view.messages
+    .map(message => ({
+      id: message.id || null,
+      runId: message.id && String(message.id).startsWith('assistant:') ? String(message.id).slice('assistant:'.length) : null,
+      role: message.role || 'assistant',
+      text: typeof message.text === 'string' ? message.text : '',
+      status: message.status || 'final',
+    }))
+    .filter(message => shouldDisplayChatMessage(message));
+  sessionMessages.set(sessionKey, normalized);
+  if (selectedSessionKey === sessionKey) {
+    renderSessionMessages(sessionKey, normalized);
+  }
+}
+
+function applyKernelRunViewPacket(msg = {}) {
+  const sessionKey = msg?.event?.sessionKey || null;
+  if (!sessionKey) {return;}
+  if (msg?.view) {
+    applyProjectionViewToSession(sessionKey, msg.view);
+  }
+}
+
+function applyProjectionTranscriptPacket(msg = {}) {
+  const sessionKey = msg?.sessionKey || null;
+  if (!sessionKey) {return;}
+  if (msg?.view) {
+    applyProjectionViewToSession(sessionKey, msg.view);
+  }
+}
+
 function applyChatEventToSessionHistory(sessionKey, event = {}) {
   if (!sessionKey) {return;}
   const runState = getSessionRunState(sessionKey);
@@ -2615,6 +2672,58 @@ function applyChatEventToSessionHistory(sessionKey, event = {}) {
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'error';
+  }
+}
+
+function finalizeMainSessionBackgroundState(event = {}) {
+  const state = String(event?.state || '');
+  const runId = event?.runId || activeRunId || null;
+  if (state === 'final') {
+    const finalText = stripRoadmapBlockForDisplay(event.text || '').trim();
+    if (finalText) {
+      try {
+        persistLatestAssistantReply(finalText, { runId, aborted: false, sessionKey: gatewayMainSessionKey || null });
+      } catch (error) {
+        addDebugLine(`background final persist failed: ${error?.message || error}`, 'pink');
+      }
+    }
+    if (runId) {updateChatRunStatus(runId, 'completed');}
+    activeRunState = 'final';
+    activeRunId = null;
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
+    streamingEl = null;
+    streamingRunId = null;
+    lastStreamEventAt = 0;
+    syncStopButton();
+    syncContinueButton();
+    return;
+  }
+  if (state === 'error') {
+    if (runId) {updateChatRunStatus(runId, 'failed');}
+    activeRunState = 'final';
+    activeRunId = null;
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
+    streamingEl = null;
+    streamingRunId = null;
+    lastStreamEventAt = 0;
+    syncStopButton();
+    syncContinueButton();
+    return;
+  }
+  if (state === 'aborted') {
+    if (runId) {updateChatRunStatus(runId, 'aborted');}
+    markLatestAssistantReplyAborted(runId, gatewayMainSessionKey || null);
+    activeRunState = 'aborted';
+    activeRunId = null;
+    mainSessionStreamBuffer.runId = null;
+    mainSessionStreamBuffer.text = '';
+    streamingEl = null;
+    streamingRunId = null;
+    lastStreamEventAt = 0;
+    syncStopButton();
+    syncContinueButton();
   }
 }
 
@@ -2829,6 +2938,30 @@ function renderSessionLoadingPlaceholder(sessionKey) {
   chatEl.appendChild(row);
 }
 
+function renderSessionIdlePlaceholder(sessionKey) {
+  if (!chatEl) {return;}
+  chatEl.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'msg-row system';
+  row.dataset.messageRole = 'idle';
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar system';
+  avatar.textContent = '○';
+  const bubbleWrap = document.createElement('div');
+  bubbleWrap.className = 'bubble-wrap';
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta system';
+  meta.textContent = `Ready · ${formatStamp()}`;
+  const el = document.createElement('div');
+  el.className = 'msg system session-loading';
+  el.textContent = sessionKey ? `Session ${sessionKey} ready. Click it to load history.` : 'Sessions ready. Select a session to load history.';
+  bubbleWrap.appendChild(meta);
+  bubbleWrap.appendChild(el);
+  row.appendChild(avatar);
+  row.appendChild(bubbleWrap);
+  chatEl.appendChild(row);
+}
+
 async function loadSessionHistory(sessionKey, { force = false, selectionSeq = null } = {}) {
   if (!sessionKey) {return [];}
   if (!force && sessionMessages.has(sessionKey)) {
@@ -2922,27 +3055,56 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const selectionSeq = ++sessionSelectionSeq;
   const meta = getSessionMeta(sessionKey);
   const switchedSession = !!previousSessionKey && previousSessionKey !== sessionKey;
+  const hasCachedMessages = sessionMessages.has(sessionKey);
   const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && activeRunState === 'streaming');
-  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'}`, 'cyan');
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
   clearChat();
-  setSessionLoading(sessionKey, true);
-  renderSessionLoadingPlaceholder(sessionKey);
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
   renderSessionsList();
-  const [messages] = await Promise.all([
-    loadSessionHistory(sessionKey, { force: shouldForce, selectionSeq }),
-    refreshSelectedSessionContext(sessionKey),
-  ]);
-  if (selectedSessionKey !== sessionKey || selectionSeq !== sessionSelectionSeq) {
-    addDebugLine(`selectDashboardSession stale seq=${selectionSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
-    return;
+  syncStopButton();
+  syncContinueButton();
+
+  const cachedMessages = hasCachedMessages ? (sessionMessages.get(sessionKey) || []) : null;
+  if (cachedMessages) {
+    setSessionLoading(sessionKey, false);
+    renderSessionMessages(sessionKey, cachedMessages);
+  } else if (shouldForce) {
+    setSessionLoading(sessionKey, true);
+    renderSessionLoadingPlaceholder(sessionKey);
+  } else {
+    setSessionLoading(sessionKey, false);
+    renderSessionIdlePlaceholder(sessionKey);
   }
-  renderSessionMessages(sessionKey, messages);
-  if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
-    addDebugLine(`Session selected: ${sessionKey} seq=${selectionSeq}`, 'cyan');
+
+  refreshSelectedSessionContext(sessionKey).catch(error => {
+    addDebugLine(`Session context refresh failed (${sessionKey}): ${error?.message || error}`, 'pink');
+  });
+
+  if (!hasCachedMessages || shouldForce) {
+    loadSessionHistory(sessionKey, { force: shouldForce, selectionSeq })
+      .then(messages => {
+        if (selectedSessionKey !== sessionKey || selectionSeq !== sessionSelectionSeq) {
+          addDebugLine(`selectDashboardSession stale seq=${selectionSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
+          return;
+        }
+        renderSessionMessages(sessionKey, messages);
+        syncStopButton();
+        syncContinueButton();
+        if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
+          addDebugLine(`Session selected: ${sessionKey} seq=${selectionSeq}`, 'cyan');
+        }
+      })
+      .catch(error => {
+        if (selectedSessionKey === sessionKey && selectionSeq === sessionSelectionSeq) {
+          renderSessionIdlePlaceholder(sessionKey);
+        }
+        addDebugLine(`Session history load failed (${sessionKey}): ${error?.message || error}`, 'pink');
+      });
+  } else if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
+    addDebugLine(`Session selected from cache: ${sessionKey} seq=${selectionSeq}`, 'cyan');
   }
 }
 
@@ -3003,7 +3165,9 @@ function connect() {
       applyDotState(gatewayDotEl, 'link', msg.connected ? 'online' : 'offline');
       gatewayMainSessionKey = msg.sessionKey || gatewayMainSessionKey;
       sessionKeyEl.innerHTML = `<span class="semantic-label">session:</span> <span class="semantic-value">${msg.sessionKey || 'unknown'}</span>`;
-      if (!selectedSessionKey && gatewayMainSessionKey) {selectedSessionKey = gatewayMainSessionKey;}
+      if (!selectedSessionKey && gatewayMainSessionKey && !sessionHistoryInflight.has(gatewayMainSessionKey)) {
+        selectedSessionKey = gatewayMainSessionKey;
+      }
       return;
     }
     if (msg.type === 'ack') {
@@ -3102,6 +3266,14 @@ function connect() {
       scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
       return;
     }
+    if (msg.type === 'kernel.run') {
+      try {applyKernelRunViewPacket(msg);} catch (error) {addDebugLine(`ws kernel.run apply failed: ${error?.message || error}`, 'pink');}
+      return;
+    }
+    if (msg.type === 'projection.transcript') {
+      try {applyProjectionTranscriptPacket(msg);} catch (error) {addDebugLine(`ws projection.transcript apply failed: ${error?.message || error}`, 'pink');}
+      return;
+    }
     if (msg.type === 'chat') {
       const event = msg.event;
       if (ignoreAbortedRunEvent(event)) {return;}
@@ -3125,6 +3297,7 @@ function connect() {
           mainSessionStreamBuffer.runId = event?.runId || mainSessionStreamBuffer.runId || null;
           mainSessionStreamBuffer.text = event?.text || mainSessionStreamBuffer.text || '';
         } else {
+          finalizeMainSessionBackgroundState(event);
           scheduleSessionRefresh(gatewayMainSessionKey, event?.state || 'main-chat', 0);
         }
       }
@@ -3160,8 +3333,9 @@ formEl?.addEventListener('submit', ev => {
 
 function syncContinueButton() {
   if (!continueBtnEl) {return;}
-  const latest = getPersistedLatestAssistantReplyMeta();
-  const blocked = latest.aborted || activeRunState === 'streaming' || activeRunState === 'aborting' || activeRunState === 'aborted';
+  const selectedRun = getSelectedSessionRunState();
+  const latest = getPersistedLatestAssistantReplyMeta(selectedSessionKey || null);
+  const blocked = latest.aborted || selectedRun.state === 'streaming' || selectedRun.state === 'aborting' || selectedRun.state === 'aborted';
   continueBtnEl.disabled = blocked;
 }
 
@@ -3436,7 +3610,9 @@ ensureTerminalSession().catch(() => {});
 sessionsRefreshBtnEl?.addEventListener('click', () => {
   fetchDashboardSessions()
     .then(() => {
-      if (selectedSessionKey) {return selectDashboardSession(selectedSessionKey, { force: true });}
+      if (selectedSessionKey && sessionMessages.has(selectedSessionKey)) {
+        return selectDashboardSession(selectedSessionKey, { force: false });
+      }
       return null;
     })
     .catch(error => addDebugLine(`sessions refresh failed: ${error?.message || error}`, 'pink'));
@@ -3444,7 +3620,11 @@ sessionsRefreshBtnEl?.addEventListener('click', () => {
 
 fetchDashboardSessions()
   .then(() => {
-    if (selectedSessionKey) {return selectDashboardSession(selectedSessionKey, { force: true });}
+    if (selectedSessionKey && sessionMessages.has(selectedSessionKey)) {
+      return selectDashboardSession(selectedSessionKey, { force: false });
+    }
+    renderSessionIdlePlaceholder(selectedSessionKey || gatewayMainSessionKey || null);
+    addDebugLine(`sessions init loaded list only; deferred history for ${selectedSessionKey || 'none'}`, 'cyan');
     return null;
   })
   .catch(error => addDebugLine(`sessions init failed: ${error?.message || error}`, 'pink'));
