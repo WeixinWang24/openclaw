@@ -18,14 +18,11 @@ export function createRuntimeMoodStateService({ activeRunSeq }) {
     return 'idle';
   }
 
-  function computeVisualState({ mood, phase, bodyState, activeRunCount }) {
-    const currentStatus = bodyState?.current_status || null;
-    const lightOutput = bodyState?.light_output || null;
-    if (phase === 'error' || mood === 'error' || currentStatus === 'error' || lightOutput === 'error') {return 'error';}
+  function computeVisualState({ mood, phase, activeRunCount }) {
+    if (phase === 'error' || mood === 'error') {return 'error';}
     if (activeRunCount > 0 || phase === 'queued' || phase === 'streaming' || mood === 'thinking' || mood === 'streaming') {return 'thinking';}
-    if (mood === 'waiting' || currentStatus === 'waiting' || lightOutput === 'waiting') {return 'waiting';}
-    if (currentStatus === 'thinking' || lightOutput === 'thinking') {return 'thinking';}
-    return normalizeMood(mood || currentStatus || lightOutput || 'idle');
+    if (mood === 'waiting') {return 'waiting';}
+    return normalizeMood(mood || 'idle');
   }
 
   function syncRuntimeState(patch = {}) {
@@ -36,17 +33,8 @@ export function createRuntimeMoodStateService({ activeRunSeq }) {
     };
     runtimeState.activeRunCount = activeRunSeq.size;
 
-    const bodyCurrent = runtimeState.bodyState?.current_status || null;
-    const bodyLight = runtimeState.bodyState?.light_output || null;
     if (runtimeState.activeRunCount === 0) {
       runtimeState.activeRunId = null;
-      if (bodyCurrent === 'idle' || bodyLight === 'idle') {
-        runtimeState.mood = 'idle';
-        runtimeState.phase = 'idle';
-      } else if (bodyCurrent === 'waiting' || bodyLight === 'waiting') {
-        runtimeState.mood = 'waiting';
-        runtimeState.phase = 'idle';
-      }
     }
 
     runtimeState.lightOutput = computeVisualState(runtimeState);

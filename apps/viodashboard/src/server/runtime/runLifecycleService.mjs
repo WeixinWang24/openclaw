@@ -14,7 +14,7 @@ export function createRunLifecycleService({
   if (typeof buildMoodPacket !== 'function') {throw new Error('buildMoodPacket is required');}
   if (typeof broadcast !== 'function') {throw new Error('broadcast is required');}
 
-  function handleQueued(runId, sidecarResult = null) {
+  function handleQueued(runId, _sidecarResult = null) {
     if (runId) {
       state.runSequenceRef.increment();
       state.activeRunSeq.set(runId, state.runSequenceRef.get());
@@ -24,14 +24,12 @@ export function createRunLifecycleService({
       phase: 'queued',
       activeRunId: runId || getRuntimeState().activeRunId,
       latestRunSeq: state.runSequenceRef.get(),
-      bodyState: sidecarResult?.state ?? getRuntimeState().bodyState,
       source: 'queued',
     });
     broadcast(buildMoodPacket('thinking', {
-      detail: 'task-start sent to sidecar',
+      detail: 'chat queued',
       phase: 'queued',
       runId,
-      state: sidecarResult?.state ?? getRuntimeState().bodyState ?? { current_status: 'thinking', last_stable_status: 'thinking', light_output: 'thinking' },
       source: 'queued',
     }));
   }
@@ -54,27 +52,27 @@ export function createRunLifecycleService({
 
   async function handleError(event) {
     if (event.runId) {state.activeRunSeq.delete(event.runId);}
-    syncRuntimeState({ source: 'chat-error' });
     try {
-      const result = await sideEffects.onAssistantError();
-      routing.setLastRouting({ mode: 'error', detail: event.payload?.errorMessage || 'chat error', phase: 'error', runId: event.runId });
-      broadcast(buildMoodPacket('error', {
-        state: result?.state ?? getRuntimeState().bodyState,
-        detail: routing.getLastRouting().detail,
-        phase: 'error',
-        runId: event.runId,
-        source: 'chat-error',
-      }));
+      await sideEffects.onAssistantError();
     } catch (error) {
       console.log('[wrapper] sidecar error routing failed', error?.message || String(error));
     }
+    syncRuntimeState({ mood: 'error', phase: 'error', source: 'chat-error' });
+    routing.setLastRouting({ mode: 'error', detail: event.payload?.errorMessage || 'chat error', phase: 'error', runId: event.runId });
+    broadcast(buildMoodPacket('error', {
+      detail: routing.getLastRouting().detail,
+      phase: 'error',
+      runId: event.runId,
+      source: 'chat-error',
+    }));
   }
 
   function handleAborted(event) {
     if (event.runId) {state.activeRunSeq.delete(event.runId);}
-    routing.setLastRouting({ mode: state.activeRunSeq.size ? 'thinking' : 'idle', detail: 'chat aborted', phase: 'aborted', runId: event.runId });
-    broadcast(buildMoodPacket(state.activeRunSeq.size ? 'thinking' : 'idle', {
-      state: getRuntimeState().bodyState,
+    const mode = state.activeRunSeq.size ? 'thinking' : 'idle';
+    routing.setLastRouting({ mode, detail: 'chat aborted', phase: 'aborted', runId: event.runId });
+    syncRuntimeState({ mood: mode, phase: state.activeRunSeq.size ? 'streaming' : 'aborted', source: 'chat-aborted' });
+    broadcast(buildMoodPacket(mode, {
       detail: 'chat aborted',
       phase: state.activeRunSeq.size ? 'streaming' : 'aborted',
       runId: event.runId,
