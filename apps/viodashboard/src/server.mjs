@@ -296,6 +296,7 @@ const activeRunSeq = new Map();
 let runSequence = 0;
 let lastRouting = { mode: 'n/a', detail: 'no final reply routed yet' };
 let lastAssistantFinalNotifiedRunId = null;
+let runtimeGatewayReadPrewarmStarted = false;
 let runtimeState = {
   mood: 'idle',
   phase: 'idle',
@@ -392,6 +393,21 @@ function broadcast(packet) {
   broadcastHub.broadcast(packet);
 }
 
+async function prewarmGatewayReadPaths() {
+  if (runtimeGatewayReadPrewarmStarted) {return;}
+  runtimeGatewayReadPrewarmStarted = true;
+  const startedAt = Date.now();
+  try {
+    await bridge.listSessions({ limit: 20 });
+    await bridge.fetchSessionUsage();
+    await bridge.fetchSessionContextSnapshot();
+    await bridge.fetchModelCatalog();
+    console.log('[wrapper] gateway read-path prewarm complete', JSON.stringify({ totalDurationMs: Date.now() - startedAt }));
+  } catch (error) {
+    console.warn('[wrapper] gateway read-path prewarm failed', error?.message || String(error));
+  }
+}
+
 function buildTokensPacket() {
   return {
     type: 'tokens',
@@ -440,7 +456,14 @@ const transcriptService = createTranscriptService({
 const chatProjection = createChatProjection({ eventBus: kernelEventBus });
 
 bridge = new GatewayBridge({
-  onStatus: payload => broadcast({ type: 'status', ...payload }),
+  onStatus: payload => {
+    broadcast({ type: 'status', ...payload });
+    if (payload?.connected) {
+      setTimeout(() => {
+        prewarmGatewayReadPaths().catch(() => {});
+      }, 0);
+    }
+  },
   onSessionUpdated: payload => {
     console.log('[wrapper] session.updated', JSON.stringify(payload));
     broadcast({ type: 'session.updated', ...payload });
