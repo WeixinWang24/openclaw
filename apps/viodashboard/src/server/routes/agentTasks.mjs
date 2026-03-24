@@ -46,7 +46,7 @@ function buildClaudeTaskPrompt(userText) {
  * @param {import('http').IncomingMessage} req
  * @param {import('http').ServerResponse} res
  */
-export function handleAgentTaskRoutes(requestUrl, req, res) {
+export function handleAgentTaskRoutes({ requestUrl, req, res }) {
   const { pathname } = requestUrl;
 
   // GET /api/agent-tasks/current

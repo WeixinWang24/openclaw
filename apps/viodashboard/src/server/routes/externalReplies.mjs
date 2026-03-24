@@ -1,7 +1,7 @@
 import { readJsonRequest, sendJson } from '../httpUtils.mjs';
 import { listExternalReplies, ingestExternalReply } from '../externalReplies/store.mjs';
 
-export function handleExternalRepliesRoutes(requestUrl, req, res) {
+export function handleExternalRepliesRoutes({ requestUrl, req, res }) {
   const { pathname } = requestUrl;
 
   if (pathname === '/api/external-replies/inbox' && req.method === 'GET') {
