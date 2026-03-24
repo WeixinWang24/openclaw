@@ -2554,9 +2554,27 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
   }
 }
 
+function pruneSupersededStreamingMessages(messages = []) {
+  const list = Array.isArray(messages) ? messages : [];
+  return list.filter((message, index) => {
+    if (message?.role !== 'assistant' || message?.status !== 'streaming') {return true;}
+    const messageText = String(message?.text || '').trim();
+    const messageRunId = message?.runId || (String(message?.id || '').startsWith('assistant:') ? String(message.id).slice('assistant:'.length) : null);
+    return !list.some((other, otherIndex) => {
+      if (otherIndex === index) {return false;}
+      if (other?.role !== 'assistant' || other?.status !== 'final') {return false;}
+      const otherText = String(other?.text || '').trim();
+      const otherRunId = other?.runId || (String(other?.id || '').startsWith('assistant:') ? String(other.id).slice('assistant:'.length) : null);
+      if (messageRunId && otherRunId && messageRunId === otherRunId) {return true;}
+      if (!messageText || !otherText) {return false;}
+      return otherText.length >= messageText.length && otherText.startsWith(messageText);
+    });
+  });
+}
+
 function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
   if (!sessionKey || !view || !Array.isArray(view.messages)) {return;}
-  const normalized = view.messages
+  const normalized = pruneSupersededStreamingMessages(view.messages
     .map(message => ({
       id: message.id || null,
       runId: message.id && String(message.id).startsWith('assistant:') ? String(message.id).slice('assistant:'.length) : null,
@@ -2564,7 +2582,7 @@ function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
       text: typeof message.text === 'string' ? message.text : '',
       status: message.status || 'final',
     }))
-    .filter(message => shouldDisplayChatMessage(message));
+    .filter(message => shouldDisplayChatMessage(message)));
 
   const runState = getSessionRunState(sessionKey);
   const hasStreamingAssistantForActiveRun =
@@ -2956,6 +2974,7 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
       messages.push(existingAssistantForRun);
     }
   }
+  messages = pruneSupersededStreamingMessages(messages);
   sessionMessages.set(sessionKey, messages);
   reconcileRunStateFromMessages(sessionKey, messages, 'session-history');
   const uiState = deriveSessionUiState(sessionKey);
