@@ -2639,8 +2639,10 @@ function applyKernelRunViewPacket(msg = {}) {
 function applyProjectionTranscriptPacket(msg = {}) {
   const sessionKey = msg?.sessionKey || null;
   if (!sessionKey) {return;}
+  const runState = getSessionRunState(sessionKey);
+  const suppressRender = selectedSessionKey === sessionKey && runState?.state === 'streaming';
   if (msg?.view) {
-    applyProjectionViewToSession(sessionKey, msg.view);
+    applyProjectionViewToSession(sessionKey, msg.view, { render: !suppressRender });
   }
 }
 
@@ -3041,10 +3043,15 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
   meta.lastReason = reason;
   const lastPreview = messages.length ? String(messages[messages.length - 1]?.text || '').replace(/\s+/g, ' ').slice(0, 120) : '';
   addDebugLine(`refreshSessionHistory seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason} len=${messages.length} last=${lastPreview || '<empty>'}`, 'cyan');
-  if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq) {
+  const runState = getSessionRunState(sessionKey);
+  const shouldSuppressStreamingRerender =
+    sessionKey === selectedSessionKey &&
+    refreshSeq === sessionSelectionSeq &&
+    runState?.state === 'streaming';
+  if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq && !shouldSuppressStreamingRerender) {
     renderSessionMessages(sessionKey, messages);
   } else {
-    addDebugLine(`refreshSessionHistory offscreen seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'cyan');
+    addDebugLine(`refreshSessionHistory render skipped seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} streamingSuppress=${shouldSuppressStreamingRerender ? 'yes' : 'no'}`, 'cyan');
   }
   return messages;
 }
