@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { COMS_ROOT, OPENCLAW_DIST_ROOT, TOKEN_SAVER_DEBUG_ROOT, gatewayPort, gatewayToken, gatewayUrl } from '../config.mjs';
-import { randomId, parseMessageText, extractUsage } from './utils.mjs';
+import { randomId, parseMessageText } from './utils.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -393,21 +393,6 @@ export class GatewayBridge {
       }
       if (msg.event === 'chat') {
         this.runtimeAdapters.rpcClient?.emitRawEvent?.(msg);
-        const payload = msg.payload;
-        if (!payload) {return;}
-        const state = payload.state;
-        const runId = payload.runId;
-        const eventSessionKey = payload?.sessionKey || msg?.sessionKey || payload?.session?.key || null;
-        const isMainSessionEvent = !eventSessionKey || eventSessionKey === this.sessionKey;
-        const rawText = parseMessageText(payload.message);
-        const text = sanitizeVisibleText(rawText);
-        const usage = extractUsage(payload);
-        if (state === 'final' || state === 'error' || state === 'aborted') {
-          try {
-            console.log('[wrapper] chat payload keys:', Object.keys(payload || {}));
-            console.log('[wrapper] extracted usage:', usage ? JSON.stringify(usage) : 'null');
-          } catch {}
-        }
       }
       return;
     }
