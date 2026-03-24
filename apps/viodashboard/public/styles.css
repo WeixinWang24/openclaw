@@ -1041,7 +1041,7 @@ button.chip:disabled {
 }
 
 .msg.stream {
-  color: #7FDFFF;
+  color: rgba(208, 214, 224, 0.92);
   border: none;
   box-shadow:
     0 0 22px rgba(31,31,255,.18),
