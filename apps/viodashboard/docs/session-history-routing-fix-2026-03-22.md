@@ -46,3 +46,64 @@ Confirmed during manual testing:
 
 Keep the current debug lines temporarily for soak testing.
 If no regressions show up after normal use, reduce noisy `cache/start/resolved` debug output later while keeping the key stale/routing diagnostics.
+
+---
+
+## 2026-03-24 perf follow-up: cold first history
+
+### New symptom
+
+After the routing fix, the first `GET /api/sessions/:key/history` after dashboard reload could still take several seconds, even when later refreshes were fast.
+
+### What was measured
+
+Observed timings during investigation:
+
+- `history_default` cold path: about `6908ms`
+- `history_refresh=true` warm path: about `1267ms`
+- transcript normalization itself: about `0ms`
+- warm `sessions.get` fetch inside transcript service: about `107ms`
+
+Direct helper/RPC timing isolated the cold-start cost further:
+
+- `gateway-rpc-*.js` first dynamic import: about `1013ms`
+- `gatewayCall('sessions.get')` cold #1: about `3276ms`
+- `gatewayCall('sessions.get')` warm #2: about `349ms`
+- `gatewayCall('sessions.get')` warm #3: about `14ms`
+
+### Root cause refinement
+
+The main remaining delay was not history normalization or rendering. The dominant cold-start cost came from:
+
+1. dynamic resolution/import of the OpenClaw gateway helper from `dist/`
+2. first helper-backed `sessions.get` initialization cost
+
+### Fixes applied
+
+#### Backend history path softening
+
+- Added runtime timing diagnostics for transcript fetches.
+- Reduced transcript overfetch to a more conservative window.
+- Changed `/api/sessions/:key/history` to prefer cached/projection-backed responses when available, then refresh in the background.
+
+#### Startup prewarm
+
+- Added startup-time `warmGatewayCaller()` prewarm in `src/server.mjs`.
+- Added helper-resolution timing logs in `src/server/gatewayBridge.mjs`.
+- Kept runtime RPC fallback behavior intact if bridge-scope fast path is unavailable.
+
+### Validation observed after prewarm
+
+After reload with helper prewarm enabled:
+
+- first history after reload: about `134ms`
+- second history request: about `2ms` (cache hit)
+- `/api/sessions` first list: about `101ms`, second list: about `7ms`
+- non-main sessions also stayed fast:
+  - `agent:main:main` refresh: `23ms`
+  - `agent:main:subagent:...` refresh: `15ms`
+  - `agent:main:heartbeat` refresh: `8ms`
+
+### Takeaway
+
+If session history feels slow again, check helper cold-start and gateway helper resolution before blaming transcript shaping or frontend render work. For this incident, startup prewarm removed the largest user-visible first-load delay.
