@@ -657,6 +657,17 @@ function stripRoadmapBlockForDisplay(text = '') {
   return String(text || '').replace(/\n?```vio-roadmap\s*\n[\s\S]*?\n```\s*$/i, '').trim();
 }
 
+function sanitizeDisplayedChatText(text = '') {
+  let value = String(text || '').replace(/\r\n?/g, '\n');
+  value = value.replace(/^\[\[\s*reply_to_current\s*\]\]\s*/i, '');
+  value = value.replace(/^\[\[\s*reply_to\s*:\s*[^\]]+\]\]\s*/i, '');
+  value = value.replace(/^Sender \(untrusted metadata\):\s*```json\s*[\s\S]*?```\s*/i, '');
+  value = value.replace(/^Sender \(untrusted metadata\):\s*\{[\s\S]*?\}\s*/i, '');
+  value = value.replace(/^\[[A-Za-z]{3}\s+\d{4}-\d{2}-\d{2}[^\n]*\]\s*/i, '');
+  value = value.replace(/^\s+/, '');
+  return value;
+}
+
 function warnRoadmapLeak(path, text = '') {
   if (!hasRoadmapBlock(text)) {return;}
   console.warn(`[wrapper-ui] roadmap block reached ${path}; stripping before conversational reuse.`);
@@ -2622,7 +2633,7 @@ function renderSessionMessages(sessionKey, messages = []) {
   if (uiState.state === 'streaming' && getSessionRunState(sessionKey)?.streamText) {
     const runState = getSessionRunState(sessionKey);
     const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
-    target.textContent = runState.streamText;
+    target.textContent = sanitizeDisplayedChatText(runState.streamText);
   } else {
     clearStreamingMessageEl();
   }
@@ -2852,6 +2863,7 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
           ...message,
           role: normalizeDashboardMessageRole(message),
           runId: message?.runId || message?.id || null,
+          text: typeof message?.text === 'string' ? sanitizeDisplayedChatText(message.text) : '',
         }))
         .filter(shouldDisplayChatMessage)
     : [];
