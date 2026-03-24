@@ -3151,11 +3151,7 @@ stopBtnEl?.addEventListener('click', () => {
   mainSessionStreamBuffer.runId = null;
   mainSessionStreamBuffer.text = '';
   markLatestAssistantReplyAborted(stoppedRunId, selectedSessionKey || gatewayMainSessionKey || null);
-  if (isMainSessionView()) {
-    addMessage('assistant', '(aborted)');
-  } else {
-    addDebugLine(`Suppressed aborted marker in non-main session view ${selectedSessionKey || 'none'}`, 'pink');
-  }
+  scheduleSessionRefresh(selectedSessionKey || gatewayMainSessionKey || null, 'user-stop', 0);
   syncStopButton();
   syncContinueButton();
 });
@@ -3428,8 +3424,5 @@ distRebuildBtnEl?.addEventListener('click', rebuildDist);
 wrapperRestartBtnEl?.addEventListener('click', restartWrapper);
 gatewayRestartBtnEl?.addEventListener('click', restartGateway);
 contextCompactBtnEl?.addEventListener('click', compactContext);
-window.__VIO_APP_LOADED__ = true;
-try { connect(); } catch (error) { addDebugLine(`connect failed: ${error?.message || error}`, 'pink'); }
-ontextCompactBtnEl?.addEventListener('click', compactContext);
 window.__VIO_APP_LOADED__ = true;
 try { connect(); } catch (error) { addDebugLine(`connect failed: ${error?.message || error}`, 'pink'); }
