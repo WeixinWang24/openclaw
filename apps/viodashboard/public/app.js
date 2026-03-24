@@ -2653,18 +2653,14 @@ function renderSessionMessages(sessionKey, messages = []) {
   for (const message of visibleMessages) {
     if (!shouldDisplayChatMessage(message)) {continue;}
     const bubbleRole = roleForChatBubble(message);
-    addMessage(bubbleRole, message.text || '', '', {
+    const extraClass = message?.role === 'assistant' && message?.status === 'streaming' ? 'stream' : '';
+    addMessage(bubbleRole, message.text || '', extraClass, {
       messageRole: normalizeDashboardMessageRole(message),
       runId: message.runId || message.id || null,
+      status: message?.status || null,
     });
   }
-  if (uiState.state === 'streaming' && getSessionRunState(sessionKey)?.streamText) {
-    const runState = getSessionRunState(sessionKey);
-    const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
-    target.textContent = sanitizeDisplayedChatText(runState.streamText);
-  } else {
-    clearStreamingMessageEl();
-  }
+  clearStreamingMessageEl();
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
@@ -2680,6 +2676,7 @@ function addMessage(role, text, extraClass = '', options = {}) {
   row.className = `msg-row ${role}`.trim();
   if (options.runId) {row.dataset.runId = String(options.runId);}
   if (options.messageRole) {row.dataset.messageRole = String(options.messageRole);}
+  if (options.status) {row.dataset.status = String(options.status);}
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`.trim();
   const avatarSrc = (role === 'user' || role === 'assistant') ? avatarImageSrc(role) : null;
