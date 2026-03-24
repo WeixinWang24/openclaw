@@ -136,7 +136,6 @@ let ws;
 let streamingEl = null;
 let streamingRunId = null;
 let activeRunId = null;
-let activeRunState = 'idle';
 const abortedRunIds = new Set();
 let _stopRequestedAt = null;
 let lastStreamEventAt = 0;
@@ -427,22 +426,13 @@ function getSelectedSessionRunState() {
   if (!selectedSessionKey) {
     return { sessionKey: null, isMain: false, runId: null, state: 'idle', stoppable: false };
   }
-  if (isMainSessionView()) {
-    return {
-      sessionKey: selectedSessionKey,
-      isMain: true,
-      runId: activeRunId || null,
-      state: activeRunState || 'idle',
-      stoppable: true,
-    };
-  }
   const runState = getSessionRunState(selectedSessionKey);
   return {
     sessionKey: selectedSessionKey,
-    isMain: false,
+    isMain: isMainSessionView(),
     runId: runState?.runId || null,
     state: runState?.state || 'idle',
-    stoppable: false,
+    stoppable: isMainSessionView(),
   };
 }
 
@@ -464,16 +454,22 @@ function resetStoppedUiForNewRun() {
   streamingEl = null;
   streamingRunId = null;
   lastStreamEventAt = 0;
-  if (activeRunState === 'aborted' || activeRunState === 'final' || activeRunState === 'idle') {
-    activeRunState = 'idle';
+  const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
+  if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
+    runState.state = 'idle';
   }
+  activeRunId = runState.runId || null;
   syncStopButton();
   syncContinueButton();
 }
 
 function forceFinalizeFrontState(reason = 'unknown') {
-  addDebugLine(`Force final state cleanup (${reason}) · run ${String(activeRunId || '').slice(0, 8)}`, 'pink');
-  activeRunState = 'final';
+  const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
+  const runState = getSessionRunState(sessionKey);
+  addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || activeRunId || '').slice(0, 8)}`, 'pink');
+  runState.state = 'final';
+  runState.runId = null;
+  runState.streamText = '';
   activeRunId = null;
   streamingEl = null;
   streamingRunId = null;
@@ -2326,8 +2322,9 @@ function tailSnippet(text = '', maxChars = 1200) {
 function buildContinuePayload() {
   const latest = getPersistedLatestAssistantReplyMeta(selectedSessionKey || null);
   const lastAssistantReply = latest.text;
+  const selectedRun = getSelectedSessionRunState();
   warnRoadmapLeak('buildContinuePayload(source)', lastAssistantReply);
-  if (!lastAssistantReply || latest.aborted || activeRunState === 'streaming' || activeRunState === 'aborting') {return '继续';}
+  if (!lastAssistantReply || latest.aborted || selectedRun.state === 'streaming' || selectedRun.state === 'aborting') {return '继续';}
   const replyTail = tailSnippet(stripRoadmapBlockForDisplay(lastAssistantReply), 1200);
   return [
     '继续上一条 assistant 回复里最后明确提出的事情。',
@@ -2805,7 +2802,8 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const meta = getSessionMeta(sessionKey);
   const switchedSession = !!previousSessionKey && previousSessionKey !== sessionKey;
   const hasCachedMessages = sessionMessages.has(sessionKey);
-  const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && activeRunState === 'streaming');
+  const selectedRun = getSessionRunState(sessionKey);
+  const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || (sessionKey === gatewayMainSessionKey && selectedRun.state === 'streaming');
   addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'}`, 'cyan');
   selectedSessionKey = sessionKey;
   clearChat();
@@ -2921,8 +2919,10 @@ function connect() {
     }
     if (msg.type === 'ack') {
       resetStoppedUiForNewRun();
-      activeRunId = msg.runId || activeRunId;
-      activeRunState = 'streaming';
+      const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
+      runState.runId = msg.runId || runState.runId || null;
+      runState.state = 'streaming';
+      activeRunId = runState.runId || null;
       stopRequestedAt = null;
       if (msg.runId) {registerChatRun(msg.runId);}
       syncStopButton();
@@ -3114,21 +3114,26 @@ continueBtnEl?.addEventListener('click', () => {
 });
 
 stopBtnEl?.addEventListener('click', () => {
-  if (!activeRunId || activeRunState !== 'streaming') {return;}
-  activeRunState = 'aborting';
+  const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
+  const runState = getSessionRunState(sessionKey);
+  if (!runState.runId || runState.state !== 'streaming') {return;}
+  runState.state = 'aborting';
+  activeRunId = runState.runId || null;
   syncStopButton();
   _stopRequestedAt = Date.now();
-  abortedRunIds.add(activeRunId);
+  abortedRunIds.add(runState.runId);
   if (abortedRunIds.size > 200) {abortedRunIds.clear();}
-  updateChatRunStatus(activeRunId, 'aborted');
-  const stoppedRunId = activeRunId;
+  updateChatRunStatus(runState.runId, 'aborted');
+  const stoppedRunId = runState.runId;
   streamingEl = null;
   streamingRunId = null;
+  runState.runId = null;
+  runState.streamText = '';
+  runState.state = 'aborted';
   activeRunId = null;
-  activeRunState = 'aborted';
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
-  markLatestAssistantReplyAborted(stoppedRunId, selectedSessionKey || gatewayMainSessionKey || null);
-  scheduleSessionRefresh(selectedSessionKey || gatewayMainSessionKey || null, 'user-stop', 0);
+  markLatestAssistantReplyAborted(stoppedRunId, sessionKey);
+  scheduleSessionRefresh(sessionKey, 'user-stop', 0);
   syncStopButton();
   syncContinueButton();
 });
@@ -3356,7 +3361,8 @@ void refreshSafeEditState();
 syncTerminalTaskButtons();
 syncContinueButton();
 setInterval(() => {
-  if (activeRunState === 'streaming' && lastStreamEventAt && (Date.now() - lastStreamEventAt) > 10000) {
+  const mainRunState = getSessionRunState(gatewayMainSessionKey || selectedSessionKey || null);
+  if (mainRunState.state === 'streaming' && lastStreamEventAt && (Date.now() - lastStreamEventAt) > 10000) {
     forceFinalizeFrontState('stream-watchdog-timeout');
   }
 }, 2000);
