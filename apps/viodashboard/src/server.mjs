@@ -30,6 +30,7 @@ import { createChatProjection } from './server/projection/chatProjection.mjs';
 import { handleChatRoutes } from './server/routes/chatRoutes.mjs';
 import { handleSessionRoutes } from './server/routes/sessionRoutes.mjs';
 import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
+import { handleRoadmapRoutes } from './server/routes/roadmapRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -533,6 +534,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (handleRoadmapRoutes({
+    req,
+    res,
+    requestUrl,
+    roadmapStateService,
+    broadcast,
+  })) {
+    return;
+  }
+
   if (requestUrl.pathname === '/api/setup/state' && req.method === 'GET') {
     const claudeState = getClaudeState();
     sendJson(res, 200, evaluateSetupState({ bridgeConnected: bridge.connected, claudeState }));
@@ -596,12 +607,6 @@ const server = http.createServer((req, res) => {
       startupRecovery,
       smoke: runSafeEditSmokeSummary(),
     });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/roadmap' && req.method === 'GET') {
-    const roadmap = roadmapStateService.loadRoadmapData();
-    sendJson(res, 200, { ok: true, roadmap });
     return;
   }
 
@@ -669,24 +674,6 @@ const server = http.createServer((req, res) => {
     } catch (error) {
       sendJson(res, 400, { error: error?.message || String(error) });
     }
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/roadmap/history' && req.method === 'GET') {
-    const items = roadmapStateService.loadRoadmapHistory();
-    sendJson(res, 200, { ok: true, items });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/roadmap/history/clear' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        if (payload?.confirm !== true) {throw new Error('confirm=true is required to clear roadmap history');}
-        roadmapStateService.saveRoadmapHistory([]);
-        broadcast({ type: 'roadmap.history.cleared' });
-        sendJson(res, 200, { ok: true, cleared: true, count: 0 });
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
     return;
   }
 
