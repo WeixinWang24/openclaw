@@ -46,7 +46,7 @@ function normalizeHistoryMessage(message, index, sessionKey) {
   };
 }
 
-export function createTranscriptService({ rpcClient, eventBus }) {
+export function createTranscriptService({ rpcClient, eventBus, diagnostics }) {
   const cache = new Map();
   const inflight = new Map();
   const CACHE_TTL_MS = 5000;
@@ -58,29 +58,67 @@ export function createTranscriptService({ rpcClient, eventBus }) {
     const now = Date.now();
     const cached = cache.get(cacheKey);
     if (!force && cached && (now - cached.cachedAt) < CACHE_TTL_MS) {
+      diagnostics?.recordHistoryFetch({
+        sessionKey,
+        requestedLimit,
+        overfetchLimit: requestedLimit,
+        sourceCount: cached.messages.length,
+        visibleCount: cached.messages.length,
+        rpcDurationMs: 0,
+        normalizeDurationMs: 0,
+        totalDurationMs: 0,
+        cache: 'hit',
+      });
       return cached.messages;
     }
     if (!force && inflight.has(cacheKey)) {
+      diagnostics?.recordHistoryFetch({
+        sessionKey,
+        requestedLimit,
+        overfetchLimit: requestedLimit,
+        sourceCount: 0,
+        visibleCount: 0,
+        rpcDurationMs: 0,
+        normalizeDurationMs: 0,
+        totalDurationMs: 0,
+        cache: 'join-inflight',
+      });
       return await inflight.get(cacheKey);
     }
 
     const job = (async () => {
-      const overfetchLimit = Math.min(Math.max(requestedLimit * 6, requestedLimit), 240);
+      const startedAt = Date.now();
+      const overfetchLimit = Math.min(Math.max(requestedLimit * 2, requestedLimit + 12), 80);
+      const rpcStartedAt = Date.now();
       const result = await rpcClient.call('sessions.get', {
         key: sessionKey,
         limit: overfetchLimit,
       });
+      const rpcDurationMs = Date.now() - rpcStartedAt;
       const messages = Array.isArray(result?.messages) ? result.messages : [];
+      const normalizeStartedAt = Date.now();
       const normalized = messages
         .map((message, index) => normalizeHistoryMessage(message, index, sessionKey))
         .filter(Boolean)
         .slice(-requestedLimit);
+      const normalizeDurationMs = Date.now() - normalizeStartedAt;
       cache.set(cacheKey, {
         sessionKey,
         limit: requestedLimit,
         cachedAt: Date.now(),
         updatedAt: new Date().toISOString(),
         messages: normalized,
+      });
+      diagnostics?.recordHistoryFetch({
+        sessionKey,
+        requestedLimit,
+        overfetchLimit,
+        sourceCount: messages.length,
+        visibleCount: normalized.length,
+        rpcDurationMs,
+        normalizeDurationMs,
+        totalDurationMs: Date.now() - startedAt,
+        cache: 'miss',
       });
       eventBus?.emit(KERNEL_CHANNELS.TRANSCRIPT, {
         type: 'transcript.refreshed',

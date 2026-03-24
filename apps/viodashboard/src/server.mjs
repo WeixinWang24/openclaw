@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile, execFileSync, spawn } from 'node:child_process';
-import WebSocket, { WebSocketServer } from 'ws';
+import { WebSocketServer } from 'ws';
 import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEBUG_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
 import { sendJson } from './server/httpUtils.mjs';
@@ -18,8 +18,20 @@ import { listProjectFiles, readProjectFile, writeProjectFile, safeProjectPath } 
 import { getSafeEditState, performStartupRecovery, runSafeEditSmokeSummary } from './server/safeEdit.mjs';
 import { getCameraTelemetry, getGestureRuntimeState, runCameraCapture, runGestureCycle, runGesturePipeline, updateGestureWatcher } from './server/gesture.mjs';
 import { serveCameraAsset, servePublicFile } from './server/static.mjs';
-import { GatewayBridge } from './server/gatewayBridge.mjs';
+import { GatewayBridge, gatewayCall } from './server/gatewayBridge.mjs';
 import { readJsonRequest } from './server/httpUtils.mjs';
+import { createKernelEventBus } from './server/kernel/kernelEventBus.mjs';
+import { createRuntimeDiagnostics } from './server/kernel/runtimeDiagnostics.mjs';
+import { createGatewayRpcClient } from './server/kernel/gatewayRpcClient.mjs';
+import { createSessionRegistry } from './server/kernel/sessionRegistry.mjs';
+import { createChatRuntime } from './server/kernel/chatRuntime.mjs';
+import { createTranscriptService } from './server/kernel/transcriptService.mjs';
+import { createChatProjection } from './server/projection/chatProjection.mjs';
+import { handleChatRoutes } from './server/routes/chatRoutes.mjs';
+import { handleSessionRoutes } from './server/routes/sessionRoutes.mjs';
+import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
+import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
+import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from './server/utils.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
 import { evaluateSetupState } from './server/setupState.mjs';
@@ -271,8 +283,7 @@ function choosePersistedRoadmap(nextRoadmap, previousRoadmap) {
   };
 }
 
-const clients = new Set();
-const wsBroadcastTail = [];
+const broadcastHub = createBroadcastHub();
 const seenFinalRunIds = new Set();
 const activeRunSeq = new Map();
 let runSequence = 0;
@@ -371,21 +382,7 @@ function buildMoodPacket(mode, extra = {}) {
 }
 
 function broadcast(packet) {
-  try {
-    wsBroadcastTail.push({
-      ts: new Date().toISOString(),
-      type: packet?.type || null,
-      sessionKey: packet?.sessionKey || packet?.event?.sessionKey || null,
-      reason: packet?.reason || null,
-      runId: packet?.runId || packet?.event?.runId || null,
-      state: packet?.state || packet?.event?.state || null,
-    });
-    if (wsBroadcastTail.length > 200) {wsBroadcastTail.splice(0, wsBroadcastTail.length - 200);}
-  } catch {}
-  const data = JSON.stringify(packet);
-  for (const ws of clients) {
-    if (ws.readyState === WebSocket.OPEN) {ws.send(data);}
-  }
+  broadcastHub.broadcast(packet);
 }
 
 function buildTokensPacket() {
@@ -411,7 +408,31 @@ if (startupRecovery.recovered.length || startupRecovery.warnings.length) {
   console.log('[wrapper] startup recovery', JSON.stringify(startupRecovery));
 }
 
-const bridge = new GatewayBridge({
+const kernelEventBus = createKernelEventBus();
+const runtimeDiagnostics = createRuntimeDiagnostics();
+const sessionRegistry = createSessionRegistry();
+let bridge;
+const rpcClient = createGatewayRpcClient({
+  gatewayCall,
+  bridgeRequest: async (method, params) => await bridge.request(method, params),
+  eventBus: kernelEventBus,
+  diagnostics: runtimeDiagnostics,
+  stateRef: { get connected() { return bridge?.connected === true; } },
+});
+const chatRuntime = createChatRuntime({
+  rpcClient,
+  eventBus: kernelEventBus,
+  sessionRegistry,
+  diagnostics: runtimeDiagnostics,
+});
+const transcriptService = createTranscriptService({
+  rpcClient,
+  eventBus: kernelEventBus,
+  diagnostics: runtimeDiagnostics,
+});
+const chatProjection = createChatProjection({ eventBus: kernelEventBus });
+
+bridge = new GatewayBridge({
   onStatus: payload => broadcast({ type: 'status', ...payload }),
   onSessionUpdated: payload => {
     console.log('[wrapper] session.updated', JSON.stringify(payload));
@@ -524,8 +545,15 @@ const bridge = new GatewayBridge({
     const isEmptyFinal = event.state === 'final' && !String(visibleReplyText || '').trim();
     const isDuplicateFinal = event.state === 'final' && !!event.runId && seenFinalRunIds.has(event.runId);
     const clientEvent = (event && typeof event === 'object') ? { ...event, text: visibleReplyText } : event;
+    const shouldBroadcastLegacyChat = (() => {
+      const eventSessionKey = event?.sessionKey || bridge.sessionKey || null;
+      if (!eventSessionKey) {return false;}
+      return eventSessionKey === bridge.sessionKey;
+    })();
 
-    if (!(isEmptyFinal || isDuplicateFinal)) {broadcast({ type: 'chat', event: clientEvent });}
+    if (shouldBroadcastLegacyChat && !(isEmptyFinal || isDuplicateFinal)) {
+      broadcast({ type: 'chat', event: clientEvent, source: 'legacy.onChatEvent' });
+    }
     if (event.state === 'delta') {
       syncRuntimeState({
         mood: 'thinking',
@@ -678,6 +706,33 @@ const bridge = new GatewayBridge({
     }
   },
 });
+bridge.setRuntimeAdapters({
+  rpcClient,
+  chatRuntime,
+  transcriptService,
+  chatProjection,
+  sessionRegistry,
+});
+kernelEventBus.subscribe('raw.gateway', rawEvent => {
+  chatRuntime.ingestRawEvent(rawEvent);
+});
+kernelEventBus.subscribe('kernel.run', event => {
+  broadcast({
+    type: 'kernel.run',
+    event,
+    view: event?.sessionKey ? chatProjection.getSessionView(event.sessionKey) : null,
+  });
+});
+kernelEventBus.subscribe('kernel.transcript', event => {
+  if (event?.type === 'transcript.refreshed') {
+    broadcast({
+      type: 'projection.transcript',
+      sessionKey: event.sessionKey,
+      view: chatProjection.getSessionView(event.sessionKey),
+      source: 'kernel.transcript',
+    });
+  }
+});
 bridge.connect();
 
 const server = http.createServer((req, res) => {
@@ -704,51 +759,37 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/sessions' && req.method === 'GET') {
-    bridge.listSessions({ limit: Number(requestUrl.searchParams.get('limit') || 50) || 50 })
-      .then(items => sendJson(res, 200, {
-        ok: true,
-        currentSessionKey: bridge.sessionKey,
-        items,
-      }))
-      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
+  if (handleSessionRoutes({
+    req,
+    res,
+    requestUrl,
+    bridge,
+    sessionRegistry,
+  })) {
     return;
   }
 
-  const contextMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/context$/);
-  if (contextMatch && req.method === 'GET') {
-    const sessionKey = decodeURIComponent(contextMatch[1]);
-    bridge.fetchSessionContextSnapshot(sessionKey)
-      .then(snapshot => sendJson(res, 200, {
-        ok: true,
-        sessionKey,
-        contextSnapshot: snapshot,
-        diagnosticContext: snapshot?.diagnosticContext || null,
-      }))
-      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
+  if (handleChatRoutes({
+    req,
+    res,
+    requestUrl,
+    chatRuntime,
+    transcriptService,
+    chatProjection,
+  })) {
     return;
   }
 
-  const historyMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/history$/);
-  if (historyMatch && req.method === 'GET') {
-    const sessionKey = decodeURIComponent(historyMatch[1]);
-    bridge.fetchSessionHistory(sessionKey, { limit: Number(requestUrl.searchParams.get('limit') || 40) || 40 })
-      .then(messages => sendJson(res, 200, {
-        ok: true,
-        sessionKey,
-        messages,
-      }))
-      .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
-    return;
-  }
-
-  const sendMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/send$/);
-  if (sendMatch && req.method === 'POST') {
-    const sessionKey = decodeURIComponent(sendMatch[1]);
-    readJsonRequest(req)
-      .then(payload => bridge.sendChatToSession(sessionKey, String(payload?.text || '')))
-      .then(result => sendJson(res, 200, { ok: true, ...result, sessionUpdatedDebug: bridge.lastSessionUpdated || null }))
-      .catch(error => sendJson(res, 400, { ok: false, error: error?.message || String(error) }));
+  if (handleDiagnosticsRoutes({
+    req,
+    res,
+    requestUrl,
+    bridge,
+    runtimeDiagnostics,
+    sessionRegistry,
+    chatProjection,
+    broadcastHub,
+  })) {
     return;
   }
 
@@ -1086,7 +1127,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (requestUrl.pathname === '/api/debug/ws-tail' && req.method === 'GET') {
-    sendJson(res, 200, { ok: true, items: wsBroadcastTail.slice(-100) });
+    sendJson(res, 200, { ok: true, items: broadcastHub.getTail(100) });
     return;
   }
 
@@ -1429,37 +1470,15 @@ setInterval(() => {
 }, 200);
 
 const wss = new WebSocketServer({ server, path: '/ws' });
-wss.on('connection', ws => {
-  clients.add(ws);
-  ws.send(JSON.stringify({ type: 'status', connected: bridge.connected, sessionKey: bridge.sessionKey }));
-  ws.send(JSON.stringify(buildTokensPacket()));
-  try { ws.send(JSON.stringify({ type: 'claude-state', ...getClaudeState() })); } catch {}
-  try { ws.send(JSON.stringify({ type: 'agent-task', task: getCurrentTask() || null })); } catch {}
-  ws.send(JSON.stringify(buildMoodPacket(lastRouting.mode, {
-    state: null,
-    detail: lastRouting.detail,
-    preview: lastRouting.preview,
-    phase: lastRouting.phase,
-    runId: lastRouting.runId,
-  })));
-  ws.on('message', async raw => {
-    let msg;
-    // raw is RawData (Buffer | ArrayBuffer | Buffer[] | string) from ws
-    const rawStr = typeof raw === 'string' ? raw : Buffer.isBuffer(raw) ? raw.toString('utf8') : JSON.stringify(raw);
-    try { msg = JSON.parse(rawStr); } catch { return; }
-    if (msg.type === 'send') {
-      try {
-        console.log('[wrapper] ui send received', JSON.stringify({ textLength: String(msg.text ?? '').length, preview: String(msg.text ?? '').slice(0, 120) }));
-        const runId = await bridge.sendChat(String(msg.text ?? ''));
-        console.log('[wrapper] ui send accepted', runId);
-        ws.send(JSON.stringify({ type: 'ack', runId }));
-      } catch (error) {
-        console.log('[wrapper] ui send failed', error?.message ?? String(error));
-        ws.send(JSON.stringify({ type: 'error', error: error?.message ?? String(error) }));
-      }
-    }
-  });
-  ws.on('close', () => clients.delete(ws));
+attachWsConnectionHandler({
+  wss,
+  broadcastHub,
+  bridge,
+  buildTokensPacket,
+  getClaudeState,
+  getCurrentTask,
+  buildMoodPacket,
+  lastRoutingRef: () => lastRouting,
 });
 
 server.listen(wrapperPort, () => {
