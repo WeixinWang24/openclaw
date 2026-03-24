@@ -72,7 +72,6 @@ try:
         best_of=5,
         vad_filter=True,
         condition_on_previous_text=True,
-        initial_prompt="中文为主，夹英文术语。",
     )
 
     if not text:
@@ -83,7 +82,6 @@ try:
             best_of=1,
             vad_filter=False,
             condition_on_previous_text=False,
-            initial_prompt="中文为主，夹英文术语。",
         )
 
     print(json.dumps({
