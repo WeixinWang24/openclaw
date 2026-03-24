@@ -154,10 +154,6 @@ const sessionMessages = new Map();
 const sessionHistoryInflight = new Map();
 const sessionRunState = new Map();
 const sessionLoadingState = new Map();
-const mainSessionStreamBuffer = {
-  runId: null,
-  text: '',
-};
 let currentDir = '.';
 let currentFilePath = null;
 let currentFileOriginal = '';
@@ -2513,19 +2509,6 @@ function applyProjectionTranscriptPacket(msg = {}) {
   }
 }
 
-function syncMainSessionBufferedStream() {
-  if (!isMainSessionView()) {return;}
-  if (activeRunState !== 'streaming') {return;}
-  if (!mainSessionStreamBuffer.text) {return;}
-  try {
-    const target = ensureStreamingMessageEl(mainSessionStreamBuffer.runId || activeRunId || null, mainSessionStreamBuffer.text);
-    target.textContent = mainSessionStreamBuffer.text;
-    addDebugLine(`syncMainSessionBufferedStream run=${String(mainSessionStreamBuffer.runId || activeRunId || '').slice(0, 8)} len=${mainSessionStreamBuffer.text.length}`, 'cyan');
-  } catch (error) {
-    addDebugLine(`syncMainSessionBufferedStream failed: ${error?.message || error}`, 'pink');
-  }
-}
-
 function renderSessionMessages(sessionKey, messages = []) {
   if (!chatEl) {return;}
   const sourceMessages = Array.isArray(messages) ? messages : [];
@@ -2542,14 +2525,10 @@ function renderSessionMessages(sessionKey, messages = []) {
       runId: message.runId || message.id || null,
     });
   }
-  if (sessionKey === gatewayMainSessionKey) {
-    syncMainSessionBufferedStream();
-  } else {
-    const runState = getSessionRunState(sessionKey);
-    if (runState?.state === 'streaming' && runState?.streamText) {
-      const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
-      target.textContent = runState.streamText;
-    }
+  const runState = getSessionRunState(sessionKey);
+  if (runState?.state === 'streaming' && runState?.streamText) {
+    const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
+    target.textContent = runState.streamText;
   }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
@@ -3148,8 +3127,6 @@ stopBtnEl?.addEventListener('click', () => {
   activeRunId = null;
   activeRunState = 'aborted';
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
-  mainSessionStreamBuffer.runId = null;
-  mainSessionStreamBuffer.text = '';
   markLatestAssistantReplyAborted(stoppedRunId, selectedSessionKey || gatewayMainSessionKey || null);
   scheduleSessionRefresh(selectedSessionKey || gatewayMainSessionKey || null, 'user-stop', 0);
   syncStopButton();
