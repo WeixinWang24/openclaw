@@ -37,6 +37,8 @@ import { handleTokenSaverRoutes } from './server/routes/tokenSaverRoutes.mjs';
 import { handleClaudeRoutes } from './server/routes/claudeRoutes.mjs';
 import { handleTerminalRoutes } from './server/routes/terminalRoutes.mjs';
 import { handleCameraGestureRoutes } from './server/routes/cameraGestureRoutes.mjs';
+import { handleFileRoutes } from './server/routes/fileRoutes.mjs';
+import { handleRuntimeControlRoutes } from './server/routes/runtimeControlRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -620,98 +622,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/files' && req.method === 'GET') {
-    try {
-      sendJson(res, 200, listProjectFiles(requestUrl.searchParams.get('dir') || '.'));
-    } catch (error) {
-      sendJson(res, 500, { error: error?.message || String(error) });
-    }
+  if (handleFileRoutes({
+    req,
+    res,
+    requestUrl,
+    listProjectFiles,
+    readProjectFile,
+    writeProjectFile,
+    safeProjectPath,
+    openPath: (targetDir, cb) => execFile('open', [targetDir], cb),
+  })) {
     return;
   }
 
-  if (requestUrl.pathname === '/api/file' && req.method === 'GET') {
-    try {
-      sendJson(res, 200, readProjectFile(requestUrl.searchParams.get('path') || ''));
-    } catch (error) {
-      sendJson(res, 400, { error: error?.message || String(error) });
-    }
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/file' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => sendJson(res, 200, writeProjectFile(payload.path || '', typeof payload.content === 'string' ? payload.content : '')))
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/explorer/open' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const targetDir = safeProjectPath(typeof payload.dir === 'string' && payload.dir ? payload.dir : '.');
-        execFile('open', [targetDir], error => {
-          if (error) {sendJson(res, 500, { error: error?.message || error?.code || 'open failed' });}
-          else {sendJson(res, 200, { ok: true, dir: targetDir });}
-        });
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/run-mode' && req.method === 'GET') {
-    try {
-      const modeFile = path.join(ROOT, 'launchd', '.run-mode');
-      const mode = fs.existsSync(modeFile) ? fs.readFileSync(modeFile, 'utf8').trim() || 'source' : 'source';
-      sendJson(res, 200, { ok: true, mode });
-    } catch (error) {
-      sendJson(res, 500, { error: error?.message || String(error) });
-    }
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/run-mode' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const mode = payload?.mode === 'runtime' ? 'runtime' : 'source';
+  if (handleRuntimeControlRoutes({
+    req,
+    res,
+    requestUrl,
+    root: ROOT,
+    launchdLabel: LAUNCHD_LABEL,
+    bridge,
+    broadcast,
+    broadcastHub,
+    restartWrapper: ({ mode }) => {
+      if (mode) {
         const script = path.join(ROOT, 'launchd', 'set-mode.sh');
-        sendJson(res, 202, { ok: true, mode, switching: true });
-        setTimeout(() => {
-          execFile('/bin/bash', [script, mode], { cwd: ROOT }, () => {});
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/wrapper/restart' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(() => {
-        sendJson(res, 202, { ok: true, restarting: true, target: 'wrapper' });
-        setTimeout(() => {
-          // Restart the existing launchd job in place. Do not call reload.sh from
-          // inside the launchd-managed wrapper process or it can unload itself
-          // before the replacement job is fully running.
-          execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/context/compact' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(async payload => {
-        const sessionKey = typeof payload?.sessionKey === 'string' ? payload.sessionKey : bridge.sessionKey;
-        const result = await bridge.compactSession(sessionKey);
-        broadcast({ type: 'context.compacted', sessionKey, result });
-        sendJson(res, 200, { ok: true, sessionKey, result });
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/debug/ws-tail' && req.method === 'GET') {
-    sendJson(res, 200, { ok: true, items: broadcastHub.getTail(100) });
+        execFile('/bin/bash', [script, mode], { cwd: ROOT }, () => {});
+        return;
+      }
+      execFile('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${LAUNCHD_LABEL}`], { cwd: ROOT }, () => {});
+    },
+    restartGateway: () => {
+      execFile(OPENCLAW_BIN, ['--profile', GATEWAY_PROFILE, 'gateway', 'restart'], { cwd: ROOT, env: process.env }, () => {});
+    },
+  })) {
     return;
   }
 
@@ -738,18 +682,6 @@ const server = http.createServer((req, res) => {
       error: 'guideline writes are not enabled yet; edit files under memory/permanent/guidelines directly',
       dir: getGuidelinesDir(),
     });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/gateway/restart' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(() => {
-        sendJson(res, 202, { ok: true, restarting: true, target: 'gateway', profile: GATEWAY_PROFILE });
-        setTimeout(() => {
-          execFile(OPENCLAW_BIN, ['--profile', GATEWAY_PROFILE, 'gateway', 'restart'], { cwd: ROOT, env: process.env }, () => {});
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
     return;
   }
 
