@@ -793,6 +793,34 @@ function setRouting(summary, _detail = '') {
   if (routingEl) {routingEl.innerHTML = `<span class="semantic-label">routing:</span> <span class="semantic-value">${summary || 'n/a'}</span>`;}
 }
 
+function syncTopbarForSession(sessionKey) {
+  const uiState = deriveSessionUiState(sessionKey);
+  const mode = uiState.state === 'streaming'
+    ? 'streaming'
+    : uiState.state === 'aborting'
+      ? 'thinking'
+      : uiState.state === 'error'
+        ? 'error'
+        : uiState.state === 'aborted'
+          ? 'idle'
+          : uiState.state === 'final'
+            ? 'idle'
+            : 'idle';
+  const routing = uiState.state === 'streaming'
+    ? 'streaming'
+    : uiState.state === 'aborting'
+      ? 'stopping'
+      : uiState.state === 'error'
+        ? 'error'
+        : uiState.state === 'aborted'
+          ? 'aborted'
+          : uiState.state === 'final'
+            ? 'settled'
+            : 'idle';
+  setMood(mode, `ui session state: ${uiState.state}`, latestWrapperRuntime || null);
+  setRouting(routing, `session=${sessionKey || 'none'} · state=${uiState.state}`);
+}
+
 function routingProxyLabel(mode, phase) {
   if (mode === 'error' || phase === 'error') {return 'error';}
   if (phase === 'queued') {return 'queued';}
@@ -2604,6 +2632,9 @@ function renderSessionMessages(sessionKey, messages = []) {
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
+  if (sessionKey === getActiveViewedSessionKey()) {
+    syncTopbarForSession(sessionKey);
+  }
   syncStopButton();
   syncContinueButton();
 }
@@ -2904,6 +2935,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
   renderSessionsList();
+  syncTopbarForSession(sessionKey);
   syncStopButton();
   syncContinueButton();
 
@@ -3088,16 +3120,15 @@ function connect() {
       const state = msg.state || {};
       const runtime = msg.runtime || null;
       const phase = msg.detail?.phase || runtime?.phase || null;
-      const proxy = routingProxyLabel(mode, phase);
       try {
-        setMood(mode, `runtime phase: ${phase || 'n/a'} · mode ${mode}`, runtime);
+        if (runtime && typeof runtime === 'object') {latestWrapperRuntime = runtime;}
       } catch (error) {
-        addDebugLine(`ws mood setMood failed: ${error?.message || error}`, 'pink');
+        addDebugLine(`ws mood runtime cache failed: ${error?.message || error}`, 'pink');
       }
       try {
-        setRouting(proxy, `phase=${phase || 'n/a'} · mode=${mode}`);
+        syncTopbarForSession(getActiveViewedSessionKey());
       } catch (error) {
-        addDebugLine(`ws mood setRouting failed: ${error?.message || error}`, 'pink');
+        addDebugLine(`ws mood topbar sync failed: ${error?.message || error}`, 'pink');
       }
       try {
         if (bodyLinkValueEl) {bodyLinkValueEl.textContent = 'disabled';}
@@ -3105,6 +3136,7 @@ function connect() {
       } catch (error) {
         addDebugLine(`ws mood telemetry render failed: ${error?.message || error}`, 'pink');
       }
+      addDebugLine(`ws mood observed mode=${mode} phase=${phase || 'n/a'} selected=${getActiveViewedSessionKey() || 'none'}`, 'cyan');
       return;
     }
     if (msg.type === 'token-saver') {
