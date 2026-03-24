@@ -2499,8 +2499,52 @@ function appendSessionMessage(sessionKey, message) {
   }
   deduped.push(message);
   sessionMessages.set(sessionKey, deduped);
+  reconcileRunStateFromMessages(sessionKey, deduped, 'append-session-message');
   if (selectedSessionKey === sessionKey) {
     renderSessionMessages(sessionKey, deduped);
+  }
+}
+
+function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'messages') {
+  if (!sessionKey) {return;}
+  const runState = getSessionRunState(sessionKey);
+  if (!runState) {return;}
+  const list = Array.isArray(messages) ? messages : [];
+  if (!list.length) {
+    if (!runState.runId && runState.state !== 'aborted' && runState.state !== 'error') {
+      runState.state = 'idle';
+    }
+    return;
+  }
+
+  const currentRunId = runState.runId || null;
+  const assistantForCurrentRun = currentRunId
+    ? list.find(item => item?.role === 'assistant' && (item?.runId === currentRunId || item?.id === currentRunId || item?.id === `assistant:${currentRunId}`))
+    : null;
+
+  if (assistantForCurrentRun?.status === 'final') {
+    addDebugLine(`Finalized from ${source} · run ${String(currentRunId || '').slice(0, 8) || '-'} `, 'cyan');
+    runState.runId = null;
+    runState.streamText = '';
+    runState.state = 'final';
+    streamingEl = null;
+    streamingRunId = null;
+    lastStreamEventAt = 0;
+    syncStopButton();
+    syncContinueButton();
+    return;
+  }
+
+  if (assistantForCurrentRun?.status === 'streaming') {
+    runState.state = 'streaming';
+    return;
+  }
+
+  const latestAssistant = [...list].toReversed().find(item => item?.role === 'assistant');
+  if (!currentRunId && latestAssistant?.status === 'final' && runState.state !== 'aborted' && runState.state !== 'error') {
+    runState.state = 'final';
+    syncStopButton();
+    syncContinueButton();
   }
 }
 
@@ -2516,6 +2560,7 @@ function applyProjectionViewToSession(sessionKey, view = null) {
     }))
     .filter(message => shouldDisplayChatMessage(message));
   sessionMessages.set(sessionKey, normalized);
+  reconcileRunStateFromMessages(sessionKey, normalized, view?.runs ? 'projection-view' : 'transcript-view');
   if (selectedSessionKey === sessionKey) {
     renderSessionMessages(sessionKey, normalized);
   }
@@ -2797,7 +2842,8 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
     }
   }
   sessionMessages.set(sessionKey, messages);
-  if (!runState?.runId) {
+  reconcileRunStateFromMessages(sessionKey, messages, 'session-history');
+  if (!runState?.runId && runState.state !== 'final' && runState.state !== 'aborted' && runState.state !== 'error') {
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'idle';
