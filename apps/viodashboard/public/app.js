@@ -777,13 +777,17 @@ function blobToBase64(blob) {
   });
 }
 
-async function transcribeBlob(blob) {
+async function transcribeBlob(blob, { mode = 'final' } = {}) {
   if (!blob.size) {return '';}
   const audioBase64 = await blobToBase64(blob);
   const res = await fetch('/api/voice/transcribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audioBase64, mimeType: blob.type || voiceInputState.mimeType || 'audio/webm' }),
+    body: JSON.stringify({
+      audioBase64,
+      mimeType: blob.type || voiceInputState.mimeType || 'audio/webm',
+      mode: mode === 'preview' ? 'preview' : 'final',
+    }),
   });
   const data = await res.json();
   if (!res.ok) {return '';}
@@ -792,7 +796,7 @@ async function transcribeBlob(blob) {
 
 // Send a single audio chunk to the transcription endpoint; returns transcript text or ''.
 async function transcribeChunk(blob) {
-  return transcribeBlob(blob);
+  return transcribeBlob(blob, { mode: 'preview' });
 }
 
 async function startVoiceRecording() {
@@ -863,7 +867,7 @@ async function startVoiceRecording() {
       }
     }, { once: true });
 
-    recorder.start(1500);
+    recorder.start(1000);
     setVoiceInputStatus('Recording… speak naturally; live transcript will appear below.', 'recording');
     updateLiveTranscript();
   } catch (error) {
@@ -876,12 +880,16 @@ async function finalizeVoiceTranscript(runToken = voiceInputState.runToken) {
   if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
 
   let transcript = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
-  if (!transcript && Array.isArray(voiceInputState.chunks) && voiceInputState.chunks.length > 0) {
+  const shouldRunFinalPass = Array.isArray(voiceInputState.chunks) && voiceInputState.chunks.length > 0 && (!transcript || voiceInputState.chunks.length >= 2);
+  if (shouldRunFinalPass) {
     try {
       setVoiceInputStatus('Running final full-pass transcription…', 'working');
       updateLiveTranscript();
       const fullBlob = new Blob(voiceInputState.chunks, { type: voiceInputState.mimeType || 'audio/webm' });
-      transcript = await transcribeBlob(fullBlob);
+      const finalTranscript = await transcribeBlob(fullBlob, { mode: 'final' });
+      if (finalTranscript && (!transcript || finalTranscript.length >= transcript.length * 0.7)) {
+        transcript = finalTranscript;
+      }
     } catch (error) {
       console.warn('[voice] final full-pass transcription failed', error);
     }

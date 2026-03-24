@@ -10,7 +10,8 @@ export function handleVoiceRoutes({ req, res, requestUrl, transcribeAudioBase64 
           sendJson(res, 400, { ok: false, error: 'audioBase64 is required' });
           return;
         }
-        const result = await transcribeAudioBase64({ audioBase64, mimeType });
+        const mode = String(body?.mode || 'final').trim() || 'final';
+        const result = await transcribeAudioBase64({ audioBase64, mimeType, mode });
         if (!result?.text) {
           sendJson(res, 422, {
             ok: false,

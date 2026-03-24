@@ -6,6 +6,8 @@ import { DATA_DIR } from '../config.mjs';
 
 const TRANSCRIBE_TIMEOUT_MS = 180000;
 const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'small';
+const PREVIEW_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_PREVIEW_MODEL || DEFAULT_MODEL_SIZE;
+const FINAL_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_FINAL_MODEL || DEFAULT_MODEL_SIZE;
 
 function decodeBase64Payload(audioBase64 = '') {
   const cleaned = String(audioBase64 || '').trim();
@@ -69,6 +71,7 @@ except Exception as exc:
 
 input_path = os.environ.get("VIO_AUDIO_PATH", "")
 model_size = os.environ.get("VIO_WHISPER_MODEL", "small")
+transcription_mode = os.environ.get("VIO_TRANSCRIBE_MODE", "final").strip().lower()
 
 if not input_path or not os.path.exists(input_path):
     print(json.dumps({
@@ -86,24 +89,62 @@ try:
         text = " ".join((segment.text or "").strip() for segment in segments).strip()
         return text, info
 
-    text, info = run_transcribe(
-        task="transcribe",
-        language="zh",
-        beam_size=5,
-        best_of=5,
-        vad_filter=True,
-        condition_on_previous_text=True,
-    )
+    if transcription_mode == "preview":
+        attempts = [
+            {
+                "task": "transcribe",
+                "language": "zh",
+                "beam_size": 1,
+                "best_of": 1,
+                "vad_filter": False,
+                "condition_on_previous_text": False,
+                "temperature": 0.0,
+            },
+            {
+                "task": "transcribe",
+                "beam_size": 1,
+                "best_of": 1,
+                "vad_filter": False,
+                "condition_on_previous_text": False,
+                "temperature": 0.0,
+            },
+        ]
+    else:
+        attempts = [
+            {
+                "task": "transcribe",
+                "language": "zh",
+                "beam_size": 5,
+                "best_of": 5,
+                "vad_filter": True,
+                "condition_on_previous_text": True,
+                "temperature": 0.0,
+            },
+            {
+                "task": "transcribe",
+                "beam_size": 5,
+                "best_of": 5,
+                "vad_filter": True,
+                "condition_on_previous_text": True,
+                "temperature": 0.0,
+            },
+            {
+                "task": "transcribe",
+                "language": "zh",
+                "beam_size": 1,
+                "best_of": 1,
+                "vad_filter": False,
+                "condition_on_previous_text": False,
+                "temperature": 0.0,
+            },
+        ]
 
-    if not text:
-        text, info = run_transcribe(
-            task="transcribe",
-            language="zh",
-            beam_size=1,
-            best_of=1,
-            vad_filter=False,
-            condition_on_previous_text=False,
-        )
+    text = ""
+    info = None
+    for attempt in attempts:
+        text, info = run_transcribe(**attempt)
+        if text:
+            break
 
     print(json.dumps({
         "ok": True,
@@ -113,6 +154,7 @@ try:
         "duration": getattr(info, "duration", None),
         "duration_after_vad": getattr(info, "duration_after_vad", None),
         "model": model_size,
+        "mode": transcription_mode,
     }, ensure_ascii=False))
 except Exception as exc:
     print(json.dumps({
@@ -123,7 +165,9 @@ except Exception as exc:
     }, ensure_ascii=False))
 `;}
 
-export async function transcribeAudioBase64({ audioBase64, mimeType }) {
+export async function transcribeAudioBase64({ audioBase64, mimeType, mode = 'final' }) {
+  const transcriptionMode = String(mode || 'final').trim().toLowerCase() === 'preview' ? 'preview' : 'final';
+  const modelSize = transcriptionMode === 'preview' ? PREVIEW_MODEL_SIZE : FINAL_MODEL_SIZE;
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'viodashboard-voice-'));
   const audioPath = path.join(tempDir, `voice-input${sanitizeExtension(mimeType)}`);
   const audioBuffer = decodeBase64Payload(audioBase64);
@@ -139,7 +183,8 @@ export async function transcribeAudioBase64({ audioBase64, mimeType }) {
           env: {
             ...process.env,
             VIO_AUDIO_PATH: audioPath,
-            VIO_WHISPER_MODEL: DEFAULT_MODEL_SIZE,
+            VIO_WHISPER_MODEL: modelSize,
+            VIO_TRANSCRIBE_MODE: transcriptionMode,
           },
         },
         (error, stdout, stderr) => {
@@ -176,7 +221,8 @@ export async function transcribeAudioBase64({ audioBase64, mimeType }) {
       languageProbability: result.language_probability || null,
       duration: result.duration || null,
       durationAfterVad: result.duration_after_vad || null,
-      model: result.model || DEFAULT_MODEL_SIZE,
+      model: result.model || modelSize,
+      mode: result.mode || transcriptionMode,
       debug: {
         mimeType,
         bytes: audioBuffer.length,
