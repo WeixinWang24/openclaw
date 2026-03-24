@@ -493,8 +493,7 @@ function syncStopButton() {
 }
 
 function resetStoppedUiForNewRun() {
-  streamingEl = null;
-  streamingRunId = null;
+  clearStreamingMessageEl();
   lastStreamEventAt = 0;
   const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
@@ -508,11 +507,10 @@ function forceFinalizeFrontState(reason = 'unknown') {
   const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
   const runState = getSessionRunState(sessionKey);
   addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || '').slice(0, 8)}`, 'pink');
+  clearStreamingMessageEl(runState?.runId || null);
   runState.state = 'final';
   runState.runId = null;
   runState.streamText = '';
-  streamingEl = null;
-  streamingRunId = null;
   lastStreamEventAt = 0;
   syncStopButton();
   syncContinueButton();
@@ -2518,11 +2516,10 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
 
   if (assistantForCurrentRun?.status === 'final') {
     addDebugLine(`Finalized from ${source} · run ${String(currentRunId || '').slice(0, 8) || '-'} `, 'cyan');
+    clearStreamingMessageEl(currentRunId || null);
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'final';
-    streamingEl = null;
-    streamingRunId = null;
     lastStreamEventAt = 0;
     syncStopButton();
     syncContinueButton();
@@ -2597,6 +2594,8 @@ function renderSessionMessages(sessionKey, messages = []) {
     const runState = getSessionRunState(sessionKey);
     const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
     target.textContent = runState.streamText;
+  } else {
+    clearStreamingMessageEl();
   }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
@@ -2642,6 +2641,20 @@ function addMessage(role, text, extraClass = '', options = {}) {
   return el;
 }
 
+function clearStreamingMessageEl(runId = null) {
+  const selector = runId
+    ? `.msg-row.assistant[data-message-role="stream"][data-run-id="${CSS.escape(String(runId))}"]`
+    : '.msg-row.assistant[data-message-role="stream"]';
+  const rows = chatEl ? [...chatEl.querySelectorAll(selector)] : [];
+  for (const row of rows) {
+    row.remove();
+  }
+  if (!runId || streamingRunId === runId) {
+    streamingEl = null;
+    streamingRunId = null;
+  }
+}
+
 function getStreamingMessageEl(runId = null) {
   if (streamingEl && streamingEl.isConnected && (!runId || streamingRunId === runId)) {return streamingEl;}
   if (!runId) {return null;}
@@ -2658,6 +2671,7 @@ function getStreamingMessageEl(runId = null) {
 function ensureStreamingMessageEl(runId = null, text = '') {
   const existing = getStreamingMessageEl(runId);
   if (existing) {return existing;}
+  clearStreamingMessageEl(runId || null);
   const el = addMessage('assistant', text, 'stream', { runId, messageRole: 'stream' });
   streamingEl = el;
   streamingRunId = runId || null;
