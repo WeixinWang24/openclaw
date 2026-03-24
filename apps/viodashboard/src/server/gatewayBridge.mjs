@@ -408,22 +408,6 @@ export class GatewayBridge {
             console.log('[wrapper] extracted usage:', usage ? JSON.stringify(usage) : 'null');
           } catch {}
         }
-        if (state === 'final' && text && this.tokenSaverEnabled && isMainSessionEvent) {this.tokenSaver.ingest('assistant', text);}
-        if (runId && isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
-          writeRunIndexEntry(runId, {
-            mode: 'dry-observe-only',
-            status: state,
-            errorMessage: payload?.errorMessage || payload?.error?.message || null,
-            completedAt: new Date().toISOString(),
-          });
-          if (state === 'error' || state === 'aborted') {
-            console.log('[dashboard] dry-diff next check:', `node <repo>/apps/viodashboard/scripts/check-run-index.mjs ${runId}`);
-          }
-        }
-        if (isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
-          this.chatRunId = null;
-          this.gatewayRunId = null;
-        }
       }
       return;
     }
@@ -654,6 +638,35 @@ export class GatewayBridge {
 
   setTokenSaverEnabled(enabled) {
     return this.setTokenSaverConfig({ enabled });
+  }
+
+  recordAssistantFinal({ runId = null, sessionKey = null, text = '' } = {}) {
+    const isMainSessionEvent = !sessionKey || sessionKey === this.sessionKey;
+    const cleanText = sanitizeVisibleText(String(text || ''));
+    if (cleanText && this.tokenSaverEnabled && isMainSessionEvent) {
+      this.tokenSaver.ingest('assistant', cleanText);
+    }
+    return { isMainSessionEvent, cleanText };
+  }
+
+  recordTerminalRunState({ runId = null, sessionKey = null, status = 'final', errorMessage = null } = {}) {
+    const isMainSessionEvent = !sessionKey || sessionKey === this.sessionKey;
+    if (runId && isMainSessionEvent && (status === 'final' || status === 'error' || status === 'aborted')) {
+      writeRunIndexEntry(runId, {
+        mode: 'dry-observe-only',
+        status,
+        errorMessage,
+        completedAt: new Date().toISOString(),
+      });
+      if (status === 'error' || status === 'aborted') {
+        console.log('[dashboard] dry-diff next check:', `node <repo>/apps/viodashboard/scripts/check-run-index.mjs ${runId}`);
+      }
+    }
+    if (isMainSessionEvent && (status === 'final' || status === 'error' || status === 'aborted')) {
+      this.chatRunId = null;
+      this.gatewayRunId = null;
+    }
+    return { isMainSessionEvent };
   }
 
   async sendChat(text) {

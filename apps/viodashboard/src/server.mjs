@@ -388,6 +388,32 @@ kernelEventBus.subscribe('kernel.run', event => {
       text: event.textDelta || event.accumulatedText || '',
       payload: { state: 'delta' },
     });
+  } else if (event?.type === 'run.final') {
+    bridge.recordAssistantFinal({
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      text: event.text || '',
+    });
+    bridge.recordTerminalRunState({
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      status: 'final',
+      errorMessage: null,
+    });
+  } else if (event?.type === 'run.error') {
+    bridge.recordTerminalRunState({
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      status: 'error',
+      errorMessage: event.error || null,
+    });
+  } else if (event?.type === 'run.aborted') {
+    bridge.recordTerminalRunState({
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      status: 'aborted',
+      errorMessage: null,
+    });
   }
   broadcast({
     type: 'kernel.run',
