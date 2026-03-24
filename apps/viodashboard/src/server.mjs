@@ -16,7 +16,6 @@ import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
 import { sendJson } from './server/httpUtils.mjs';
 import { listProjectFiles, readProjectFile, writeProjectFile } from './server/filesystem.mjs';
 import { getSafeEditState, performStartupRecovery, runSafeEditSmokeSummary } from './server/safeEdit.mjs';
-import { getCameraTelemetry, getGestureRuntimeState, runCameraCapture, runGestureCycle, runGesturePipeline, updateGestureWatcher } from './server/gesture.mjs';
 import { serveCameraAsset, servePublicFile } from './server/static.mjs';
 import { GatewayBridge, gatewayCall, warmGatewayCaller } from './server/gatewayBridge.mjs';
 import { readJsonRequest } from './server/httpUtils.mjs';
@@ -37,6 +36,7 @@ import { handleSafeEditRoutes } from './server/routes/safeEditRoutes.mjs';
 import { handleTokenSaverRoutes } from './server/routes/tokenSaverRoutes.mjs';
 import { handleClaudeRoutes } from './server/routes/claudeRoutes.mjs';
 import { handleTerminalRoutes } from './server/routes/terminalRoutes.mjs';
+import { handleCameraGestureRoutes } from './server/routes/cameraGestureRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -778,68 +778,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/camera' && req.method === 'GET') {
-    try {
-      sendJson(res, 200, getCameraTelemetry());
-    } catch (error) {
-      sendJson(res, 500, { error: error?.message || String(error) });
-    }
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/vio-body-state' && req.method === 'GET') {
-    fetch('http://127.0.0.1:8787/api/state')
-      .then(async upstream => {
-        const data = await upstream.json();
-        if (!upstream.ok) {
-          sendJson(res, upstream.status || 500, data);
-          return;
-        }
-        const nextRuntimeState = runtimeMoodStateService.syncRuntimeState({ bodyState: data, source: 'vio-body-poll' });
-        sendJson(res, 200, {
-          ...data,
-          effective_light_output: nextRuntimeState.lightOutput,
-          wrapper_runtime: nextRuntimeState,
-        });
-      })
-      .catch(error => sendJson(res, 500, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/camera/capture' && req.method === 'POST') {
-    runGesturePipeline()
-      .then(result => sendJson(res, 200, { ...result, telemetry: getCameraTelemetry() }))
-      .catch(error => sendJson(res, 500, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/camera/capture-step' && req.method === 'POST') {
-    runCameraCapture()
-      .then(result => sendJson(res, 200, { ok: true, capture: result, telemetry: getCameraTelemetry() }))
-      .catch(error => sendJson(res, 500, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/camera/recognize-step' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const frameNames = Array.isArray(payload.frameNames) ? payload.frameNames.filter(name => typeof name === 'string') : [];
-        return runGestureCycle(Math.max(3, frameNames.length || 3), frameNames)
-          .then(({ gesture, action }) => sendJson(res, 200, { ok: true, gesture, action, telemetry: getCameraTelemetry() }));
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/gesture/state' && req.method === 'GET') {
-    sendJson(res, 200, getGestureRuntimeState());
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/gesture/watcher' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => sendJson(res, 200, { ok: true, gestureRuntime: updateGestureWatcher(payload) }))
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+  if (handleCameraGestureRoutes({
+    req,
+    res,
+    requestUrl,
+  })) {
     return;
   }
 
