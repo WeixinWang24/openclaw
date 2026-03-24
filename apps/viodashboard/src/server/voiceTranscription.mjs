@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { DATA_DIR } from '../config.mjs';
 
 const TRANSCRIBE_TIMEOUT_MS = 180000;
 const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'medium';
@@ -19,6 +20,26 @@ function sanitizeExtension(mimeType = '') {
   if (normalized.includes('mp4') || normalized.includes('mpeg')) {return '.m4a';}
   if (normalized.includes('wav')) {return '.wav';}
   return '.webm';
+}
+
+function diagnosticsRoot() {
+  return path.join(DATA_DIR, 'voice-debug');
+}
+
+async function writeVoiceDiagnostics({ mimeType, audioBuffer, result }) {
+  const root = diagnosticsRoot();
+  await fs.promises.mkdir(root, { recursive: true });
+  const ext = sanitizeExtension(mimeType);
+  const audioOut = path.join(root, `last-input${ext}`);
+  const metaOut = path.join(root, 'last-result.json');
+  await fs.promises.writeFile(audioOut, audioBuffer);
+  await fs.promises.writeFile(metaOut, JSON.stringify({
+    savedAt: new Date().toISOString(),
+    mimeType,
+    bytes: audioBuffer.length,
+    result,
+    audioPath: audioOut,
+  }, null, 2));
 }
 
 function buildPythonScript() {
@@ -89,6 +110,8 @@ try:
         "text": text,
         "language": getattr(info, "language", None),
         "language_probability": getattr(info, "language_probability", None),
+        "duration": getattr(info, "duration", None),
+        "duration_after_vad": getattr(info, "duration_after_vad", None),
         "model": model_size,
     }, ensure_ascii=False))
 except Exception as exc:
@@ -103,8 +126,9 @@ except Exception as exc:
 export async function transcribeAudioBase64({ audioBase64, mimeType }) {
   const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'viodashboard-voice-'));
   const audioPath = path.join(tempDir, `voice-input${sanitizeExtension(mimeType)}`);
+  const audioBuffer = decodeBase64Payload(audioBase64);
   try {
-    await fs.promises.writeFile(audioPath, decodeBase64Payload(audioBase64));
+    await fs.promises.writeFile(audioPath, audioBuffer);
     const result = await new Promise((resolve, reject) => {
       execFile(
         'python3',
@@ -136,10 +160,13 @@ export async function transcribeAudioBase64({ audioBase64, mimeType }) {
       );
     });
 
+    await writeVoiceDiagnostics({ mimeType, audioBuffer, result });
+
     if (!result?.ok) {
       const error = new Error(result?.error || 'Voice transcription failed.');
       error.code = result?.code || 'transcription_failed';
       error.hint = result?.hint || null;
+      error.meta = result || null;
       throw error;
     }
 
@@ -147,7 +174,15 @@ export async function transcribeAudioBase64({ audioBase64, mimeType }) {
       text: String(result.text || '').trim(),
       language: result.language || null,
       languageProbability: result.language_probability || null,
+      duration: result.duration || null,
+      durationAfterVad: result.duration_after_vad || null,
       model: result.model || DEFAULT_MODEL_SIZE,
+      debug: {
+        mimeType,
+        bytes: audioBuffer.length,
+        savedAt: new Date().toISOString(),
+        diagnosticsPath: path.join(diagnosticsRoot(), 'last-result.json'),
+      },
     };
   } finally {
     await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});

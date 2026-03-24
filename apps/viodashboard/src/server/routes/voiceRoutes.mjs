@@ -25,6 +25,7 @@ export function handleVoiceRoutes({ req, res, requestUrl, transcribeAudioBase64 
         error: error?.message || String(error),
         code: error?.code || 'voice_transcription_failed',
         hint: error?.hint || null,
+        meta: error?.meta || null,
       }));
     return true;
   }
