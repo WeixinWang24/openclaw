@@ -9,12 +9,12 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execFile, execFileSync, spawn } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { WebSocketServer } from 'ws';
-import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, DEFAULT_CLAUDE_CWD, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
+import { APP_DISPLAY_NAME, CLIENT_CONFIG, DATA_DIR, GATEWAY_PROFILE, LAUNCHD_LABEL, OPENCLAW_BIN, OPENCLAW_DIST_BUILD_INFO, OPENCLAW_REPO_ROOT, PNPM_BIN, ROADMAP_DATA_PATH, ROADMAP_HISTORY_DATA_PATH, ROOT, wrapperPort } from './config.mjs';
 import { onAssistantFinal, onAssistantError } from './moodBridge.mjs';
 import { sendJson } from './server/httpUtils.mjs';
-import { listProjectFiles, readProjectFile, writeProjectFile, safeProjectPath } from './server/filesystem.mjs';
+import { listProjectFiles, readProjectFile, writeProjectFile } from './server/filesystem.mjs';
 import { getSafeEditState, performStartupRecovery, runSafeEditSmokeSummary } from './server/safeEdit.mjs';
 import { getCameraTelemetry, getGestureRuntimeState, runCameraCapture, runGestureCycle, runGesturePipeline, updateGestureWatcher } from './server/gesture.mjs';
 import { serveCameraAsset, servePublicFile } from './server/static.mjs';
@@ -35,9 +35,12 @@ import { handleSetupRoutes } from './server/routes/setupRoutes.mjs';
 import { handleDistRoutes } from './server/routes/distRoutes.mjs';
 import { handleSafeEditRoutes } from './server/routes/safeEditRoutes.mjs';
 import { handleTokenSaverRoutes } from './server/routes/tokenSaverRoutes.mjs';
+import { handleClaudeRoutes } from './server/routes/claudeRoutes.mjs';
+import { handleTerminalRoutes } from './server/routes/terminalRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
+import { getOrCreateTerminalSession, getTerminalSession } from './server/terminalSessions.mjs';
 import { evaluateSetupState } from './server/setupState.mjs';
 import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
@@ -52,71 +55,6 @@ import { createFinalReplyService } from './server/runtime/finalReplyService.mjs'
 import { createRunLifecycleService } from './server/runtime/runLifecycleService.mjs';
 import { createRoadmapStateService } from './server/runtime/roadmapStateService.mjs';
 import { createRuntimeMoodStateService } from './server/runtime/runtimeMoodStateService.mjs';
-
-const terminalSessions = new Map();
-const MAX_TERMINAL_SESSIONS = 5;
-
-function resolveInteractiveShell() {
-  const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      if (fs.existsSync(candidate)) {return candidate;}
-    } catch {}
-  }
-  return '/bin/sh';
-}
-
-function getOrCreateTerminalSession(sessionId = 'default', cwdRel = '.') {
-  const existing = terminalSessions.get(sessionId);
-  if (existing && !existing.exited) {return existing;}
-  if (!terminalSessions.has(sessionId) && terminalSessions.size >= MAX_TERMINAL_SESSIONS) {
-    throw new Error(`Max terminal sessions (${MAX_TERMINAL_SESSIONS}) reached`);
-  }
-  const cwd = safeProjectPath(cwdRel);
-  const shellPath = resolveInteractiveShell();
-  const shellArgs = shellPath.endsWith('/sh') ? ['-i'] : ['-i'];
-  const child = spawn(shellPath, shellArgs, { cwd, env: process.env, stdio: 'pipe' });
-  const state = {
-    id: sessionId,
-    cwdRel,
-    child,
-    shellPath,
-    output: '',
-    exited: false,
-    exitCode: null,
-    status: 'running',
-    terminationRequestedAt: null,
-    terminatedAt: null,
-    terminationError: null,
-  };
-  const append = chunk => {
-    state.output += String(chunk || '');
-    if (state.output.length > 20000) {state.output = state.output.slice(-20000);}
-  };
-  child.stdout.on('data', append);
-  child.stderr.on('data', append);
-  child.on('error', error => {
-    state.output += `\n[terminal spawn error] ${error?.message || String(error)}\n`;
-    state.exited = true;
-    state.exitCode = null;
-    state.status = 'failed';
-    state.terminationError = error?.message || String(error);
-    state.terminatedAt = state.terminatedAt || new Date().toISOString();
-  });
-  child.on('exit', code => {
-    state.exited = true;
-    state.exitCode = code;
-    if (state.status === 'terminating') {
-      state.status = 'terminated';
-      state.terminatedAt = state.terminatedAt || new Date().toISOString();
-    } else if (state.status !== 'failed') {
-      state.status = 'exited';
-    }
-  });
-  terminalSessions.set(sessionId, state);
-  return state;
-}
-
 
 function safeStat(filePath) {
   try {
@@ -815,158 +753,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/claude/state' && req.method === 'GET') {
-    try {
-      const cwdRel = requestUrl.searchParams.get('cwd') || DEFAULT_CLAUDE_CWD;
-      sendJson(res, 200, getClaudeState({ cwdRel }));
-    } catch (error) {
-      sendJson(res, 400, { error: error?.message || String(error) });
-    }
+  if (handleClaudeRoutes({
+    req,
+    res,
+    requestUrl,
+    getClaudeState,
+    startClaudeSession,
+    sendClaudeInput,
+    stopClaudeSession,
+    restartClaudeSession,
+    resizeClaudeSession,
+  })) {
     return;
   }
 
-
-  if (requestUrl.pathname === '/api/claude/start' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const cwdRel = typeof payload?.cwd === 'string' && payload.cwd ? payload.cwd : DEFAULT_CLAUDE_CWD;
-        const state = startClaudeSession({ cwdRel });
-        sendJson(res, 200, state);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/claude/input' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const text = String(payload?.text || '');
-        if (!text.length) {throw new Error('text is required');}
-        const cwdRel = typeof payload?.cwd === 'string' && payload.cwd ? payload.cwd : DEFAULT_CLAUDE_CWD;
-        const state = sendClaudeInput({ text, cwdRel, raw: !!payload?.raw });
-        sendJson(res, 200, state);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/claude/stop' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(() => {
-        sendJson(res, 200, stopClaudeSession());
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/claude/restart' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(async payload => {
-        const cwdRel = typeof payload?.cwd === 'string' && payload.cwd ? payload.cwd : DEFAULT_CLAUDE_CWD;
-        const state = await restartClaudeSession({ cwdRel });
-        sendJson(res, 200, state);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/claude/resize' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const state = resizeClaudeSession({ cols: payload?.cols, rows: payload?.rows });
-        sendJson(res, 200, state);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/terminal/session' && req.method === 'GET') {
-    const session = getOrCreateTerminalSession('default', requestUrl.searchParams.get('cwd') || '.');
-    sendJson(res, 200, { ok: true, sessionId: session.id, cwd: session.cwdRel, output: session.output, exited: session.exited, exitCode: session.exitCode });
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/terminal/input' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const session = getOrCreateTerminalSession(String(payload.sessionId || 'default'), typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : '.');
-        const text = String(payload.text || '');
-        session.child.stdin.write(text);
-        setTimeout(() => {
-          const toolLabel = `terminal ${session.cwdRel || '.'} $ ${text.trim() || '<empty>'}`;
-          bridge.ingestToolResult(toolLabel, session.output || '', { sessionId: session.id, cwdRel: session.cwdRel });
-          sendJson(res, 200, {
-            ok: true,
-            sessionId: session.id,
-            output: session.output,
-            exited: session.exited,
-            exitCode: session.exitCode,
-            status: session.status,
-            terminationRequestedAt: session.terminationRequestedAt,
-            terminatedAt: session.terminatedAt,
-            terminationError: session.terminationError,
-          });
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
-    return;
-  }
-
-  if (requestUrl.pathname === '/api/terminal/terminate' && req.method === 'POST') {
-    readJsonRequest(req)
-      .then(payload => {
-        const sessionId = String(payload?.sessionId || 'default');
-        const session = terminalSessions.get(sessionId);
-        if (!session) {throw new Error(`terminal session not found: ${sessionId}`);}
-        if (session.exited || !session.child || session.child.killed) {
-          session.status = session.status === 'terminated' ? 'terminated' : 'exited';
-          sendJson(res, 200, {
-            ok: true,
-            sessionId: session.id,
-            status: session.status,
-            exited: session.exited,
-            exitCode: session.exitCode,
-            terminationRequestedAt: session.terminationRequestedAt,
-            terminatedAt: session.terminatedAt,
-            terminationError: session.terminationError,
-          });
-          return;
-        }
-        session.status = 'terminating';
-        session.terminationRequestedAt = new Date().toISOString();
-        session.terminationError = null;
-        try {
-          session.child.kill('SIGTERM');
-        } catch (error) {
-          session.status = 'failed';
-          session.terminationError = error?.message || String(error);
-        }
-        setTimeout(() => {
-          if (!session.exited && session.child && !session.child.killed) {
-            try {
-              session.child.kill('SIGKILL');
-            } catch (error) {
-              session.status = 'failed';
-              session.terminationError = error?.message || String(error);
-            }
-          }
-          if (session.exited && session.status === 'terminating') {
-            session.status = 'terminated';
-            session.terminatedAt = session.terminatedAt || new Date().toISOString();
-          }
-          sendJson(res, 200, {
-            ok: !session.terminationError,
-            sessionId: session.id,
-            status: session.status,
-            exited: session.exited,
-            exitCode: session.exitCode,
-            terminationRequestedAt: session.terminationRequestedAt,
-            terminatedAt: session.terminatedAt,
-            terminationError: session.terminationError,
-          });
-        }, 120);
-      })
-      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+  if (handleTerminalRoutes({
+    req,
+    res,
+    requestUrl,
+    getOrCreateTerminalSession,
+    getTerminalSession,
+    ingestToolResult: (...args) => bridge.ingestToolResult(...args),
+  })) {
     return;
   }
 
