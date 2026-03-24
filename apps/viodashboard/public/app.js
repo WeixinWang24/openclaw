@@ -2529,7 +2529,7 @@ function syncMainSessionBufferedStream() {
 function renderSessionMessages(sessionKey, messages = []) {
   if (!chatEl) {return;}
   const sourceMessages = Array.isArray(messages) ? messages : [];
-  const visibleMessages = sessionKey === gatewayMainSessionKey ? [] : sourceMessages;
+  const visibleMessages = sourceMessages;
   const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
   addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
