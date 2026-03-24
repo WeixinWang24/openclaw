@@ -111,6 +111,34 @@ await test('GET /api/roadmap returns roadmap envelope', async () => {
   assert(json?.ok === true, 'roadmap ok missing');
 });
 
+await test('GET /api/diagnostics/runtime returns kernel runtime envelope', async () => {
+  const { res, json } = await fetchJson('/api/diagnostics/runtime');
+  assert(res.ok, `expected 200, got ${res.status}`);
+  assert(json?.ok === true, 'diagnostics ok missing');
+  assert(typeof json?.bridgeConnected === 'boolean', 'bridgeConnected missing');
+  assert(typeof json?.diagnostics === 'object' && json.diagnostics !== null, 'diagnostics payload missing');
+  assert(typeof json?.broadcast?.clientCount === 'number', 'broadcast clientCount missing');
+});
+
+let latestSessionsPayload = null;
+await test('GET /api/sessions returns session listing envelope', async () => {
+  const { res, json } = await fetchJson('/api/sessions');
+  assert(res.ok, `expected 200, got ${res.status}`);
+  assert(json?.ok === true, 'sessions ok missing');
+  assert(Array.isArray(json?.items), 'session items missing');
+  assert(typeof json?.currentSessionKey === 'string' || json?.currentSessionKey == null, 'currentSessionKey shape invalid');
+  latestSessionsPayload = json;
+});
+
+await test('GET /api/sessions/:key/context returns context envelope', async () => {
+  const sessionKey = latestSessionsPayload?.currentSessionKey || latestSessionsPayload?.items?.[0]?.key;
+  assert(typeof sessionKey === 'string' && sessionKey.length > 0, 'no session key available for context test');
+  const { res, json } = await fetchJson(`/api/sessions/${encodeURIComponent(sessionKey)}/context`);
+  assert(res.ok, `expected 200, got ${res.status}`);
+  assert(json?.ok === true, 'session context ok missing');
+  assert(json?.sessionKey === sessionKey, 'session context key mismatch');
+  assert(Array.isArray(json?.activeRuns), 'activeRuns missing');
+});
 
 await test('POST /api/roadmap/history/clear requires explicit confirm', async () => {
   const { res, json } = await fetchJson('/api/roadmap/history/clear', {
