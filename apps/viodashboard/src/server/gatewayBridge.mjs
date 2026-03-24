@@ -169,7 +169,6 @@ function parseExportAlias(source, symbolName) {
 
 async function loadGatewayCaller() {
   if (gatewayCallerPromise) {return gatewayCallerPromise;}
-  const loadStartedAt = Date.now();
   gatewayCallerPromise = (async () => {
     const candidates = [];
     try {
@@ -190,12 +189,9 @@ async function loadGatewayCaller() {
         const symbolName = candidate.type === 'gateway-rpc' ? 'callGatewayFromCli' : 'callGateway';
         const alias = parseExportAlias(source, symbolName);
         if (!alias) {continue;}
-        const importStartedAt = Date.now();
         const mod = await import(pathToFileURL(candidate.filePath).href);
-        const importDurationMs = Date.now() - importStartedAt;
         const fn = mod?.[alias];
         if (typeof fn !== 'function') {continue;}
-        console.log('[wrapper] resolved OpenClaw gateway helper', JSON.stringify({ source: path.basename(candidate.filePath), symbolName, alias, importDurationMs, totalResolveDurationMs: Date.now() - loadStartedAt }));
         if (candidate.type === 'gateway-rpc') {
           return async ({ method, params, timeoutMs = 10000, expectFinal = false }) => await fn(method, {
             url: gatewayUrl,

@@ -46,13 +46,9 @@ import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
 
-warmGatewayCaller()
-  .then(() => {
-    console.log('[wrapper] gateway helper prewarmed');
-  })
-  .catch(error => {
-    console.warn('[wrapper] gateway helper prewarm failed', error?.message || String(error));
-  });
+warmGatewayCaller().catch(error => {
+  console.warn('[wrapper] gateway helper prewarm failed', error?.message || String(error));
+});
 
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
@@ -396,13 +392,11 @@ function broadcast(packet) {
 async function prewarmGatewayReadPaths() {
   if (runtimeGatewayReadPrewarmStarted) {return;}
   runtimeGatewayReadPrewarmStarted = true;
-  const startedAt = Date.now();
   try {
     await bridge.listSessions({ limit: 20 });
     await bridge.fetchSessionUsage();
     await bridge.fetchSessionContextSnapshot();
     await bridge.fetchModelCatalog();
-    console.log('[wrapper] gateway read-path prewarm complete', JSON.stringify({ totalDurationMs: Date.now() - startedAt }));
   } catch (error) {
     console.warn('[wrapper] gateway read-path prewarm failed', error?.message || String(error));
   }
@@ -465,7 +459,6 @@ bridge = new GatewayBridge({
     }
   },
   onSessionUpdated: payload => {
-    console.log('[wrapper] session.updated', JSON.stringify(payload));
     broadcast({ type: 'session.updated', ...payload });
   },
   onDiagnosticEvent: event => {
@@ -560,7 +553,6 @@ bridge = new GatewayBridge({
           } catch (error) {
             console.log('[wrapper] models.list / sessions.list fetch failed', error?.message || String(error));
           }
-          console.log('[wrapper] usage refresh:', JSON.stringify({ last: tokenStats.last, total: latest, limit: tokenStats.modelLimit, pct: tokenStats.modelUsagePercent, contextSnapshot: tokenStats.contextSnapshot, diagnosticContext: tokenStats.diagnosticContext }));
           broadcast(buildTokensPacket());
         }
       } catch (error) {
