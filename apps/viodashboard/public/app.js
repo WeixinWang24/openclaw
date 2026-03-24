@@ -2379,10 +2379,6 @@ async function submitChatText(text = '', options = {}) {
   }
 }
 
-function isMainSessionView() {
-  return !!selectedSessionKey && !!gatewayMainSessionKey && selectedSessionKey === gatewayMainSessionKey;
-}
-
 function getActiveViewedSessionKey() {
   return selectedSessionKey || gatewayMainSessionKey || null;
 }
@@ -3083,11 +3079,11 @@ function connect() {
       gatewayMainSessionKey = msg.sessionKey || gatewayMainSessionKey;
       sessionKeyEl.innerHTML = `<span class="semantic-label">session:</span> <span class="semantic-value">${msg.sessionKey || 'unknown'}</span>`;
       if (gatewayMainSessionKey && !sessionHistoryInflight.has(gatewayMainSessionKey)) {
-        const shouldHydrateMain = !selectedSessionKey || selectedSessionKey === gatewayMainSessionKey;
-        if (shouldHydrateMain && !sessionMessages.has(gatewayMainSessionKey)) {
+        const shouldHydrateDefaultSession = !selectedSessionKey || selectedSessionKey === gatewayMainSessionKey;
+        if (shouldHydrateDefaultSession && !sessionMessages.has(gatewayMainSessionKey)) {
           selectedSessionKey = gatewayMainSessionKey;
           selectDashboardSession(gatewayMainSessionKey, { force: true }).catch(error => {
-            addDebugLine(`main session hydrate failed: ${error?.message || error}`, 'pink');
+            addDebugLine(`default session hydrate failed: ${error?.message || error}`, 'pink');
           });
         }
       }
