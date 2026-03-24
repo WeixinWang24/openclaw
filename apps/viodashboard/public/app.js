@@ -2636,11 +2636,22 @@ function applyKernelRunViewPacket(msg = {}) {
   }
 }
 
+function hasStreamingRowMounted(sessionKey, runId = null) {
+  if (!chatEl || selectedSessionKey !== sessionKey) {return false;}
+  if (runId) {
+    return !!chatEl.querySelector(`.msg-row.assistant[data-run-id="${CSS.escape(String(runId))}"][data-status="streaming"]`);
+  }
+  return !!chatEl.querySelector('.msg-row.assistant[data-status="streaming"]');
+}
+
 function applyProjectionTranscriptPacket(msg = {}) {
   const sessionKey = msg?.sessionKey || null;
   if (!sessionKey) {return;}
   const runState = getSessionRunState(sessionKey);
-  const suppressRender = selectedSessionKey === sessionKey && runState?.state === 'streaming';
+  const suppressRender =
+    selectedSessionKey === sessionKey &&
+    runState?.state === 'streaming' &&
+    hasStreamingRowMounted(sessionKey, runState?.runId || null);
   if (msg?.view) {
     applyProjectionViewToSession(sessionKey, msg.view, { render: !suppressRender });
   }
@@ -3047,7 +3058,8 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
   const shouldSuppressStreamingRerender =
     sessionKey === selectedSessionKey &&
     refreshSeq === sessionSelectionSeq &&
-    runState?.state === 'streaming';
+    runState?.state === 'streaming' &&
+    hasStreamingRowMounted(sessionKey, runState?.runId || null);
   if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq && !shouldSuppressStreamingRerender) {
     renderSessionMessages(sessionKey, messages);
   } else {
