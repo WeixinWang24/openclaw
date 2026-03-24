@@ -2197,16 +2197,16 @@ function renderChatMarkdown(text = '') {
 
       if (!trimmed) {
         out.push('<div class="chat-md-space"></div>');
-      } else if (/^###\s+/.test(trimmed)) {
-        out.push(`<div class="chat-md-h3">${renderInlineChatMarkdown(trimmed.replace(/^###\s+/, ''))}</div>`);
-      } else if (/^##\s+/.test(trimmed)) {
-        out.push(`<div class="chat-md-h2">${renderInlineChatMarkdown(trimmed.replace(/^##\s+/, ''))}</div>`);
-      } else if (/^#\s+/.test(trimmed)) {
-        out.push(`<div class="chat-md-h1">${renderInlineChatMarkdown(trimmed.replace(/^#\s+/, ''))}</div>`);
-      } else if (/^>\s+/.test(trimmed)) {
-        out.push(`<div class="chat-md-quote">${renderInlineChatMarkdown(trimmed.replace(/^>\s+/, ''))}</div>`);
       } else {
-        out.push(`<div class="chat-md-p">${renderInlineChatMarkdown(line)}</div>`);
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+          const level = Math.min(3, headingMatch[1].length);
+          out.push(`<div class="chat-md-h${level}">${renderInlineChatMarkdown(headingMatch[2])}</div>`);
+        } else if (/^>\s+/.test(trimmed)) {
+          out.push(`<div class="chat-md-quote">${renderInlineChatMarkdown(trimmed.replace(/^>\s+/, ''))}</div>`);
+        } else {
+          out.push(`<div class="chat-md-p">${renderInlineChatMarkdown(line)}</div>`);
+        }
       }
     }
 
