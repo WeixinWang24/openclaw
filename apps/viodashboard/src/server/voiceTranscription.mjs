@@ -4,7 +4,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 
 const TRANSCRIBE_TIMEOUT_MS = 180000;
-const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'small';
+const DEFAULT_MODEL_SIZE = process.env.VIODASHBOARD_WHISPER_MODEL || 'medium';
 
 function decodeBase64Payload(audioBase64 = '') {
   const cleaned = String(audioBase64 || '').trim();
@@ -59,8 +59,13 @@ if not input_path or not os.path.exists(input_path):
 
 try:
     model = WhisperModel(model_size, device="auto", compute_type="auto")
-    segments, info = model.transcribe(
-        input_path,
+
+    def run_transcribe(**kwargs):
+        segments, info = model.transcribe(input_path, **kwargs)
+        text = " ".join((segment.text or "").strip() for segment in segments).strip()
+        return text, info
+
+    text, info = run_transcribe(
         task="transcribe",
         language="zh",
         beam_size=5,
@@ -69,7 +74,18 @@ try:
         condition_on_previous_text=True,
         initial_prompt="以下内容可能包含中文和 English，请按原语言准确转写，不要翻译。",
     )
-    text = " ".join((segment.text or "").strip() for segment in segments).strip()
+
+    if not text:
+        text, info = run_transcribe(
+            task="transcribe",
+            language=None,
+            beam_size=1,
+            best_of=1,
+            vad_filter=False,
+            condition_on_previous_text=False,
+            initial_prompt="以下内容可能包含中文和 English，请按原语言准确转写，不要翻译。",
+        )
+
     print(json.dumps({
         "ok": True,
         "text": text,
