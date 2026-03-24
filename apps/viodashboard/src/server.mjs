@@ -32,16 +32,15 @@ import { handleSessionRoutes } from './server/routes/sessionRoutes.mjs';
 import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
-import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from './server/utils.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
 import { evaluateSetupState } from './server/setupState.mjs';
 import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
-import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
 import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
+import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -491,6 +490,44 @@ const transcriptService = createTranscriptService({
   diagnostics: runtimeDiagnostics,
 });
 const chatProjection = createChatProjection({ eventBus: kernelEventBus });
+const handleChatEvent = createChatEventCoordinator({
+  bridge: { get sessionKey() { return bridge.sessionKey; }, fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
+  broadcast,
+  buildMoodPacket,
+  buildTokensPacket,
+  getRuntimeState: () => runtimeState,
+  syncRuntimeState,
+  state: {
+    tokenStats,
+    seenFinalRunIds,
+    activeRunSeq,
+    runSequenceRef: { get: () => runSequence },
+    lastAssistantFinalNotifiedRunIdRef: {
+      get: () => lastAssistantFinalNotifiedRunId,
+      set: value => {
+        lastAssistantFinalNotifiedRunId = value;
+      },
+    },
+  },
+  roadmap: {
+    loadRoadmapData,
+    choosePersistedRoadmap,
+    pushRoadmapHistory,
+    saveRoadmapData,
+  },
+  routing: {
+    getLastRouting: () => lastRouting,
+    setLastRouting: value => {
+      lastRouting = value;
+    },
+  },
+  sideEffects: {
+    onAssistantFinal,
+    onAssistantError,
+    notifyAssistantFinal,
+  },
+  wrapperPort,
+});
 
 bridge = new GatewayBridge({
   onStatus: payload => {
@@ -539,237 +576,7 @@ bridge = new GatewayBridge({
       source: 'queued',
     }));
   },
-  onChatEvent: async event => {
-    if (event.state === 'final' || event.state === 'error' || event.state === 'aborted') {
-      try {
-        const latest = await bridge.fetchSessionUsage();
-        if (latest) {
-          const prev = {
-            input: tokenStats.totalInput,
-            output: tokenStats.totalOutput,
-            cacheRead: tokenStats.totalCacheRead,
-            cacheWrite: tokenStats.totalCacheWrite,
-            total: tokenStats.total,
-          };
-          tokenStats.totalInput = latest.input;
-          tokenStats.totalOutput = latest.output;
-          tokenStats.totalCacheRead = latest.cacheRead;
-          tokenStats.totalCacheWrite = latest.cacheWrite;
-          tokenStats.total = latest.total;
-          tokenStats.modelName = latest.model;
-          tokenStats.modelProvider = latest.provider;
-          tokenStats.last = tokenStats.baselineReady ? {
-            input: Math.max(0, latest.input - prev.input),
-            output: Math.max(0, latest.output - prev.output),
-            cacheRead: Math.max(0, latest.cacheRead - prev.cacheRead),
-            cacheWrite: Math.max(0, latest.cacheWrite - prev.cacheWrite),
-            total: Math.max(0, latest.total - prev.total),
-          } : null;
-          tokenStats.baselineReady = true;
-          try {
-            const [models, snapshot] = await Promise.all([
-              bridge.fetchModelCatalog(),
-              bridge.fetchSessionContextSnapshot(),
-            ]);
-            const match = models.find(model => {
-              const name = typeof model?.id === 'string' ? model.id : (typeof model?.model === 'string' ? model.model : null);
-              const provider = typeof model?.provider === 'string' ? model.provider : null;
-              return name === latest.model && (!latest.provider || !provider || provider === latest.provider);
-            });
-            const limit = Number(match?.contextWindow ?? match?.context_window ?? match?.limit ?? 0) || null;
-            tokenStats.modelLimit = limit;
-            const estimatedPromptLoad = tokenStats.last ? ((tokenStats.last.input || 0) + (tokenStats.last.cacheRead || 0)) : null;
-            tokenStats.modelUsagePercent = (limit && estimatedPromptLoad != null)
-              ? Math.min(100, Math.round((estimatedPromptLoad / limit) * 1000) / 10)
-              : null;
-            tokenStats.contextSnapshot = snapshot ? {
-              totalTokens: typeof snapshot.totalTokens === 'number' ? snapshot.totalTokens : null,
-              limit: typeof snapshot.contextTokens === 'number' ? snapshot.contextTokens : null,
-              fresh:  snapshot.totalTokensFresh,
-              model: snapshot.model,
-              provider: snapshot.provider,
-              sessionKey: snapshot.key,
-              pct: typeof snapshot.totalTokens === 'number' && typeof snapshot.contextTokens === 'number' && snapshot.contextTokens > 0
-                ? Math.min(100, Math.round((snapshot.totalTokens / snapshot.contextTokens) * 1000) / 10)
-                : null,
-            } : null;
-          } catch (error) {
-            console.log('[wrapper] models.list / sessions.list fetch failed', error?.message || String(error));
-          }
-          broadcast(buildTokensPacket());
-        }
-      } catch (error) {
-        console.log('[wrapper] sessions.usage fetch failed', error?.message || String(error));
-      }
-    }
-
-    const rawReplyText = typeof event?.rawText === 'string'
-      ? event.rawText
-      : (typeof event?.text === 'string' ? event.text : '');
-    const visibleReplyText = event.state === 'final' ? stripStructuredRoadmapBlock(rawReplyText) : rawReplyText;
-    const isEmptyFinal = event.state === 'final' && !String(visibleReplyText || '').trim();
-    const isDuplicateFinal = event.state === 'final' && !!event.runId && seenFinalRunIds.has(event.runId);
-    const clientEvent = (event && typeof event === 'object') ? { ...event, text: visibleReplyText } : event;
-    const shouldBroadcastLegacyChat = (() => {
-      const eventSessionKey = event?.sessionKey || bridge.sessionKey || null;
-      if (!eventSessionKey) {return false;}
-      return eventSessionKey === bridge.sessionKey;
-    })();
-
-    if (shouldBroadcastLegacyChat && !(isEmptyFinal || isDuplicateFinal)) {
-      broadcast({ type: 'chat', event: clientEvent, source: 'legacy.onChatEvent' });
-    }
-    if (event.state === 'delta') {
-      syncRuntimeState({
-        mood: 'thinking',
-        phase: 'streaming',
-        activeRunId: event.runId || runtimeState.activeRunId,
-        source: 'chat-delta',
-      });
-      broadcast(buildMoodPacket('thinking', {
-        detail: 'assistant streaming',
-        preview: (event.text || '').slice(0, 120),
-        phase: 'streaming',
-        runId: event.runId,
-        source: 'chat-delta',
-      }));
-      return;
-    }
-
-    if (event.state === 'final') {
-      if (isEmptyFinal) {
-        console.log('[wrapper] ignored empty final event', event.runId || 'no-run-id');
-        return;
-      }
-      if (isDuplicateFinal) {
-        console.log('[wrapper] ignored duplicate final event', event.runId);
-        return;
-      }
-      if (event.runId) {
-        seenFinalRunIds.add(event.runId);
-        if (seenFinalRunIds.size > 200) {seenFinalRunIds.clear();}
-      }
-      const finishedSeq = event.runId ? activeRunSeq.get(event.runId) || 0 : 0;
-      if (event.runId) {activeRunSeq.delete(event.runId);}
-      syncRuntimeState({
-        activeRunId: activeRunSeq.size ? runtimeState.activeRunId : null,
-        source: 'chat-final',
-      });
-      try {
-        const replyBody = stripStructuredRoadmapBlock(rawReplyText || '');
-        const preview = replyBody.slice(0, 220);
-        console.log('[wrapper] final reply preview:', preview);
-        const extractedRoadmap = buildRoadmapFromReply(rawReplyText || '');
-        const previousRoadmap = loadRoadmapData();
-        const roadmapDecision = choosePersistedRoadmap(extractedRoadmap, previousRoadmap);
-        const roadmap = roadmapDecision.roadmap;
-        if (roadmapDecision.replacedPrevious && previousRoadmap) {pushRoadmapHistory(previousRoadmap);}
-        saveRoadmapData(roadmap);
-        console.log('[wrapper] roadmap source:', roadmap.sourceType, 'items:', roadmap.items?.length || 0, 'decision:', roadmapDecision.reason);
-        broadcast({ type: 'roadmap', roadmap, decision: roadmapDecision.reason, extractedRoadmap });
-
-        let projectRoadmapResult = null;
-        try {
-          ensureProjectRoadmap({ context: 'Auto-created by VioDashboard from assistant code-workflow roadmap handling.' });
-          if (roadmap?.items?.length) {
-            projectRoadmapResult = appendProjectRoadmapEntry({
-              roadmap,
-              replyBody,
-              changedFiles: [],
-              notes: 'Auto-appended from assistant final reply roadmap extraction.',
-              taskState: {
-                phase: 'development/review turn',
-              },
-            });
-            console.log('[wrapper] project roadmap updated:', JSON.stringify(projectRoadmapResult));
-          }
-        } catch (roadmapFileError) {
-          console.log('[wrapper] project roadmap update failed', roadmapFileError?.message || String(roadmapFileError));
-        }
-
-        const newerRunStillActive = activeRunSeq.size > 0 && finishedSeq < runSequence;
-        if (newerRunStillActive) {
-          lastRouting = {
-            mode: 'thinking',
-            detail: `final for older run ignored while newer run is active (${activeRunSeq.size} active)`,
-            preview,
-            phase: 'streaming',
-            runId: event.runId,
-          };
-          syncRuntimeState({ mood: 'thinking', phase: 'streaming', source: 'chat-final-suppressed' });
-          broadcast(buildMoodPacket('thinking', {
-            state: runtimeState.bodyState,
-            detail: lastRouting.detail,
-            preview,
-            phase: 'streaming',
-            runId: event.runId,
-            source: 'chat-final-suppressed',
-          }));
-          return;
-        }
-
-        const result = await onAssistantFinal(replyBody || '');
-        if (event.runId && event.runId !== lastAssistantFinalNotifiedRunId) {
-          lastAssistantFinalNotifiedRunId = event.runId;
-          notifyAssistantFinal({
-            title: 'Vio sent a final reply',
-            message: preview || 'A reply finished and is ready for you.',
-            dashboardPort: wrapperPort,
-          });
-        }
-        lastRouting = {
-          mode: result?.mode ?? 'unknown',
-          detail: `final length=${replyBody.length}`,
-          preview,
-          phase: 'final',
-          runId: event.runId,
-        };
-        broadcast(buildMoodPacket(result?.mode ?? 'unknown', {
-          state: result?.state ?? null,
-          detail: lastRouting.detail,
-          preview,
-          phase: 'final',
-          runId: event.runId,
-          source: 'chat-final',
-        }));
-      } catch (error) {
-        lastRouting = { mode: 'error', detail: error?.message || String(error), phase: 'final', runId: event.runId };
-        console.log('[wrapper] sidecar final routing failed', error?.message || String(error));
-        broadcast(buildMoodPacket('error', {
-          detail: lastRouting.detail,
-          phase: 'final',
-          runId: event.runId,
-          source: 'chat-final-error',
-        }));
-      }
-    } else if (event.state === 'error') {
-      if (event.runId) {activeRunSeq.delete(event.runId);}
-      syncRuntimeState({ source: 'chat-error' });
-      try {
-        const result = await onAssistantError();
-        lastRouting = { mode: 'error', detail: event.payload?.errorMessage || 'chat error', phase: 'error', runId: event.runId };
-        broadcast(buildMoodPacket('error', {
-          state: result?.state ?? runtimeState.bodyState,
-          detail: lastRouting.detail,
-          phase: 'error',
-          runId: event.runId,
-          source: 'chat-error',
-        }));
-      } catch (error) {
-        console.log('[wrapper] sidecar error routing failed', error?.message || String(error));
-      }
-    } else if (event.state === 'aborted') {
-      if (event.runId) {activeRunSeq.delete(event.runId);}
-      lastRouting = { mode: activeRunSeq.size ? 'thinking' : 'idle', detail: 'chat aborted', phase: 'aborted', runId: event.runId };
-      broadcast(buildMoodPacket(activeRunSeq.size ? 'thinking' : 'idle', {
-        state: runtimeState.bodyState,
-        detail: 'chat aborted',
-        phase: activeRunSeq.size ? 'streaming' : 'aborted',
-        runId: event.runId,
-        source: 'chat-aborted',
-      }));
-    }
-  },
+  onChatEvent: handleChatEvent,
 });
 bridge.setRuntimeAdapters({
   rpcClient,
