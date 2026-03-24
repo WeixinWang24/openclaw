@@ -21,6 +21,9 @@ const cameraTopbarEl = document.getElementById('cameraTopbar');
 const chatEl = document.getElementById('chat');
 const formEl = document.getElementById('composer');
 const inputEl = document.getElementById('input');
+const chatAttachmentInputEl = document.getElementById('chatAttachmentInput');
+const chatAttachBtnEl = document.getElementById('chatAttachBtn');
+const chatAttachmentsPreviewEl = document.getElementById('chatAttachmentsPreview');
 const continueBtnEl = document.getElementById('continueBtn');
 const stopBtnEl = document.getElementById('stopBtn');
 const stopStatusBadgeEl = document.getElementById('stopStatusBadge');
@@ -152,6 +155,7 @@ const sessionMessages = new Map();
 const sessionHistoryInflight = new Map();
 const sessionRunState = new Map();
 const sessionLoadingState = new Map();
+let chatAttachments = [];
 let currentDir = '.';
 let currentFilePath = null;
 let currentFileOriginal = '';
@@ -442,8 +446,8 @@ function deriveSessionUiState(sessionKey) {
   const canStop = !!(currentRunId && (authoritativeState === 'streaming' || authoritativeState === 'aborting'));
   const showStopped = authoritativeState === 'aborted';
   const canContinue = (() => {
-    const latest = getPersistedLatestAssistantReplyMeta(sessionKey || null);
-    if (latest.aborted) {return false;}
+    const latest = getLatestSessionAssistantFinalMeta(sessionKey || null);
+    if (!latest.text || latest.aborted) {return false;}
     if (authoritativeState === 'streaming' || authoritativeState === 'aborting' || authoritativeState === 'aborted') {return false;}
     return true;
   })();
@@ -2324,7 +2328,8 @@ function getPersistedLatestAssistantReplyMeta(sessionKey = null) {
     const targetSessionKey = sessionKey || selectedSessionKey || null;
     const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
     const sessionScoped = targetSessionKey ? bySession[targetSessionKey] : null;
-    const raw = sessionScoped || JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null') || {};
+    const globalFallback = targetSessionKey ? null : JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null');
+    const raw = sessionScoped || globalFallback || {};
     return {
       text: String(raw?.text || '').trim(),
       runId: raw?.runId || null,
@@ -2347,8 +2352,36 @@ function tailSnippet(text = '', maxChars = 1200) {
   return `…\n${normalized.slice(-maxChars).trim()}`;
 }
 
+function isContinueAnchorWrappedText(text = '') {
+  const source = String(text || '');
+  return (
+    /继续上一条 assistant 回复里最后明确提出的事情。/u.test(source) ||
+    /上一条 assistant 回复（尾段，作为继续锚点）：/u.test(source) ||
+    /要求：默认延续上一条回复最后明确提出的具体动作，不要重开话题。/u.test(source)
+  );
+}
+
+function getLatestSessionAssistantFinalMeta(sessionKey = null) {
+  const targetSessionKey = sessionKey || selectedSessionKey || null;
+  const messages = Array.isArray(sessionMessages.get(targetSessionKey)) ? sessionMessages.get(targetSessionKey) : [];
+  const latestAssistantFinal = [...messages].reverse().find(item => item?.role === 'assistant' && item?.status === 'final') || null;
+  if (!latestAssistantFinal) {
+    return { text: '', runId: null, aborted: false, sessionKey: targetSessionKey };
+  }
+  const text = String(latestAssistantFinal?.text || '').trim();
+  if (!text || isContinueAnchorWrappedText(text)) {
+    return { text: '', runId: null, aborted: false, sessionKey: targetSessionKey };
+  }
+  return {
+    text,
+    runId: latestAssistantFinal?.runId || latestAssistantFinal?.id || null,
+    aborted: false,
+    sessionKey: targetSessionKey,
+  };
+}
+
 function buildContinuePayload() {
-  const latest = getPersistedLatestAssistantReplyMeta(selectedSessionKey || null);
+  const latest = getLatestSessionAssistantFinalMeta(selectedSessionKey || null);
   const lastAssistantReply = latest.text;
   const selectedRun = getSelectedSessionRunState();
   warnRoadmapLeak('buildContinuePayload(source)', lastAssistantReply);
@@ -2364,15 +2397,139 @@ function buildContinuePayload() {
   ].join('\n');
 }
 
+function generateAttachmentId() {
+  return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isSupportedChatAttachmentMimeType(mimeType = '') {
+  return typeof mimeType === 'string' && mimeType.length > 0;
+}
+
+function isImageAttachmentMimeType(mimeType = '') {
+  return typeof mimeType === 'string' && mimeType.startsWith('image/');
+}
+
+function dataUrlToBase64(dataUrl = '') {
+  const match = String(dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {return null;}
+  return { mimeType: match[1], content: match[2] };
+}
+
+function formatAttachmentSize(size = 0) {
+  const bytes = Number(size || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) {return '';}
+  if (bytes < 1024) {return `${bytes} B`;}
+  if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} KB`;}
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;}
+
+function syncChatAttachmentsPreview() {
+  if (!chatAttachmentsPreviewEl) {return;}
+  if (!Array.isArray(chatAttachments) || chatAttachments.length === 0) {
+    chatAttachmentsPreviewEl.innerHTML = '';
+    chatAttachmentsPreviewEl.hidden = true;
+    return;
+  }
+  chatAttachmentsPreviewEl.hidden = false;
+  chatAttachmentsPreviewEl.innerHTML = '';
+  for (const att of chatAttachments) {
+    const thumb = document.createElement('div');
+    thumb.className = `chat-attachment-thumb ${isImageAttachmentMimeType(att.mimeType) ? 'is-image' : 'is-file'}`;
+
+    if (isImageAttachmentMimeType(att.mimeType) && att.dataUrl) {
+      const img = document.createElement('img');
+      img.src = att.dataUrl;
+      img.alt = att.name || 'Attachment preview';
+      thumb.appendChild(img);
+    } else {
+      const fileCard = document.createElement('div');
+      fileCard.className = 'chat-attachment-file';
+      const ext = document.createElement('div');
+      ext.className = 'chat-attachment-ext';
+      ext.textContent = String((att.name || att.mimeType || 'file').split('.').pop() || 'file').slice(0, 6).toUpperCase();
+      const meta = document.createElement('div');
+      meta.className = 'chat-attachment-meta';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'chat-attachment-name';
+      nameEl.textContent = att.name || 'attachment';
+      const subEl = document.createElement('div');
+      subEl.className = 'chat-attachment-sub';
+      subEl.textContent = [att.mimeType || 'file', formatAttachmentSize(att.size)].filter(Boolean).join(' · ');
+      meta.append(nameEl, subEl);
+      fileCard.append(ext, meta);
+      thumb.appendChild(fileCard);
+    }
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'chat-attachment-remove';
+    removeBtn.setAttribute('aria-label', 'Remove attachment');
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      chatAttachments = chatAttachments.filter(item => item.id !== att.id);
+      syncChatAttachmentsPreview();
+    });
+    thumb.appendChild(removeBtn);
+    chatAttachmentsPreviewEl.appendChild(thumb);
+  }
+}
+
+function clearChatAttachments() {
+  chatAttachments = [];
+  if (chatAttachmentInputEl) {chatAttachmentInputEl.value = '';}
+  syncChatAttachmentsPreview();
+}
+
+function buildApiAttachments() {
+  return chatAttachments
+    .map(att => {
+      const parsed = dataUrlToBase64(att.dataUrl);
+      if (!parsed) {return null;}
+      return {
+        type: isImageAttachmentMimeType(att.mimeType) ? 'image' : 'file',
+        mimeType: att.mimeType || parsed.mimeType,
+        fileName: att.name || null,
+        content: parsed.content,
+      };
+    })
+    .filter(Boolean);
+}
+
+function handleChatAttachmentFiles(fileList) {
+  const files = Array.from(fileList || []).filter(file => isSupportedChatAttachmentMimeType(file?.type || '') || file?.name);
+  if (!files.length) {return;}
+  const additions = [];
+  let pending = files.length;
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      additions.push({
+        id: generateAttachmentId(),
+        dataUrl: typeof reader.result === 'string' ? reader.result : '',
+        mimeType: file.type || 'application/octet-stream',
+        name: file.name || 'attachment',
+        size: file.size || 0,
+      });
+      pending -= 1;
+      if (pending === 0) {
+        chatAttachments = [...chatAttachments, ...additions];
+        syncChatAttachmentsPreview();
+      }
+    });
+    reader.readAsDataURL(file);
+  }
+}
+
 async function submitChatText(text = '', options = {}) {
   const value = String(text || '').trim();
-  const outboundText = String(options?.outboundText || value).trim();
+  const outboundText = String(options?.outboundText ?? value).trim();
+  const attachments = Array.isArray(options?.attachments) ? options.attachments : buildApiAttachments();
   const wsState = !ws ? 'no-ws' : ws.readyState;
-  addDebugLine(`submitChatText: len=${outboundText.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
-  if (!value || !outboundText || !selectedSessionKey) {return;}
+  addDebugLine(`submitChatText: len=${outboundText.length} attachments=${attachments.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
+  if ((!value && attachments.length === 0) || (!outboundText && attachments.length === 0) || !selectedSessionKey) {return;}
 
   const sendResult = await sendToSelectedSession(outboundText, {
     userText: value,
+    attachments,
   });
   if (!sendResult?.ok) {
     throw new Error(sendResult?.error || 'session send failed');
@@ -2389,17 +2546,17 @@ function clearChat() {
   streamingRunId = null;
 }
 
-async function sendToSelectedSession(outboundText, { userText = '' } = {}) {
+async function sendToSelectedSession(outboundText, { userText = '', attachments = [] } = {}) {
   const targetSessionKey = selectedSessionKey;
   if (!targetSessionKey) {
     return { ok: false, error: 'sessionKey is required' };
   }
 
-  addDebugLine(`sendToSelectedSession: unified send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
+  addDebugLine(`sendToSelectedSession: unified send queued for ${targetSessionKey}; attachments=${attachments.length}; event-driven update armed`, 'cyan');
   const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: outboundText }),
+    body: JSON.stringify({ text: outboundText, attachments }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -2435,6 +2592,7 @@ function applyPostSendUiState(sessionKey, {
   if (!sessionKey) {return;}
   try {
     inputEl.value = '';
+    clearChatAttachments();
     resizeComposer();
   } catch (error) {
     addDebugLine(`applyPostSendUiState: composer reset threw ${error?.message || error}`, 'pink');
@@ -3285,6 +3443,14 @@ formEl?.addEventListener('submit', ev => {
   submitChatText(inputEl.value).catch(error => {
     addDebugLine(`submit failed: ${error?.message || error}`, 'pink');
   });
+});
+
+chatAttachBtnEl?.addEventListener('click', () => {
+  chatAttachmentInputEl?.click();
+});
+
+chatAttachmentInputEl?.addEventListener('change', event => {
+  handleChatAttachmentFiles(event.target?.files || []);
 });
 
 function syncContinueButton() {
