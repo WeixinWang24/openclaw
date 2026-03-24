@@ -1948,14 +1948,22 @@ async function fetchRepliesList() {
   repliesState.loading = true;
   repliesState.error = '';
   try {
-    repliesState.items = buildMockReplies();
+    const res = await fetch('/api/external-replies/inbox', { cache: 'no-store' });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Failed to fetch external replies');
+    }
+    repliesState.items = Array.isArray(data?.items) ? data.items : [];
     if (!repliesState.selectedId || !repliesState.items.some(item => item.id === repliesState.selectedId)) {
       repliesState.selectedId = repliesState.items[0]?.id || null;
     }
   } catch (error) {
     repliesState.error = error?.message || String(error);
-    repliesState.items = [];
-    repliesState.selectedId = null;
+    repliesState.items = buildMockReplies();
+    if (!repliesState.selectedId || !repliesState.items.some(item => item.id === repliesState.selectedId)) {
+      repliesState.selectedId = repliesState.items[0]?.id || null;
+    }
+    addDebugLine(`Replies fallback to mock data: ${repliesState.error}`, 'pink');
   } finally {
     repliesState.loading = false;
     renderRepliesList();
@@ -1964,23 +1972,33 @@ async function fetchRepliesList() {
 }
 
 async function ingestTestReply() {
-  repliesState.items = [
-    {
-      id: `reply_mock_${Date.now()}`,
-      source: 'chatgpt-web',
-      provider: 'openai',
-      title: 'Test ingested reply',
-      promptText: 'This is a mock prompt injected from the Replies pane.',
-      replyText: 'This is a mock reply used to validate the Replies pane UI before backend wiring.',
-      sourceUrl: 'https://chatgpt.com/c/test-ingest',
-      capturedAt: new Date().toISOString(),
-      status: 'new',
-    },
-    ...repliesState.items,
-  ];
-  repliesState.selectedId = repliesState.items[0]?.id || null;
-  renderRepliesList();
-  renderReplyDetail();
+  const payload = {
+    source: 'chatgpt-web',
+    provider: 'openai',
+    title: 'Test ingested reply',
+    promptText: 'This is a mock prompt injected from the Replies pane.',
+    replyText: 'This is a mock reply used to validate the Replies pane UI before backend wiring.',
+    sourceUrl: 'https://chatgpt.com/c/test-ingest',
+    capturedAt: new Date().toISOString(),
+    status: 'new',
+  };
+
+  const res = await fetch('/api/external-replies/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || 'Failed to ingest test reply');
+  }
+
+  await fetchRepliesList();
+  if (data?.item?.id) {
+    repliesState.selectedId = data.item.id;
+    renderRepliesList();
+    renderReplyDetail();
+  }
 }
 
 async function sendReplyToVio(id) {

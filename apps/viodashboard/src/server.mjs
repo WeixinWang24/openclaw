@@ -27,6 +27,7 @@ import { handleSetupAction } from './server/setupActions.mjs';
 import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { appendProjectRoadmapEntry, ensureProjectRoadmap } from './server/projectRoadmap.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
+import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
 import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './server/agentTasks/index.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 
@@ -1350,6 +1351,11 @@ const server = http.createServer((req, res) => {
   // Agent task routes (Claude task page API)
   if (requestUrl.pathname.startsWith('/api/agent-tasks')) {
     if (handleAgentTaskRoutes(requestUrl, req, res)) { return; }
+  }
+
+  // External replies inbox API
+  if (requestUrl.pathname.startsWith('/api/external-replies')) {
+    if (handleExternalRepliesRoutes(requestUrl, req, res)) { return; }
   }
 
   // Notification preferences API
