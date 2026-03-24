@@ -2590,6 +2590,25 @@ function applyProjectionViewToSession(sessionKey, view = null) {
       status: message.status || 'final',
     }))
     .filter(message => shouldDisplayChatMessage(message));
+
+  const runState = getSessionRunState(sessionKey);
+  const hasStreamingAssistantForActiveRun =
+    !!runState?.runId &&
+    normalized.some(message =>
+      message?.role === 'assistant' &&
+      message?.status === 'streaming' &&
+      (message?.runId === runState.runId || message?.id === runState.runId || message?.id === `assistant:${runState.runId}`),
+    );
+  if (runState?.runId && runState?.streamText && !hasStreamingAssistantForActiveRun) {
+    normalized.push({
+      id: `assistant:${runState.runId}`,
+      runId: runState.runId,
+      role: 'assistant',
+      text: runState.streamText,
+      status: 'streaming',
+    });
+  }
+
   sessionMessages.set(sessionKey, normalized);
   reconcileRunStateFromMessages(sessionKey, normalized, view?.runs ? 'projection-view' : 'transcript-view');
   if (selectedSessionKey === sessionKey) {
@@ -2598,10 +2617,37 @@ function applyProjectionViewToSession(sessionKey, view = null) {
 }
 
 function applyKernelRunViewPacket(msg = {}) {
-  const sessionKey = msg?.event?.sessionKey || null;
+  const event = msg?.event || {};
+  const sessionKey = event?.sessionKey || null;
   if (!sessionKey) {return;}
+
+  const runState = getSessionRunState(sessionKey);
+  const runId = event?.runId || runState.runId || null;
+  if (runId) {
+    runState.runId = runId;
+  }
+
+  if (event?.type === 'run.delta') {
+    runState.state = 'streaming';
+    runState.streamText = sanitizeDisplayedChatText(String(event?.accumulatedText || event?.textDelta || ''));
+  } else if (event?.type === 'run.final') {
+    runState.streamText = '';
+    runState.state = 'final';
+  } else if (event?.type === 'run.aborted') {
+    runState.streamText = '';
+    runState.state = 'aborted';
+  } else if (event?.type === 'run.error') {
+    runState.streamText = '';
+    runState.state = 'error';
+  }
+
   if (msg?.view) {
     applyProjectionViewToSession(sessionKey, msg.view);
+    return;
+  }
+
+  if (selectedSessionKey === sessionKey) {
+    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
   }
 }
 
