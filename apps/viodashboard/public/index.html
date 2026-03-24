@@ -188,8 +188,15 @@ Terminal ready.</div>
                 <div class="section-header compact composer-header">
                   <h2 class="section-title">Input</h2>
                 </div>
+                <div id="chatAttachmentsPreview" class="chat-attachments-preview dashboard-chat-attachments-preview" hidden></div>
                 <div class="composer-shell">
-                  <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
+                  <div class="composer-input-stack">
+                    <div class="composer-toolbar">
+                      <input id="chatAttachmentInput" class="agent-chat__file-input" type="file" accept="image/*,.pdf,.txt,.md,.doc,.docx,.rtf,.csv,.json,.yaml,.yml" multiple />
+                      <button id="chatAttachBtn" type="button" class="chip state-idle composer-attach-btn">Attach</button>
+                    </div>
+                    <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
+                  </div>
                   <button type="submit" class="send-btn">Send</button>
                 </div>
               </form>

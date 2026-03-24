@@ -6,7 +6,7 @@ export function createChatProjection({ eventBus }) {
   function collapseContinuePromptForDisplay(text = '', role = '') {
     const source = String(text || '').trim();
     if (role !== 'user') {return source;}
-    if (/^继续上一条 assistant 回复里最后明确提出的事情。/u.test(source)) {
+    if (source.startsWith('继续上一条 assistant 回复里最后明确提出的事情。')) {
       return '继续';
     }
     return source;
@@ -50,10 +50,13 @@ export function createChatProjection({ eventBus }) {
 
     if (event.type === 'run.started') {
       view.runs[runId] = { runId, status: 'started' };
+      const attachmentSummary = Array.isArray(event.attachments) && event.attachments.length
+        ? `${event.message ? '\n\n' : ''}Attachment${event.attachments.length > 1 ? 's' : ''} (${event.attachments.length})`
+        : '';
       view.messages.push({
         id: `user:${runId}`,
         role: 'user',
-        text: collapseContinuePromptForDisplay(event.message, 'user'),
+        text: `${collapseContinuePromptForDisplay(event.message, 'user')}${attachmentSummary}`,
         kind: 'message',
         status: 'final',
         createdAt: new Date(event.ts || Date.now()).toISOString(),
