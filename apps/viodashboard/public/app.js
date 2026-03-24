@@ -439,8 +439,8 @@ function deriveSessionUiState(sessionKey) {
         ? 'final'
         : (runState?.state || 'idle');
 
-  const canStop = !!(isMain && currentRunId && (authoritativeState === 'streaming' || authoritativeState === 'aborting'));
-  const showStopped = !!(isMain && authoritativeState === 'aborted');
+  const canStop = !!(currentRunId && (authoritativeState === 'streaming' || authoritativeState === 'aborting'));
+  const showStopped = authoritativeState === 'aborted';
   const canContinue = (() => {
     const latest = getPersistedLatestAssistantReplyMeta(sessionKey || null);
     if (latest.aborted) {return false;}
@@ -2399,28 +2399,7 @@ async function sendToSelectedSession(outboundText, { userText = '' } = {}) {
     return { ok: false, error: 'sessionKey is required' };
   }
 
-  if (targetSessionKey === gatewayMainSessionKey && ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      addDebugLine('sendToSelectedSession: calling ws.send (main session)', 'cyan');
-      ws.send(JSON.stringify({ type: 'send', text: outboundText }));
-      addDebugLine('sendToSelectedSession: ws.send returned', 'cyan');
-    } catch (error) {
-      addDebugLine(`sendToSelectedSession: ws.send threw ${error?.message || error}`, 'pink');
-      throw error;
-    }
-    applyPostSendUiState(targetSessionKey, {
-      userText,
-      optimistic: true,
-      debugLabel: 'Main send queued',
-      moodDetail: 'User prompt sent; waiting for final routing.',
-      routingSummary: 'queued',
-      routingDetail: 'phase=queued · mode=thinking',
-      refreshDelay: 0,
-    });
-    return { ok: true, mode: 'ws', sessionKey: targetSessionKey };
-  }
-
-  addDebugLine(`sendToSelectedSession: http send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
+  addDebugLine(`sendToSelectedSession: unified send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
   const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2434,7 +2413,7 @@ async function sendToSelectedSession(outboundText, { userText = '' } = {}) {
     userText,
     runId: data?.runId || null,
     optimistic: true,
-    debugLabel: 'Session send accepted',
+    debugLabel: 'Unified session send accepted',
     moodDetail: 'Session message sent; waiting for live session events.',
     routingSummary: 'session live',
     routingDetail: targetSessionKey,
