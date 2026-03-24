@@ -777,8 +777,7 @@ function blobToBase64(blob) {
   });
 }
 
-// Send a single audio chunk to the transcription endpoint; returns transcript text or ''.
-async function transcribeChunk(blob) {
+async function transcribeBlob(blob) {
   if (!blob.size) {return '';}
   const audioBase64 = await blobToBase64(blob);
   const res = await fetch('/api/voice/transcribe', {
@@ -789,6 +788,11 @@ async function transcribeChunk(blob) {
   const data = await res.json();
   if (!res.ok) {return '';}
   return normalizeVoiceTranscript(data?.transcript || '');
+}
+
+// Send a single audio chunk to the transcription endpoint; returns transcript text or ''.
+async function transcribeChunk(blob) {
+  return transcribeBlob(blob);
 }
 
 async function startVoiceRecording() {
@@ -841,7 +845,7 @@ async function startVoiceRecording() {
           const heard = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
           setVoiceInputStatus(heard ? 'Listening… live transcript updating below.' : 'Recording… speak naturally.', 'recording');
         } else if (voiceInputState.finalizing && voiceInputState.pendingChunks === 0) {
-          finalizeVoiceTranscript(runToken);
+          void finalizeVoiceTranscript(runToken);
         }
       });
     });
@@ -855,7 +859,7 @@ async function startVoiceRecording() {
       setVoiceInputStatus(voiceInputState.pendingChunks > 0 ? 'Finishing transcript from recent chunks…' : 'Merging transcript…', 'working');
       updateLiveTranscript();
       if (voiceInputState.pendingChunks === 0) {
-        finalizeVoiceTranscript(runToken);
+        void finalizeVoiceTranscript(runToken);
       }
     }, { once: true });
 
@@ -868,17 +872,31 @@ async function startVoiceRecording() {
   }
 }
 
-function finalizeVoiceTranscript(runToken = voiceInputState.runToken) {
+async function finalizeVoiceTranscript(runToken = voiceInputState.runToken) {
   if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
-  const transcript = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
+
+  let transcript = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
+  if (!transcript && Array.isArray(voiceInputState.chunks) && voiceInputState.chunks.length > 0) {
+    try {
+      setVoiceInputStatus('Running final full-pass transcription…', 'working');
+      updateLiveTranscript();
+      const fullBlob = new Blob(voiceInputState.chunks, { type: voiceInputState.mimeType || 'audio/webm' });
+      transcript = await transcribeBlob(fullBlob);
+    } catch (error) {
+      console.warn('[voice] final full-pass transcription failed', error);
+    }
+  }
+
+  if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
+
   if (transcript) {
     const prefix = inputEl.value && !/\s$/.test(inputEl.value) ? `${inputEl.value.trim()} ` : inputEl.value;
     inputEl.value = `${prefix || ''}${transcript}`;
     resizeComposer();
     inputEl.focus();
-    setVoiceInputStatus('Live transcript merged into the input box.', 'idle');
+    setVoiceInputStatus('Transcript merged into the input box.', 'idle');
   } else {
-    setVoiceInputStatus('No speech was detected from the recorded chunks.', 'error');
+    setVoiceInputStatus('No speech was detected from the recorded audio.', 'error');
   }
   voiceInputState.transcribing = false;
   voiceInputState.finalizing = false;
