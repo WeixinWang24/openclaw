@@ -50,7 +50,6 @@ import { getGuidelinesDir, listGuidelines } from './server/memorySystem.mjs';
 import { handleAgentTaskRoutes } from './server/routes/agentTasks.mjs';
 import { handleExternalRepliesRoutes } from './server/routes/externalReplies.mjs';
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
-import { createChatDeltaCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
 import { createFinalReplyService } from './server/runtime/finalReplyService.mjs';
@@ -340,10 +339,6 @@ const finalReplyService = createFinalReplyService({
   syncRuntimeState: runtimeMoodStateService.syncRuntimeState,
   wrapperPort,
 });
-const handleChatDeltaEvent = createChatDeltaCoordinator({
-  runLifecycleService,
-});
-
 bridge = new GatewayBridge({
   onStatus: payload => {
     broadcast({ type: 'status', ...payload });
@@ -373,7 +368,6 @@ bridge = new GatewayBridge({
   onQueuedMood: (runId, sidecarResult = null) => {
     runLifecycleService.handleQueued(runId, sidecarResult);
   },
-  onChatDelta: handleChatDeltaEvent,
 });
 bridge.setRuntimeAdapters({
   rpcClient,
@@ -386,6 +380,15 @@ kernelEventBus.subscribe('raw.gateway', rawEvent => {
   chatRuntime.ingestRawEvent(rawEvent);
 });
 kernelEventBus.subscribe('kernel.run', event => {
+  if (event?.type === 'run.delta') {
+    runLifecycleService.handleDelta({
+      state: 'delta',
+      runId: event.runId,
+      sessionKey: event.sessionKey,
+      text: event.textDelta || event.accumulatedText || '',
+      payload: { state: 'delta' },
+    });
+  }
   broadcast({
     type: 'kernel.run',
     event,

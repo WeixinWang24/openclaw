@@ -1361,6 +1361,7 @@ button.chip:disabled {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  margin-block: 10px;
 }
 
 .msg-row.user {
@@ -1387,7 +1388,7 @@ button.chip:disabled {
   width: auto;
   max-width: min(calc(100% - 76px), 1500px);
   margin-left: auto;
-  justify-items: start;
+  justify-items: stretch;
 }
 
 .avatar {
