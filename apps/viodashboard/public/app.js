@@ -2349,40 +2349,20 @@ async function submitChatText(text = '', options = {}) {
       addDebugLine(`submitChatText: ws.send threw ${error?.message || error}`, 'pink');
       throw error;
     }
-    try {
-      addMessage('user', value);
-    } catch (error) {
-      addDebugLine(`submitChatText: addMessage threw ${error?.message || error}`, 'pink');
-    }
-    try {
-      inputEl.value = '';
-      resizeComposer();
-    } catch (error) {
-      addDebugLine(`submitChatText: composer reset threw ${error?.message || error}`, 'pink');
-    }
-    streamingEl = null;
-    streamingRunId = null;
-    try {
-      setMood('thinking', 'User prompt sent; waiting for final routing.');
-    } catch (error) {
-      addDebugLine(`submitChatText: setMood threw ${error?.message || error}`, 'pink');
-    }
-    try {
-      setRouting('queued', 'phase=queued · mode=thinking');
-    } catch (error) {
-      addDebugLine(`submitChatText: setRouting threw ${error?.message || error}`, 'pink');
-    }
+    applyPostSendUiState(selectedSessionKey, {
+      userText: value,
+      optimistic: true,
+      debugLabel: 'Main send queued',
+      moodDetail: 'User prompt sent; waiting for final routing.',
+      routingSummary: 'queued',
+      routingDetail: 'phase=queued · mode=thinking',
+      refreshDelay: 0,
+    });
     return;
   }
 
   const targetSessionKey = selectedSessionKey;
   addDebugLine(`submitChatText: non-main send queued for ${targetSessionKey}; event-driven update armed`, 'cyan');
-  const optimisticId = `optimistic-${Date.now()}`;
-  appendSessionMessage(targetSessionKey, {
-    id: optimisticId,
-    role: 'user',
-    text: value,
-  });
   const res = await fetch(`/api/sessions/${encodeURIComponent(targetSessionKey)}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2390,21 +2370,16 @@ async function submitChatText(text = '', options = {}) {
   });
   const data = await res.json();
   if (!res.ok) {throw new Error(data?.error || 'session send failed');}
-  inputEl.value = '';
-  resizeComposer();
-  const meta = getSessionMeta(targetSessionKey);
-  meta.pending = true;
-  meta.dirty = true;
-  meta.lastUpdatedAt = Date.now();
-  meta.lastReason = 'send-accepted';
-  const runState = getSessionRunState(targetSessionKey);
-  runState.runId = data?.runId || runState.runId || null;
-  runState.streamText = '';
-  runState.state = 'streaming';
-  addDebugLine(`Session send accepted: ${targetSessionKey} run=${String(data?.runId || '').slice(0, 8) || '-'} `, 'cyan');
-  setMood('thinking', 'Session message sent; waiting for live session events.');
-  setRouting('session live', targetSessionKey);
-  scheduleSessionRefresh(targetSessionKey, 'send-history-reconcile', 2000);
+  applyPostSendUiState(targetSessionKey, {
+    userText: value,
+    runId: data?.runId || null,
+    optimistic: true,
+    debugLabel: 'Session send accepted',
+    moodDetail: 'Session message sent; waiting for live session events.',
+    routingSummary: 'session live',
+    routingDetail: targetSessionKey,
+    refreshDelay: 2000,
+  });
 }
 
 function isMainSessionView() {
@@ -2415,6 +2390,49 @@ function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
   streamingEl = null;
   streamingRunId = null;
+}
+
+function applyPostSendUiState(sessionKey, {
+  userText = '',
+  runId = null,
+  optimistic = false,
+  debugLabel = 'send accepted',
+  moodDetail = 'Session message sent; waiting for live session events.',
+  routingSummary = 'session live',
+  routingDetail = '',
+  refreshDelay = 2000,
+} = {}) {
+  if (!sessionKey) {return;}
+  if (optimistic && userText) {
+    appendSessionMessage(sessionKey, {
+      id: `optimistic-${Date.now()}`,
+      role: 'user',
+      text: userText,
+    });
+  }
+  try {
+    inputEl.value = '';
+    resizeComposer();
+  } catch (error) {
+    addDebugLine(`applyPostSendUiState: composer reset threw ${error?.message || error}`, 'pink');
+  }
+  streamingEl = null;
+  streamingRunId = null;
+  const meta = getSessionMeta(sessionKey);
+  meta.pending = true;
+  meta.dirty = true;
+  meta.lastUpdatedAt = Date.now();
+  meta.lastReason = 'send-accepted';
+  const runState = getSessionRunState(sessionKey);
+  runState.runId = runId || runState.runId || null;
+  runState.streamText = '';
+  runState.state = 'streaming';
+  addDebugLine(`${debugLabel}: ${sessionKey} run=${String(runState.runId || '').slice(0, 8) || '-'} `, 'cyan');
+  setMood('thinking', moodDetail);
+  setRouting(routingSummary, routingDetail || sessionKey);
+  scheduleSessionRefresh(sessionKey, 'send-history-reconcile', refreshDelay);
+  syncStopButton();
+  syncContinueButton();
 }
 
 function getSessionRunState(sessionKey) {
