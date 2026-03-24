@@ -77,6 +77,12 @@ const fileTreeEl = document.getElementById('fileTree');
 const sessionsListEl = document.getElementById('sessionsList');
 const sessionsRefreshBtnEl = document.getElementById('sessionsRefreshBtn');
 const activeFilePathEl = document.getElementById('activeFilePath');
+const workspaceTabCodeEl = document.getElementById('workspaceTabCode');
+const workspaceTabRepliesEl = document.getElementById('workspaceTabReplies');
+const workspacePaneCodeEl = document.getElementById('workspacePaneCode');
+const workspacePaneRepliesEl = document.getElementById('workspacePaneReplies');
+const workspaceCodeActionsEl = document.getElementById('workspaceCodeActions');
+const workspaceRepliesToolbarEl = document.getElementById('workspaceRepliesToolbar');
 const fileEditorEl = document.getElementById('fileEditor');
 const fileBrowserRootEl = document.getElementById('fileBrowserRoot');
 const fileBackBtnEl = document.getElementById('fileBackBtn');
@@ -91,10 +97,8 @@ const terminalDetachBtnEl = document.getElementById('terminalDetachBtn');
 const terminalTerminateBtnEl = document.getElementById('terminalTerminateBtn');
 const consoleTabTerminalEl = document.getElementById('consoleTabTerminal');
 const consoleTabClaudeEl = document.getElementById('consoleTabClaude');
-const consoleTabRepliesEl = document.getElementById('consoleTabReplies');
 const consolePaneTerminalEl = document.getElementById('consolePaneTerminal');
 const consolePaneClaudeEl = document.getElementById('consolePaneClaude');
-const consolePaneRepliesEl = document.getElementById('consolePaneReplies');
 const repliesListEl = document.getElementById('repliesList');
 const replyDetailEl = document.getElementById('replyDetail');
 const replyEmptyEl = document.getElementById('replyEmpty');
@@ -175,6 +179,10 @@ let infraActionInFlight = null;
 
 const consoleTabs = {
   active: 'claude',
+};
+
+const workspaceTabs = {
+  active: 'code',
 };
 
 const repliesState = {
@@ -678,6 +686,16 @@ function stopVoiceMediaStream() {
   voiceInputState.stream = null;
 }
 
+function resetVoiceInputState() {
+  stopVoiceMediaStream();
+  voiceInputState.stream = null;
+  voiceInputState.recorder = null;
+  voiceInputState.chunks = [];
+  voiceInputState.recording = false;
+  voiceInputState.transcribing = false;
+  voiceInputState.mimeType = 'audio/webm';
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -701,6 +719,7 @@ async function startVoiceRecording() {
     setVoiceInputStatus('This browser does not support microphone recording here.', 'error');
     return;
   }
+  resetVoiceInputState();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
@@ -719,9 +738,7 @@ async function startVoiceRecording() {
     recorder.start();
     setVoiceInputStatus('Recording… click Stop when done.', 'recording');
   } catch (error) {
-    stopVoiceMediaStream();
-    voiceInputState.recording = false;
-    voiceInputState.recorder = null;
+    resetVoiceInputState();
     setVoiceInputStatus(error?.message || 'Microphone access failed.', 'error');
   }
 }
@@ -756,9 +773,8 @@ async function stopVoiceRecordingAndTranscribe() {
   } catch (error) {
     setVoiceInputStatus(error?.message || 'Voice transcription failed.', 'error');
   } finally {
-    stopVoiceMediaStream();
-    voiceInputState.recorder = null;
-    voiceInputState.transcribing = false;
+    resetVoiceInputState();
+    setVoiceInputStatus(voiceInputStatusEl?.textContent || 'Click Voice to record', voiceInputStatusEl?.dataset?.tone || 'idle');
   }
 }
 
@@ -2083,20 +2099,66 @@ async function ingestTestReply() {
 }
 
 async function sendReplyToVio(id) {
-  addDebugLine(`Replies mock action: send to Vio ${id}`, 'cyan');
+  const item = repliesState.items.find(entry => entry.id === id);
+  if (!item) {return;}
+  if (!selectedSessionKey) {
+    addDebugLine('Send to Vio skipped: no active dashboard session selected.', 'pink');
+    return;
+  }
+  const outboundText = [
+    `External reply handoff: ${item.title || item.id}`,
+    item.sourceUrl ? `Source: ${item.sourceUrl}` : null,
+    item.promptText ? `Original prompt:\n${item.promptText}` : null,
+    `Reply:\n${item.replyText || ''}`,
+  ].filter(Boolean).join('\n\n');
+  const result = await sendToSelectedSession(outboundText, {
+    userText: outboundText,
+    attachments: [],
+  });
+  if (!result?.ok) {
+    addDebugLine(`Send to Vio failed: ${result?.error || 'unknown error'}`, 'pink');
+    return;
+  }
+  addDebugLine(`Reply handed to Vio session ${result.sessionKey || selectedSessionKey}`, 'cyan');
 }
 
 async function saveReplyToWorkspace(id) {
-  addDebugLine(`Replies mock action: save to workspace ${id}`, 'cyan');
+  const res = await fetch(`/api/external-replies/${encodeURIComponent(id)}/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || 'Failed to save reply to workspace');
+  }
+  addDebugLine(`Reply saved to workspace: ${data?.path || id}`, 'cyan');
+  if (typeof data?.path === 'string') {
+    try {
+      await loadFile(data.path);
+      setWorkspaceTab('code');
+    } catch (error) {
+      addDebugLine(`Saved reply file open skipped: ${error?.message || error}`, 'pink');
+    }
+  }
 }
 
 async function markReplyDone(id) {
   const item = repliesState.items.find(entry => entry.id === id);
   if (!item) {return;}
-  item.status = 'done';
+  const res = await fetch(`/api/external-replies/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'done' }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || 'Failed to mark reply done');
+  }
+  const next = data?.item || { ...item, status: 'done' };
+  repliesState.items = repliesState.items.map(entry => entry.id === id ? next : entry);
   renderRepliesList();
   renderReplyDetail();
-  addDebugLine(`Replies mock action: mark done ${id}`, 'cyan');
+  addDebugLine(`Reply marked done: ${id}`, 'cyan');
 }
 
 function openReplySource(id) {
@@ -2105,17 +2167,39 @@ function openReplySource(id) {
   window.open(item.sourceUrl, '_blank', 'noopener,noreferrer');
 }
 
+function setWorkspaceTab(tab) {
+  workspaceTabs.active = tab === 'replies' ? 'replies' : 'code';
+  const isCode = workspaceTabs.active === 'code';
+  const isReplies = workspaceTabs.active === 'replies';
+  workspaceTabCodeEl?.classList.toggle('is-active', isCode);
+  workspaceTabRepliesEl?.classList.toggle('is-active', isReplies);
+  workspaceTabCodeEl?.setAttribute('aria-selected', isCode ? 'true' : 'false');
+  workspaceTabRepliesEl?.setAttribute('aria-selected', isReplies ? 'true' : 'false');
+  workspacePaneCodeEl?.classList.toggle('is-active', isCode);
+  workspacePaneRepliesEl?.classList.toggle('is-active', isReplies);
+  if (activeFilePathEl) {
+    activeFilePathEl.hidden = isReplies;
+  }
+  if (workspaceCodeActionsEl) {
+    workspaceCodeActionsEl.hidden = isReplies;
+  }
+  if (workspaceRepliesToolbarEl) {
+    workspaceRepliesToolbarEl.hidden = isCode;
+  }
+  if (isReplies) {
+    renderRepliesList();
+    renderReplyDetail();
+  }
+}
+
 function setConsoleTab(tab) {
-  consoleTabs.active = tab === 'claude' ? 'claude' : tab === 'replies' ? 'replies' : 'terminal';
+  consoleTabs.active = tab === 'claude' ? 'claude' : 'terminal';
   const isTerminal = consoleTabs.active === 'terminal';
   const isClaude = consoleTabs.active === 'claude';
-  const isReplies = consoleTabs.active === 'replies';
   consoleTabTerminalEl?.classList.toggle('is-active', isTerminal);
   consoleTabClaudeEl?.classList.toggle('is-active', isClaude);
-  consoleTabRepliesEl?.classList.toggle('is-active', isReplies);
   consolePaneTerminalEl?.classList.toggle('is-active', isTerminal);
   consolePaneClaudeEl?.classList.toggle('is-active', isClaude);
-  consolePaneRepliesEl?.classList.toggle('is-active', isReplies);
   if (isClaude) {
     renderClaudePanel();
     if (claude.running) {ensureClaudePolling();}
@@ -2126,18 +2210,14 @@ function setConsoleTab(tab) {
       claude.term?.focus();
       if (!claude.term && claudeComposerInputEl) {claudeComposerInputEl.focus();}
     });
-    return;
-  }
-  if (isReplies) {
-    renderRepliesList();
-    renderReplyDetail();
   }
 }
 
 function bindConsoleTabEvents() {
   consoleTabTerminalEl?.addEventListener('click', () => setConsoleTab('terminal'));
   consoleTabClaudeEl?.addEventListener('click', () => setConsoleTab('claude'));
-  consoleTabRepliesEl?.addEventListener('click', () => setConsoleTab('replies'));
+  workspaceTabCodeEl?.addEventListener('click', () => setWorkspaceTab('code'));
+  workspaceTabRepliesEl?.addEventListener('click', () => setWorkspaceTab('replies'));
 }
 
 function bindClaudeEvents() {
@@ -2177,6 +2257,7 @@ function bindClaudeEvents() {
 function initClaudePanel() {
   bindConsoleTabEvents();
   bindClaudeEvents();
+  setWorkspaceTab('code');
   renderClaudePanel();
   let claudeResizeScheduled = false;
   let claudeResizeSettledTimer = null;
@@ -3781,13 +3862,25 @@ replyIngestTestBtnEl?.addEventListener('click', () => {
   ingestTestReply().catch?.(() => {});
 });
 replySendToVioBtnEl?.addEventListener('click', () => {
-  if (repliesState.selectedId) {void sendReplyToVio(repliesState.selectedId);}
+  if (repliesState.selectedId) {
+    sendReplyToVio(repliesState.selectedId).catch(error => {
+      addDebugLine(`Send to Vio failed: ${error?.message || error}`, 'pink');
+    });
+  }
 });
 replySaveBtnEl?.addEventListener('click', () => {
-  if (repliesState.selectedId) {void saveReplyToWorkspace(repliesState.selectedId);}
+  if (repliesState.selectedId) {
+    saveReplyToWorkspace(repliesState.selectedId).catch(error => {
+      addDebugLine(`Save to workspace failed: ${error?.message || error}`, 'pink');
+    });
+  }
 });
 replyDoneBtnEl?.addEventListener('click', () => {
-  if (repliesState.selectedId) {void markReplyDone(repliesState.selectedId);}
+  if (repliesState.selectedId) {
+    markReplyDone(repliesState.selectedId).catch(error => {
+      addDebugLine(`Mark done failed: ${error?.message || error}`, 'pink');
+    });
+  }
 });
 replyOpenSourceBtnEl?.addEventListener('click', () => {
   if (repliesState.selectedId) {openReplySource(repliesState.selectedId);}
