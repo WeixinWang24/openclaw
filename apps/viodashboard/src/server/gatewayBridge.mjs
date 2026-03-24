@@ -410,7 +410,9 @@ export class GatewayBridge {
           } catch {}
         }
         if (state === 'final' && text && this.tokenSaverEnabled && isMainSessionEvent) {this.tokenSaver.ingest('assistant', text);}
-        this.onChatEvent?.({ state, runId, sessionKey: eventSessionKey, text, rawText, payload, usage });
+        if (state === 'delta') {
+          this.onChatEvent?.({ state, runId, sessionKey: eventSessionKey, text, rawText, payload, usage });
+        }
         if (runId && isMainSessionEvent && (state === 'final' || state === 'error' || state === 'aborted')) {
           writeRunIndexEntry(runId, {
             mode: 'dry-observe-only',
