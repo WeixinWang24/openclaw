@@ -42,6 +42,7 @@ import { syncRealTaskFromClaudeState, onClaudeOutput, getCurrentTask } from './s
 import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from './server/notifications.mjs';
 import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
+import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -473,11 +474,16 @@ const transcriptService = createTranscriptService({
   diagnostics: runtimeDiagnostics,
 });
 const chatProjection = createChatProjection({ eventBus: kernelEventBus });
+const tokenUsageService = createTokenUsageService({
+  bridge: { fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
+  tokenStats,
+  broadcast,
+  buildTokensPacket,
+});
 const handleChatEvent = createChatEventCoordinator({
   bridge: { get sessionKey() { return bridge.sessionKey; }, fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
   broadcast,
   buildMoodPacket,
-  buildTokensPacket,
   getRuntimeState: () => runtimeState,
   syncRuntimeState,
   state: {
@@ -509,6 +515,7 @@ const handleChatEvent = createChatEventCoordinator({
     onAssistantError,
     notifyAssistantFinal,
   },
+  tokenUsageService,
   wrapperPort,
 });
 
