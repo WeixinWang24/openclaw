@@ -391,9 +391,7 @@ export class GatewayBridge {
         }
         return;
       }
-      if (msg.event === 'chat') {
-        this.runtimeAdapters.rpcClient?.emitRawEvent?.(msg);
-      }
+      this.runtimeAdapters.rpcClient?.emitRawEvent?.(msg);
       return;
     }
     if (msg.type === 'res') {
@@ -625,7 +623,7 @@ export class GatewayBridge {
     return this.setTokenSaverConfig({ enabled });
   }
 
-  recordAssistantFinal({ runId = null, sessionKey = null, text = '' } = {}) {
+  recordAssistantFinal({ sessionKey = null, text = '' } = {}) {
     const isMainSessionEvent = !sessionKey || sessionKey === this.sessionKey;
     const cleanText = sanitizeVisibleText(String(text || ''));
     if (cleanText && this.tokenSaverEnabled && isMainSessionEvent) {
@@ -644,7 +642,7 @@ export class GatewayBridge {
         completedAt: new Date().toISOString(),
       });
       if (status === 'error' || status === 'aborted') {
-        console.log('[dashboard] dry-diff next check:', `node <repo>/apps/viodashboard/scripts/check-run-index.mjs ${runId}`);
+        console.log('[dashboard] dry-diff next check:', 'node <repo>/apps/viodashboard/scripts/check-run-index.mjs', String(runId));
       }
     }
     if (isMainSessionEvent && (status === 'final' || status === 'error' || status === 'aborted')) {

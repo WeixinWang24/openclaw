@@ -75,7 +75,7 @@ export async function mergeHybridResults(params: {
   temporalDecay?: Partial<TemporalDecayConfig>;
   /** Heuristic reranking configuration for metadata-aware scoring */
   heuristicRerank?: Partial<HeuristicRerankConfig>;
-  /** Test seam for deterministic time-dependent behavior */
+  /** Test hook for deterministic time-dependent behavior */
   nowMs?: number;
 }): Promise<
   Array<{
