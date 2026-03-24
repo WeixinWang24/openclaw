@@ -663,6 +663,7 @@ const server = http.createServer((req, res) => {
   servePublicFile(requestUrl, res);
 });
 
+// --- Runtime bootstrap ----------------------------------------------------
 startServerRuntime({
   server,
   wrapperPort,

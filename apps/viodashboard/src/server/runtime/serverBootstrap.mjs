@@ -55,6 +55,7 @@ export function startServerRuntime({
     } catch {}
   }, 200);
 
+  // WebSocket bootstrap stays thin: connection-specific behavior lives in ws/connectionHandler.mjs.
   const wss = new WebSocketServer({ server, path: '/ws' });
   attachWsConnectionHandler({
     wss,
@@ -67,6 +68,7 @@ export function startServerRuntime({
     lastRoutingRef,
   });
 
+  // Bind the shared HTTP server only after runtime sidecars are attached.
   server.listen(wrapperPort, () => {
     console.log(`${appDisplayName} running at http://127.0.0.1:${wrapperPort}`);
   });
