@@ -63,17 +63,55 @@
         <div class="workspace-split" id="workspaceSplit">
           <section class="editor-stack" id="editorStack">
             <section class="file-editor-pane">
-              <div class="pane-header">
-                <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
+              <div class="pane-header workspace-view-header">
+                <div class="workspace-view-tabs" role="tablist" aria-label="Workspace views">
+                  <button id="workspaceTabCode" type="button" class="console-tab is-active" role="tab" aria-selected="true">Code</button>
+                  <button id="workspaceTabReplies" type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
+                </div>
                 <div class="pane-actions">
-                  <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
-                  <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
-                  <div id="fileModeBadge" class="chip state-idle">preview</div>
+                  <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
+                  <div class="workspace-replies-toolbar" id="workspaceRepliesToolbar" hidden>
+                    <button id="replyRefreshBtn" type="button" class="chip state-idle">Refresh</button>
+                    <button id="replyIngestTestBtn" type="button" class="chip state-idle">Test ingest</button>
+                    <button id="replyCaptureSetupBtn" type="button" class="chip state-idle">Capture setup</button>
+                  </div>
+                  <div class="workspace-code-actions" id="workspaceCodeActions">
+                    <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
+                    <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
+                    <div id="fileModeBadge" class="chip state-idle">preview</div>
+                  </div>
                 </div>
               </div>
-              <div class="editor-shell">
-                <pre id="fileHighlight" class="file-highlight" aria-hidden="true"></pre>
-                <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
+              <div class="workspace-view-stack">
+                <div id="workspacePaneCode" class="workspace-view-pane is-active">
+                  <div class="editor-shell">
+                    <pre id="fileHighlight" class="file-highlight" aria-hidden="true"></pre>
+                    <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
+                  </div>
+                </div>
+                <div id="workspacePaneReplies" class="workspace-view-pane">
+                  <div class="replies-layout replies-layout-workspace">
+                    <aside class="replies-sidebar">
+                      <div id="repliesList" class="replies-list"></div>
+                    </aside>
+
+                    <section class="replies-detail-wrap">
+                      <div id="replyCaptureSetupNote" class="reply-setup-note">
+                        <div class="reply-setup-title">ChatGPT capture is ready</div>
+                        <div class="reply-setup-body">Install the Tampermonkey script from <code>tools/chatgpt-reply-capture.user.js</code>, then use the <strong>Capture reply</strong> button on chatgpt.com to push replies into this inbox.</div>
+                      </div>
+                      <div id="replyEmpty" class="reply-empty">No reply selected.</div>
+                      <div id="replyDetail" class="reply-detail" hidden></div>
+
+                      <div class="reply-actions">
+                        <button id="replySendToVioBtn" type="button" class="chip state-thinking">Send to Vio</button>
+                        <button id="replySaveBtn" type="button" class="chip state-idle">Save to workspace</button>
+                        <button id="replyDoneBtn" type="button" class="chip state-idle">Mark done</button>
+                        <button id="replyOpenSourceBtn" type="button" class="chip state-idle">Open source</button>
+                      </div>
+                    </section>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -84,7 +122,6 @@
                 <div class="console-tabs">
                   <button id="consoleTabTerminal" type="button" class="console-tab is-active">Terminal</button>
                   <button id="consoleTabClaude" type="button" class="console-tab">Claude</button>
-                  <button id="consoleTabReplies" type="button" class="console-tab">Replies</button>
                 </div>
               </div>
 
@@ -138,36 +175,6 @@ Terminal ready.</div>
                   <div id="claudeError" class="claude-error"></div>
                 </div>
 
-                <div id="consolePaneReplies" class="console-pane replies-pane">
-                  <div class="replies-pane-header">
-                    <div>
-                      <div class="card-title">Replies</div>
-                      <div class="card-sub">External web replies inbox</div>
-                    </div>
-                    <div class="replies-toolbar">
-                      <button id="replyRefreshBtn" type="button" class="chip state-idle">Refresh</button>
-                      <button id="replyIngestTestBtn" type="button" class="chip state-idle">Test ingest</button>
-                    </div>
-                  </div>
-
-                  <div class="replies-layout">
-                    <aside class="replies-sidebar">
-                      <div id="repliesList" class="replies-list"></div>
-                    </aside>
-
-                    <section class="replies-detail-wrap">
-                      <div id="replyEmpty" class="reply-empty">No reply selected.</div>
-                      <div id="replyDetail" class="reply-detail" hidden></div>
-
-                      <div class="reply-actions">
-                        <button id="replySendToVioBtn" type="button" class="chip state-thinking">Send to Vio</button>
-                        <button id="replySaveBtn" type="button" class="chip state-idle">Save to workspace</button>
-                        <button id="replyDoneBtn" type="button" class="chip state-idle">Mark done</button>
-                        <button id="replyOpenSourceBtn" type="button" class="chip state-idle">Open source</button>
-                      </div>
-                    </section>
-                  </div>
-                </div>
               </div>
             </section>
           </section>
@@ -196,6 +203,7 @@ Terminal ready.</div>
                       <button id="chatAttachBtn" type="button" class="chip state-idle composer-attach-btn">Attach</button>
                       <button id="voiceInputBtn" type="button" class="chip state-idle composer-voice-btn" aria-pressed="false">🎙️ Voice</button>
                       <div id="voiceInputStatus" class="composer-voice-status" aria-live="polite">Click Voice to record</div>
+                      <div id="voiceLiveTranscript" class="composer-voice-live-transcript" hidden aria-live="polite"></div>
                     </div>
                     <textarea id="input" placeholder="输入消息…" rows="4"></textarea>
                   </div>

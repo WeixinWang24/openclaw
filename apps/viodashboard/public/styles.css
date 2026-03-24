@@ -828,6 +828,37 @@ button.chip:disabled {
   gap: 10px;
 }
 
+.workspace-view-header {
+  gap: 12px;
+}
+
+.workspace-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.workspace-view-stack {
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-view-pane {
+  display: none;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.workspace-view-pane.is-active {
+  display: flex;
+  flex-direction: column;
+}
+
 .pane-header {
   display: flex;
   align-items: center;
@@ -839,6 +870,17 @@ button.chip:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.workspace-code-actions,
+.workspace-replies-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .editor-shell {
@@ -1106,6 +1148,7 @@ button.chip:disabled {
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .composer-attach-btn {
@@ -1133,6 +1176,32 @@ button.chip:disabled {
 
 .composer-voice-status[data-tone="error"] {
   color: #ff8d8d;
+}
+
+.composer-voice-live-transcript {
+  flex: 1 0 100%;
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 2px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(230, 241, 255, 0.82);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.composer-voice-live-transcript[data-tone="recording"] {
+  border-color: rgba(255, 138, 183, 0.22);
+}
+
+.composer-voice-live-transcript[data-tone="working"] {
+  border-color: rgba(111, 231, 210, 0.22);
+  color: rgba(230, 241, 255, 0.9);
 }
 
 #input,
@@ -2409,6 +2478,11 @@ body.animations-off *::after {
   flex: 1 1 auto;
 }
 
+.replies-layout-workspace {
+  height: 100%;
+  min-height: 0;
+}
+
 .replies-sidebar {
   min-width: 0;
   min-height: 0;
@@ -2542,6 +2616,33 @@ body.animations-off *::after {
   word-break: break-word;
   line-height: 1.5;
   color: rgba(220,240,255,.92);
+}
+
+.reply-setup-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.28);
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.12), rgba(20, 24, 40, 0.72));
+}
+
+.reply-setup-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(240, 228, 255, 0.96);
+}
+
+.reply-setup-body {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(214, 224, 244, 0.86);
+}
+
+.reply-setup-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #e9dcff;
 }
 
 .reply-actions {

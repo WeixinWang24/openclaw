@@ -25,6 +25,7 @@ const chatAttachmentInputEl = document.getElementById('chatAttachmentInput');
 const chatAttachBtnEl = document.getElementById('chatAttachBtn');
 const voiceInputBtnEl = document.getElementById('voiceInputBtn');
 const voiceInputStatusEl = document.getElementById('voiceInputStatus');
+const voiceLiveTranscriptEl = document.getElementById('voiceLiveTranscript');
 const chatAttachmentsPreviewEl = document.getElementById('chatAttachmentsPreview');
 const continueBtnEl = document.getElementById('continueBtn');
 const stopBtnEl = document.getElementById('stopBtn');
@@ -104,6 +105,7 @@ const replyDetailEl = document.getElementById('replyDetail');
 const replyEmptyEl = document.getElementById('replyEmpty');
 const replyRefreshBtnEl = document.getElementById('replyRefreshBtn');
 const replyIngestTestBtnEl = document.getElementById('replyIngestTestBtn');
+const replyCaptureSetupBtnEl = document.getElementById('replyCaptureSetupBtn');
 const replySendToVioBtnEl = document.getElementById('replySendToVioBtn');
 const replySaveBtnEl = document.getElementById('replySaveBtn');
 const replyDoneBtnEl = document.getElementById('replyDoneBtn');
@@ -169,6 +171,14 @@ const voiceInputState = {
   recording: false,
   transcribing: false,
   mimeType: 'audio/webm',
+  // chunked live transcription state
+  chunkIndex: 0,
+  chunkTranscripts: [],
+  pendingChunks: 0,
+  runToken: 0,
+  finalizing: false,
+  stoppedAt: 0,
+  aborted: false,
 };
 let currentDir = '.';
 let currentFilePath = null;
@@ -675,9 +685,51 @@ function setVoiceInputStatus(message, tone = 'idle') {
       tone === 'recording' ? 'state-streaming' : tone === 'working' ? 'state-thinking' : tone === 'error' ? 'state-error' : 'state-idle',
     );
     voiceInputBtnEl.setAttribute('aria-pressed', voiceInputState.recording ? 'true' : 'false');
-    voiceInputBtnEl.disabled = !!voiceInputState.transcribing;
+    voiceInputBtnEl.disabled = !voiceInputState.recording && !!voiceInputState.transcribing;
     voiceInputBtnEl.textContent = voiceInputState.recording ? '⏹️ Stop' : '🎙️ Voice';
   }
+}
+
+function normalizeVoiceTranscript(text = '') {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function mergeVoiceChunkTranscripts(chunks = []) {
+  const merged = [];
+  for (const rawChunk of chunks) {
+    const chunk = normalizeVoiceTranscript(rawChunk);
+    if (!chunk) {continue;}
+    const previous = merged[merged.length - 1] || '';
+    if (!previous) {
+      merged.push(chunk);
+      continue;
+    }
+    if (previous === chunk || previous.endsWith(chunk)) {continue;}
+    const maxOverlap = Math.min(previous.length, chunk.length, 80);
+    let overlap = 0;
+    for (let size = maxOverlap; size >= 8; size -= 1) {
+      if (previous.slice(-size).toLowerCase() === chunk.slice(0, size).toLowerCase()) {
+        overlap = size;
+        break;
+      }
+    }
+    merged.push(overlap ? chunk.slice(overlap).trim() : chunk);
+  }
+  return merged.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function updateLiveTranscript() {
+  if (!voiceLiveTranscriptEl) {return;}
+  const text = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
+  if (!text && !voiceInputState.recording && voiceInputState.pendingChunks === 0) {
+    voiceLiveTranscriptEl.hidden = true;
+    voiceLiveTranscriptEl.textContent = '';
+    voiceLiveTranscriptEl.dataset.tone = 'idle';
+    return;
+  }
+  voiceLiveTranscriptEl.hidden = false;
+  voiceLiveTranscriptEl.dataset.tone = voiceInputState.pendingChunks > 0 ? 'working' : voiceInputState.recording ? 'recording' : 'idle';
+  voiceLiveTranscriptEl.textContent = text || (voiceInputState.recording ? 'Listening… waiting for the first chunk.' : 'Finishing transcript…');
 }
 
 function stopVoiceMediaStream() {
@@ -694,6 +746,18 @@ function resetVoiceInputState() {
   voiceInputState.recording = false;
   voiceInputState.transcribing = false;
   voiceInputState.mimeType = 'audio/webm';
+  voiceInputState.chunkIndex = 0;
+  voiceInputState.chunkTranscripts = [];
+  voiceInputState.pendingChunks = 0;
+  voiceInputState.runToken += 1;
+  voiceInputState.finalizing = false;
+  voiceInputState.stoppedAt = 0;
+  voiceInputState.aborted = false;
+  if (voiceLiveTranscriptEl) {
+    voiceLiveTranscriptEl.hidden = true;
+    voiceLiveTranscriptEl.textContent = '';
+    voiceLiveTranscriptEl.dataset.tone = 'idle';
+  }
 }
 
 function blobToBase64(blob) {
@@ -713,6 +777,20 @@ function blobToBase64(blob) {
   });
 }
 
+// Send a single audio chunk to the transcription endpoint; returns transcript text or ''.
+async function transcribeChunk(blob) {
+  if (!blob.size) {return '';}
+  const audioBase64 = await blobToBase64(blob);
+  const res = await fetch('/api/voice/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioBase64, mimeType: blob.type || voiceInputState.mimeType || 'audio/webm' }),
+  });
+  const data = await res.json();
+  if (!res.ok) {return '';}
+  return normalizeVoiceTranscript(data?.transcript || '');
+}
+
 async function startVoiceRecording() {
   if (!voiceInputBtnEl || voiceInputState.recording || voiceInputState.transcribing) {return;}
   if (!window.MediaRecorder || !navigator.mediaDevices?.getUserMedia) {
@@ -724,58 +802,102 @@ async function startVoiceRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
     const recorder = new MediaRecorder(stream, { mimeType });
+    const runToken = voiceInputState.runToken;
     voiceInputState.stream = stream;
     voiceInputState.recorder = recorder;
     voiceInputState.chunks = [];
     voiceInputState.recording = true;
+    voiceInputState.transcribing = false;
     voiceInputState.mimeType = mimeType;
+    voiceInputState.chunkIndex = 0;
+    voiceInputState.chunkTranscripts = [];
+    voiceInputState.pendingChunks = 0;
+    voiceInputState.finalizing = false;
+    voiceInputState.stoppedAt = 0;
+    voiceInputState.aborted = false;
+
     recorder.addEventListener('dataavailable', event => {
-      if (event.data && event.data.size > 0) {voiceInputState.chunks.push(event.data);}
+      if (!event.data || event.data.size === 0) {return;}
+      voiceInputState.chunks.push(event.data);
+      const idx = voiceInputState.chunkIndex++;
+      const blob = new Blob([event.data], { type: mimeType });
+      voiceInputState.pendingChunks += 1;
+      updateLiveTranscript();
+      if (voiceInputState.recording) {
+        setVoiceInputStatus(`Listening… transcribing chunk ${idx + 1}.`, 'recording');
+      }
+      transcribeChunk(blob).then(text => {
+        if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
+        voiceInputState.chunkTranscripts[idx] = text;
+      }).catch(error => {
+        if (!voiceInputState.aborted && runToken === voiceInputState.runToken) {
+          console.warn('[voice] chunk transcription failed', error);
+        }
+      }).finally(() => {
+        if (runToken !== voiceInputState.runToken) {return;}
+        voiceInputState.pendingChunks = Math.max(0, voiceInputState.pendingChunks - 1);
+        updateLiveTranscript();
+        if (voiceInputState.recording) {
+          const heard = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
+          setVoiceInputStatus(heard ? 'Listening… live transcript updating below.' : 'Recording… speak naturally.', 'recording');
+        } else if (voiceInputState.finalizing && voiceInputState.pendingChunks === 0) {
+          finalizeVoiceTranscript(runToken);
+        }
+      });
     });
+
     recorder.addEventListener('stop', () => {
-      void stopVoiceRecordingAndTranscribe();
+      if (runToken !== voiceInputState.runToken) {return;}
+      voiceInputState.recording = false;
+      voiceInputState.transcribing = true;
+      voiceInputState.finalizing = true;
+      voiceInputState.stoppedAt = Date.now();
+      setVoiceInputStatus(voiceInputState.pendingChunks > 0 ? 'Finishing transcript from recent chunks…' : 'Merging transcript…', 'working');
+      updateLiveTranscript();
+      if (voiceInputState.pendingChunks === 0) {
+        finalizeVoiceTranscript(runToken);
+      }
     }, { once: true });
-    recorder.start();
-    setVoiceInputStatus('Recording… click Stop when done.', 'recording');
+
+    recorder.start(1500);
+    setVoiceInputStatus('Recording… speak naturally; live transcript will appear below.', 'recording');
+    updateLiveTranscript();
   } catch (error) {
     resetVoiceInputState();
     setVoiceInputStatus(error?.message || 'Microphone access failed.', 'error');
   }
 }
 
-async function stopVoiceRecordingAndTranscribe() {
-  if (voiceInputState.transcribing) {return;}
-  voiceInputState.recording = false;
-  voiceInputState.transcribing = true;
-  setVoiceInputStatus('Transcribing…', 'working');
-  try {
-    const blob = new Blob(voiceInputState.chunks, { type: voiceInputState.mimeType || 'audio/webm' });
-    voiceInputState.chunks = [];
-    if (!blob.size) {throw new Error('No audio was captured. Try again.');}
-    const audioBase64 = await blobToBase64(blob);
-    const res = await fetch('/api/voice/transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioBase64, mimeType: blob.type || voiceInputState.mimeType || 'audio/webm' }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const parts = [data?.error || 'Voice transcription failed.', data?.hint].filter(Boolean);
-      throw new Error(parts.join(' '));
-    }
-    const transcript = String(data?.transcript || '').trim();
-    if (!transcript) {throw new Error('No speech was detected.');}
+function finalizeVoiceTranscript(runToken = voiceInputState.runToken) {
+  if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
+  const transcript = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
+  if (transcript) {
     const prefix = inputEl.value && !/\s$/.test(inputEl.value) ? `${inputEl.value.trim()} ` : inputEl.value;
     inputEl.value = `${prefix || ''}${transcript}`;
     resizeComposer();
     inputEl.focus();
-    setVoiceInputStatus('Transcript inserted into the input box.', 'idle');
-  } catch (error) {
-    setVoiceInputStatus(error?.message || 'Voice transcription failed.', 'error');
-  } finally {
-    resetVoiceInputState();
-    setVoiceInputStatus(voiceInputStatusEl?.textContent || 'Click Voice to record', voiceInputStatusEl?.dataset?.tone || 'idle');
+    setVoiceInputStatus('Live transcript merged into the input box.', 'idle');
+  } else {
+    setVoiceInputStatus('No speech was detected from the recorded chunks.', 'error');
   }
+  voiceInputState.transcribing = false;
+  voiceInputState.finalizing = false;
+  resetVoiceInputState();
+  setTimeout(() => {
+    if (!voiceInputState.recording && !voiceInputState.transcribing) {
+      setVoiceInputStatus('Click Voice to record', 'idle');
+    }
+  }, 2500);
+}
+
+function stopVoiceRecording() {
+  const recorder = voiceInputState.recorder;
+  if (!recorder || recorder.state === 'inactive') {return;}
+  voiceInputState.recording = false;
+  voiceInputState.transcribing = true;
+  voiceInputState.finalizing = true;
+  setVoiceInputStatus('Stopping… waiting for the last chunk.', 'working');
+  recorder.stop();
 }
 
 function avatarLabel(role) { return role === 'user' ? 'X' : 'V'; }
@@ -2122,6 +2244,12 @@ async function sendReplyToVio(id) {
   addDebugLine(`Reply handed to Vio session ${result.sessionKey || selectedSessionKey}`, 'cyan');
 }
 
+async function openReplyCaptureSetup() {
+  await loadFile('tools/chatgpt-reply-capture.user.js');
+  setWorkspaceTab('code');
+  addDebugLine('Opened ChatGPT capture script. Install/update it in Tampermonkey from the code view.', 'cyan');
+}
+
 async function saveReplyToWorkspace(id) {
   const res = await fetch(`/api/external-replies/${encodeURIComponent(id)}/save`, {
     method: 'POST',
@@ -2780,9 +2908,9 @@ async function sendToSelectedSession(outboundText, { userText = '', attachments 
 }
 
 function applyPostSendUiState(sessionKey, {
-  userText = '',
+  userText: _userText = '',
   runId = null,
-  optimistic = false,
+  optimistic: _optimistic = false,
   debugLabel = 'send accepted',
   refreshDelay = 2000,
 } = {}) {
@@ -3567,7 +3695,7 @@ function connect() {
     }
     if (msg.type === 'mood') {
       const mode = msg.mode || 'unknown';
-      const state = msg.state || {};
+      const _state = msg.state || {};
       const runtime = msg.runtime || null;
       const phase = msg.detail?.phase || runtime?.phase || null;
       try {
@@ -3648,10 +3776,8 @@ chatAttachBtnEl?.addEventListener('click', () => {
 
 voiceInputBtnEl?.addEventListener('click', async () => {
   if (voiceInputState.transcribing) {return;}
-  const recorder = voiceInputState.recorder;
-  if (voiceInputState.recording && recorder && recorder.state !== 'inactive') {
-    setVoiceInputStatus('Stopping recording…', 'working');
-    recorder.stop();
+  if (voiceInputState.recording) {
+    stopVoiceRecording();
     return;
   }
   await startVoiceRecording();
@@ -3860,6 +3986,11 @@ replyRefreshBtnEl?.addEventListener('click', () => {
 });
 replyIngestTestBtnEl?.addEventListener('click', () => {
   ingestTestReply().catch?.(() => {});
+});
+replyCaptureSetupBtnEl?.addEventListener('click', () => {
+  openReplyCaptureSetup().catch(error => {
+    addDebugLine(`Capture setup open failed: ${error?.message || error}`, 'pink');
+  });
 });
 replySendToVioBtnEl?.addEventListener('click', () => {
   if (repliesState.selectedId) {
