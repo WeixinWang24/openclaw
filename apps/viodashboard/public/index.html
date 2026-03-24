@@ -270,21 +270,6 @@ Terminal ready.</div>
           ws.addEventListener('message', ev => {
             try {
               const msg = JSON.parse(ev.data);
-              if (msg.type === 'chat') {
-                const text = msg?.event?.message?.text || msg?.event?.text || '';
-                const rawRole = msg?.event?.message?.role || msg?.event?.role || 'assistant';
-                const loweredRole = String(rawRole || '').toLowerCase();
-                const role = loweredRole === 'user' ? 'user' : loweredRole === 'assistant' ? 'assistant' : loweredRole === 'system' ? 'system' : (loweredRole === 'tool' || loweredRole === 'function' || loweredRole === 'toolresult' || loweredRole === 'tool_result') ? 'tool' : 'assistant';
-                if (role === 'tool') {return;}
-                if (chat && text) {
-                  const row = document.createElement('div');
-                  row.className = `msg-row ${role}`;
-                  row.innerHTML = `<div class="avatar ${role}">${role === 'user' ? 'X' : role === 'assistant' ? 'V' : 'S'}</div><div class="bubble-wrap"><div class="msg-meta ${role}">${role === 'user' ? 'Xin' : role === 'assistant' ? 'Vio' : 'System'}</div><div class="msg ${role}"></div></div>`;
-                  row.querySelector('.msg').textContent = text;
-                  chat.appendChild(row);
-                  chat.scrollTop = chat.scrollHeight;
-                }
-              }
             } catch {}
           });
           ws.addEventListener('close', () => setTimeout(connectWs, 1000));

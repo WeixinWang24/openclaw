@@ -25,17 +25,6 @@ export function createChatEventCoordinator({
     const visibleReplyText = event.state === 'final' ? stripStructuredRoadmapBlock(rawReplyText) : rawReplyText;
     const isEmptyFinal = event.state === 'final' && !String(visibleReplyText || '').trim();
     const isDuplicateFinal = event.state === 'final' && !!event.runId && state.seenFinalRunIds.has(event.runId);
-    const clientEvent = (event && typeof event === 'object') ? { ...event, text: visibleReplyText } : event;
-    const shouldBroadcastLegacyChat = (() => {
-      const eventSessionKey = event?.sessionKey || bridge.sessionKey || null;
-      if (!eventSessionKey) {return false;}
-      if (event.state !== 'delta') {return false;}
-      return eventSessionKey === bridge.sessionKey;
-    })();
-
-    if (shouldBroadcastLegacyChat && !(isEmptyFinal || isDuplicateFinal)) {
-      broadcast({ type: 'chat', event: clientEvent, source: 'legacy.delta-compat' });
-    }
     if (event.state === 'delta') {
       runLifecycleService.handleDelta(event);
       return;

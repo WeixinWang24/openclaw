@@ -3086,32 +3086,6 @@ function connect() {
       try {applyProjectionTranscriptPacket(msg);} catch (error) {addDebugLine(`ws projection.transcript apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
-    if (msg.type === 'chat') {
-      const event = msg.event;
-      if (ignoreAbortedRunEvent(event)) {return;}
-      const eventSessionKey = event?.sessionKey || gatewayMainSessionKey || null;
-      if (!eventSessionKey) {return;}
-
-      if (event?.state !== 'delta') {
-        addDebugLine(`Ignored legacy chat ${event?.state || 'event'} for ${eventSessionKey}; kernel/projection is authoritative`, 'cyan');
-        return;
-      }
-
-      const meta = getSessionMeta(eventSessionKey);
-      meta.dirty = true;
-      meta.lastReason = 'legacy-chat:delta';
-      meta.lastUpdatedAt = Date.now();
-      if (eventSessionKey === selectedSessionKey) {
-        meta.pending = true;
-      }
-
-      const runState = getSessionRunState(eventSessionKey);
-      runState.runId = event?.runId || runState.runId || null;
-      runState.streamText = event?.text || runState.streamText || '';
-      runState.state = 'streaming';
-      addDebugLine(`legacy chat delta parked for ${eventSessionKey}`, 'cyan');
-      return;
-    }
   } catch (error) {
       addDebugLine(`ws message handler failed: ${error?.message || error}`, 'pink');
     }
