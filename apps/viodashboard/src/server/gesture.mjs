@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ACTIVE_CAMERA_PROVIDER, GESTURE_RUN_ONCE_SCRIPT, GESTURE_STATE_PATH, GESTURE_WORKER_SCRIPT, VIO_CAM_CAPTURE_SCRIPT, VIO_CAM_DIR } from '../config.mjs';
 import { runScript } from './scripts.mjs';
-import { sendEvent } from '../sidecarClient.mjs';
 
 const gestureRuntime = {
   watcherEnabled: false,

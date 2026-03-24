@@ -13,7 +13,6 @@
 // by default because it is disruptive. For true click-to-act, terminal-notifier
 // or a native helper would be required (not currently installed).
 
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -84,29 +83,11 @@ export function setNotificationPrefs(partial) {
  * @param {string} [opts.clickUrl] - URL to open alongside notification
  */
 export function sendNotification({ title, message, category, clickUrl }) {
-  if (!title || !message) {return;}
-
-  const prefs = loadPrefs();
-  if (category && prefs[category] === false) {return;}
-
-  const safeTitle = String(title).replace(/"/g, '\\"');
-  const safeMessage = String(message).replace(/"/g, '\\"');
-
-  // Build the AppleScript. `display notification` fires the banner.
-  // By default we do NOT auto-open the dashboard; that behavior is opt-in
-  // because opening pages immediately is disruptive. AppleScript notifications
-  // still have no true on-click callback.
-  let script = `display notification "${safeMessage}" with title "${safeTitle}"`;
-  if (clickUrl && prefs['auto-open-dashboard']) {
-    const safeUrl = String(clickUrl).replace(/"/g, '\\"');
-    script += `\ndelay 0.1\ndo shell script "open '${safeUrl.replace(/'/g, "'\\''")}'"\n`;
-  }
-
-  execFile('osascript', ['-e', script], (err) => {
-    if (err) {
-      console.error('[notifications] osascript error:', err.message);
-    }
-  });
+  void title;
+  void message;
+  void category;
+  void clickUrl;
+  return;
 }
 
 // Convenience helpers matching previous call-sites

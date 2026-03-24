@@ -1,17 +1,13 @@
-// Translate wrapper chat lifecycle events into sidecar mood updates.
-import { sendEvent, sendReply } from './sidecarClient.mjs';
+// Sidecar mood bridge is intentionally disabled during runtime decoupling.
 
 export async function onUserPrompt() {
-  return sendEvent('task-start');
+  return null;
 }
 
-export async function onAssistantFinal(text) {
-  if (typeof text === 'string' && text.trim()) {
-    return sendReply(text);
-  }
-  return sendEvent('assistant-idle');
+export async function onAssistantFinal(_text) {
+  return null;
 }
 
 export async function onAssistantError() {
-  return sendEvent('task-error');
+  return null;
 }

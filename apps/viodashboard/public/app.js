@@ -801,35 +801,17 @@ async function setGestureWatcher(enabled) {
   setGestureRuntime(data.gestureRuntime || {});
 }
 
-function setEnvironmentTelemetry(vioBody = {}) {
-  const env = vioBody.environment || {};
-  const temp = env.temperatureC != null ? `${env.temperatureC}°C` : 'n/a';
-  const band = env.lightBand || 'unknown';
-  const raw = env.lightLevelRaw != null ? env.lightLevelRaw : 'n/a';
-  const quiet = vioBody.quiet_hours_active ? 'quiet hours' : 'day mode';
-  const effectiveOutput = vioBody.effective_light_output || latestWrapperRuntime?.lightOutput || vioBody.light_output || 'n/a';
-  const runtime = vioBody.wrapper_runtime || latestWrapperRuntime;
-  if (runtime) {latestWrapperRuntime = runtime;}
-
-  if (environmentDetailEl) {environmentDetailEl.innerHTML = `<span class="semantic-value">temp ${temp} · light ${band} · raw ${raw}</span>`;}
-  if (nightLogicDetailEl) {
-    const suffix = runtime?.activeRunCount ? ` · active runs ${runtime.activeRunCount}` : '';
-    nightLogicDetailEl.innerHTML = `<span class="semantic-value">${quiet} · output ${effectiveOutput}${suffix}</span>`;
-  }
-  if (environmentDotEl) {applyDotState(environmentDotEl, 'window', band === 'dark' ? 'danger' : band === 'dim' ? 'mid' : 'safe');}
-  if (nightLogicDotEl) {applyDotState(nightLogicDotEl, 'window', effectiveOutput === 'thinking' ? 'safe' : effectiveOutput === 'off' ? 'danger' : vioBody.quiet_hours_active ? 'mid' : 'safe');}
+function setEnvironmentTelemetry(_vioBody = {}) {
+  if (environmentDetailEl) {environmentDetailEl.innerHTML = '<span class="semantic-value">disabled · pending redesign</span>';}
+  if (nightLogicDetailEl) {nightLogicDetailEl.innerHTML = '<span class="semantic-value">disabled · pending redesign</span>';}
+  if (bodyLinkValueEl) {bodyLinkValueEl.textContent = 'disabled';}
+  if (bodyLinkDetailEl) {bodyLinkDetailEl.textContent = 'body/light telemetry disconnected';}
+  if (environmentDotEl) {applyDotState(environmentDotEl, 'window', 'mid');}
+  if (nightLogicDotEl) {applyDotState(nightLogicDotEl, 'window', 'mid');}
 }
 
 async function refreshVioBodyState() {
-  try {
-    const res = await fetch('/api/vio-body-state');
-    const data = await res.json();
-    if (!res.ok) {throw new Error(data.error || 'VioBody state unavailable');}
-    setEnvironmentTelemetry(data);
-  } catch {
-    if (environmentDetailEl) {environmentDetailEl.innerHTML = '<span class="semantic-value">unavailable</span>';}
-    if (nightLogicDetailEl) {nightLogicDetailEl.innerHTML = '<span class="semantic-value">unavailable</span>';}
-  }
+  setEnvironmentTelemetry();
 }
 
 function renderTokenSaverState(data = {}) {
@@ -3053,9 +3035,8 @@ function connect() {
         addDebugLine(`ws mood setRouting failed: ${error?.message || error}`, 'pink');
       }
       try {
-        if (bodyLinkValueEl) {bodyLinkValueEl.textContent = runtime?.lightOutput || mode;}
-        if (bodyLinkDetailEl) {bodyLinkDetailEl.textContent = `current=${state.current_status || mode} · stable=${state.last_stable_status || mode} · light=${state.light_output || runtime?.lightOutput || mode}`;}
-        if (state && Object.keys(state).length) {setEnvironmentTelemetry({ ...state, wrapper_runtime: runtime, effective_light_output: runtime?.lightOutput || mode });}
+        if (bodyLinkValueEl) {bodyLinkValueEl.textContent = 'disabled';}
+        if (bodyLinkDetailEl) {bodyLinkDetailEl.textContent = 'body/light telemetry disconnected';}
       } catch (error) {
         addDebugLine(`ws mood telemetry render failed: ${error?.message || error}`, 'pink');
       }
