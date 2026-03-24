@@ -1,19 +1,36 @@
 import { KERNEL_CHANNELS } from './kernelEventBus.mjs';
 
+function stripReplyTagHeader(text = '') {
+  return String(text || '').replace(/^\s*\[\[\s*reply_to_current\s*\]\]\s*/i, '').trimStart();
+}
+
+function stripCliSenderEnvelope(text = '') {
+  return String(text || '')
+    .replace(/^Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*/i, '')
+    .replace(/^\[[^\]\n]*\]\s*/m, '')
+    .trimStart();
+}
+
+function sanitizeTranscriptText(text = '') {
+  return stripCliSenderEnvelope(stripReplyTagHeader(text));
+}
+
 function parseMessageText(message) {
   if (!message || typeof message !== 'object') {return '';}
-  if (typeof message.text === 'string') {return message.text;}
-  if (typeof message.content === 'string') {return message.content;}
+  if (typeof message.text === 'string') {return sanitizeTranscriptText(message.text);}
+  if (typeof message.content === 'string') {return sanitizeTranscriptText(message.content);}
   if (Array.isArray(message.content)) {
-    return message.content
-      .map(part => {
-        if (typeof part?.text === 'string') {return part.text;}
-        if (typeof part?.outputText === 'string') {return part.outputText;}
-        if (typeof part?.output === 'string') {return part.output;}
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
+    return sanitizeTranscriptText(
+      message.content
+        .map(part => {
+          if (typeof part?.text === 'string') {return part.text;}
+          if (typeof part?.outputText === 'string') {return part.outputText;}
+          if (typeof part?.output === 'string') {return part.output;}
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n'),
+    );
   }
   return '';
 }

@@ -9,6 +9,8 @@ const { TokenSaver, sanitizeVisibleText, hasRoadmapBlock, simulateTokenSaverView
 
 function stripVisibleHistoryText(text = '') {
   return String(text || '')
+    .replace(/^\s*\[\[\s*reply_to_current\s*\]\]\s*/i, '')
+    .replace(/^Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*/i, '')
     .replace(/^\s*\[(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+GMT[+-]\d+\]\s*/i, '')
     .trim();
 }
