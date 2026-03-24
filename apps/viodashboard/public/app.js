@@ -2437,9 +2437,6 @@ function applyPostSendUiState(sessionKey, {
   runId = null,
   optimistic = false,
   debugLabel = 'send accepted',
-  moodDetail = 'Session message sent; waiting for live session events.',
-  routingSummary = 'session live',
-  routingDetail = '',
   refreshDelay = 2000,
 } = {}) {
   if (!sessionKey) {return;}
@@ -3058,7 +3055,7 @@ function connect() {
       if (msg.runId) {registerChatRun(msg.runId);}
       syncStopButton();
       syncContinueButton();
-      addDebugLine(`Prompt accepted · run ${String(msg.runId || '').slice(0, 8)}`, 'cyan');
+      addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
       fetch('/api/coms/token-saver')
         .then(res => res.json())
         .then(data => {
@@ -3088,6 +3085,7 @@ function connect() {
       } else {
         addDebugLine(`Ignored wrapper error without session target: ${errorText}`, 'pink');
       }
+      addDebugLine(`Wrapper error routed to session=${sessionKey || 'none'}: ${errorText}`, 'pink');
       const fallbackMode = latestWrapperRuntime?.mood || latestWrapperRuntime?.lightOutput || 'idle';
       try {
         setMood(fallbackMode, `send failed: ${errorText}`, latestWrapperRuntime || null);
