@@ -63,6 +63,10 @@ case "$RUN_MODE" in
     ;;
 esac
 
+CONDA_ROOT="${HOME}/anaconda3"
+CONDA_ENV_NAME="vio"
+CONDA_ENV_BIN="${CONDA_ROOT}/envs/${CONDA_ENV_NAME}/bin"
+
 mkdir -p "$LOG_DIR"
 cd "$TARGET_DIR"
 export VIO_DASHBOARD_APP_ROOT="$SOURCE_DIR"
@@ -70,4 +74,13 @@ export VIO_WRAPPER_PROJECT_ROOT="$PROJECT_ROOT"
 export VIO_OPENCLAW_REPO_ROOT="$OPENCLAW_REPO_ROOT"
 export VIO_WRAPPER_CONFIG_PATH="$CONFIG_PATH"
 export VIO_WRAPPER_GATEWAY_PORT="$GATEWAY_PORT"
+
+if [[ -d "$CONDA_ENV_BIN" ]]; then
+  export PATH="$CONDA_ENV_BIN:${CONDA_ROOT}/bin:$PATH"
+  export CONDA_DEFAULT_ENV="$CONDA_ENV_NAME"
+  export VIRTUAL_ENV="${CONDA_ROOT}/envs/${CONDA_ENV_NAME}"
+else
+  echo "[viodashboard] warning: conda env '$CONDA_ENV_NAME' not found at $CONDA_ENV_BIN; falling back to system PATH" >> "$LOG_DIR/wrapper.err.log"
+fi
+
 exec /opt/homebrew/bin/node src/server.mjs >> "$LOG_DIR/wrapper.out.log" 2>> "$LOG_DIR/wrapper.err.log"
