@@ -2892,7 +2892,11 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
         }
       }
     }
-    if (existingAssistantForRun && !historyHasAssistantForRun) {
+    const shouldCarryForwardAssistant =
+      existingAssistantForRun &&
+      !historyHasAssistantForRun &&
+      (runState.state === 'streaming' || existingAssistantForRun?.status === 'streaming');
+    if (shouldCarryForwardAssistant) {
       messages.push(existingAssistantForRun);
     }
   }

@@ -1,10 +1,30 @@
 import { randomUUID } from 'node:crypto';
 import { KERNEL_CHANNELS } from './kernelEventBus.mjs';
 
+function extractMessageContentText(message = {}) {
+  if (!message || typeof message !== 'object') {return '';}
+  if (typeof message?.text === 'string') {return message.text;}
+  if (typeof message?.content === 'string') {return message.content;}
+  if (Array.isArray(message?.content)) {
+    return message.content
+      .map(part => {
+        if (typeof part?.text === 'string') {return part.text;}
+        if (typeof part?.outputText === 'string') {return part.outputText;}
+        if (typeof part?.output === 'string') {return part.output;}
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
 function extractChatText(payload = {}) {
   if (typeof payload?.delta === 'string') {return payload.delta;}
   if (typeof payload?.text === 'string') {return payload.text;}
   if (typeof payload?.message?.text === 'string') {return payload.message.text;}
+  const messageContentText = extractMessageContentText(payload?.message);
+  if (messageContentText) {return messageContentText;}
   return '';
 }
 
@@ -129,7 +149,7 @@ export function createChatRuntime({
 
     if (state === 'delta' && text) {
       const prev = deltaBuffersByRunId.get(runId) || '';
-      const next = prev + text;
+      const next = !prev || text.length >= prev.length ? text : prev;
       deltaBuffersByRunId.set(runId, next);
       updateRun(runId, { status: 'streaming' });
       eventBus?.emit(KERNEL_CHANNELS.RUN, {
@@ -144,7 +164,8 @@ export function createChatRuntime({
     }
 
     if (state === 'final' || state === 'completed') {
-      const finalText = (typeof payload?.text === 'string' && payload.text) || deltaBuffersByRunId.get(runId) || text || '';
+      const finalText = text || deltaBuffersByRunId.get(runId) || '';
+      deltaBuffersByRunId.set(runId, finalText);
       updateRun(runId, { status: 'final', finalText });
       sessionRegistry?.markRunFinished(sessionKey, runId);
       eventBus?.emit(KERNEL_CHANNELS.RUN, {
