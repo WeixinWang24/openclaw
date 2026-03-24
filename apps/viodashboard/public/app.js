@@ -421,31 +421,74 @@ function allocExecTaskId() {
   return `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function deriveSessionUiState(sessionKey) {
+  const isSelected = !!sessionKey && sessionKey === selectedSessionKey;
+  const isMain = !!sessionKey && sessionKey === gatewayMainSessionKey;
+  const runState = getSessionRunState(sessionKey);
+  const messages = Array.isArray(sessionMessages.get(sessionKey)) ? sessionMessages.get(sessionKey) : [];
+  const latestAssistant = [...messages].toReversed().find(item => item?.role === 'assistant') || null;
+  const currentRunId = runState?.runId || null;
+  const currentRunAssistant = currentRunId
+    ? messages.find(item => item?.role === 'assistant' && (item?.runId === currentRunId || item?.id === currentRunId || item?.id === `assistant:${currentRunId}`)) || null
+    : null;
+  const authoritativeState = currentRunAssistant?.status === 'streaming'
+    ? 'streaming'
+    : currentRunAssistant?.status === 'final'
+      ? 'final'
+      : (!currentRunId && latestAssistant?.status === 'final' && runState?.state !== 'aborted' && runState?.state !== 'error')
+        ? 'final'
+        : (runState?.state || 'idle');
+
+  const canStop = !!(isMain && currentRunId && (authoritativeState === 'streaming' || authoritativeState === 'aborting'));
+  const showStopped = !!(isMain && authoritativeState === 'aborted');
+  const canContinue = (() => {
+    const latest = getPersistedLatestAssistantReplyMeta(sessionKey || null);
+    if (latest.aborted) {return false;}
+    if (authoritativeState === 'streaming' || authoritativeState === 'aborting' || authoritativeState === 'aborted') {return false;}
+    return true;
+  })();
+
+  return {
+    sessionKey: sessionKey || null,
+    isSelected,
+    isMain,
+    runId: currentRunId,
+    state: authoritativeState,
+    latestAssistant,
+    currentRunAssistant,
+    canStop,
+    canContinue,
+    showStopped,
+  };
+}
+
 function getSelectedSessionRunState() {
   if (!selectedSessionKey) {
-    return { sessionKey: null, isMain: false, runId: null, state: 'idle', stoppable: false };
+    return { sessionKey: null, isMain: false, runId: null, state: 'idle', stoppable: false, canStop: false, canContinue: true, showStopped: false };
   }
-  const runState = getSessionRunState(selectedSessionKey);
+  const uiState = deriveSessionUiState(selectedSessionKey);
   return {
-    sessionKey: selectedSessionKey,
-    isMain: isMainSessionView(),
-    runId: runState?.runId || null,
-    state: runState?.state || 'idle',
-    stoppable: isMainSessionView(),
+    sessionKey: uiState.sessionKey,
+    isMain: uiState.isMain,
+    runId: uiState.runId,
+    state: uiState.state,
+    stoppable: uiState.canStop,
+    canStop: uiState.canStop,
+    canContinue: uiState.canContinue,
+    showStopped: uiState.showStopped,
   };
 }
 
 function syncStopButton() {
   const selectedRun = getSelectedSessionRunState();
   if (stopBtnEl) {
-    stopBtnEl.hidden = !(selectedRun.isMain && selectedRun.runId && selectedRun.state === 'streaming');
+    stopBtnEl.hidden = !selectedRun.canStop;
     stopBtnEl.textContent = selectedRun.state === 'aborting' ? 'Stopping...' : 'Stop';
     stopBtnEl.disabled = selectedRun.state === 'aborting';
   }
   if (stopStatusBadgeEl) {
-    const showStopped = selectedRun.isMain && selectedRun.state === 'aborted';
-    stopStatusBadgeEl.hidden = !showStopped;
-    stopStatusBadgeEl.textContent = showStopped ? 'Stopped' : 'Stopped';
+    stopStatusBadgeEl.hidden = !selectedRun.showStopped;
+    stopStatusBadgeEl.textContent = 'Stopped';
   }
 }
 
@@ -2537,9 +2580,10 @@ function renderSessionMessages(sessionKey, messages = []) {
   if (!chatEl) {return;}
   const sourceMessages = Array.isArray(messages) ? messages : [];
   const visibleMessages = sourceMessages;
+  const uiState = deriveSessionUiState(sessionKey);
   const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
+  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'cyan');
   clearChat();
   for (const message of visibleMessages) {
     if (!shouldDisplayChatMessage(message)) {continue;}
@@ -2549,14 +2593,16 @@ function renderSessionMessages(sessionKey, messages = []) {
       runId: message.runId || message.id || null,
     });
   }
-  const runState = getSessionRunState(sessionKey);
-  if (runState?.state === 'streaming' && runState?.streamText) {
+  if (uiState.state === 'streaming' && getSessionRunState(sessionKey)?.streamText) {
+    const runState = getSessionRunState(sessionKey);
     const target = ensureStreamingMessageEl(runState.runId || null, runState.streamText);
     target.textContent = runState.streamText;
   }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
+  syncStopButton();
+  syncContinueButton();
 }
 
 function addMessage(role, text, extraClass = '', options = {}) {
@@ -2794,7 +2840,8 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
   }
   sessionMessages.set(sessionKey, messages);
   reconcileRunStateFromMessages(sessionKey, messages, 'session-history');
-  if (!runState?.runId && runState.state !== 'final' && runState.state !== 'aborted' && runState.state !== 'error') {
+  const uiState = deriveSessionUiState(sessionKey);
+  if (!runState?.runId && uiState.state !== 'final' && uiState.state !== 'aborted' && uiState.state !== 'error' && uiState.state !== 'streaming') {
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'idle';
@@ -3098,9 +3145,7 @@ formEl?.addEventListener('submit', ev => {
 function syncContinueButton() {
   if (!continueBtnEl) {return;}
   const selectedRun = getSelectedSessionRunState();
-  const latest = getPersistedLatestAssistantReplyMeta(selectedSessionKey || null);
-  const blocked = latest.aborted || selectedRun.state === 'streaming' || selectedRun.state === 'aborting' || selectedRun.state === 'aborted';
-  continueBtnEl.disabled = blocked;
+  continueBtnEl.disabled = !selectedRun.canContinue;
 }
 
 continueBtnEl?.addEventListener('click', () => {
