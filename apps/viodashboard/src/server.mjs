@@ -33,6 +33,7 @@ import { handleDiagnosticsRoutes } from './server/routes/diagnosticsRoutes.mjs';
 import { handleRoadmapRoutes } from './server/routes/roadmapRoutes.mjs';
 import { handleSetupRoutes } from './server/routes/setupRoutes.mjs';
 import { handleDistRoutes } from './server/routes/distRoutes.mjs';
+import { handleSafeEditRoutes } from './server/routes/safeEditRoutes.mjs';
 import { createBroadcastHub } from './server/ws/broadcastHub.mjs';
 import { attachWsConnectionHandler } from './server/ws/connectionHandler.mjs';
 import { getClaudeState, resizeClaudeSession, restartClaudeSession, sendClaudeInput, startClaudeSession, stopClaudeSession } from './server/claudeTerminal.mjs';
@@ -573,13 +574,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (requestUrl.pathname === '/api/safe-edit/state' && req.method === 'GET') {
-    sendJson(res, 200, {
-      ok: true,
-      ...getSafeEditState(),
-      startupRecovery,
-      smoke: runSafeEditSmokeSummary(),
-    });
+  if (handleSafeEditRoutes({
+    req,
+    res,
+    requestUrl,
+    getSafeEditState,
+    startupRecovery,
+    runSafeEditSmokeSummary,
+  })) {
     return;
   }
 
