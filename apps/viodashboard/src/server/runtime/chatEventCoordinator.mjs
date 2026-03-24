@@ -1,5 +1,4 @@
-import { appendProjectRoadmapEntry, ensureProjectRoadmap } from '../projectRoadmap.mjs';
-import { buildRoadmapFromReply, stripStructuredRoadmapBlock } from '../utils.mjs';
+import { stripStructuredRoadmapBlock } from '../utils.mjs';
 
 export function createChatEventCoordinator({
   bridge,
@@ -8,11 +7,10 @@ export function createChatEventCoordinator({
   getRuntimeState,
   syncRuntimeState,
   state,
-  roadmap,
   routing,
   sideEffects,
   tokenUsageService,
-  wrapperPort,
+  finalReplyService,
 }) {
   if (!bridge) {throw new Error('bridge is required');}
   if (typeof broadcast !== 'function') {throw new Error('broadcast is required');}
@@ -20,6 +18,7 @@ export function createChatEventCoordinator({
   if (typeof getRuntimeState !== 'function') {throw new Error('getRuntimeState is required');}
   if (typeof syncRuntimeState !== 'function') {throw new Error('syncRuntimeState is required');}
   if (!tokenUsageService || typeof tokenUsageService.refresh !== 'function') {throw new Error('tokenUsageService.refresh is required');}
+  if (!finalReplyService || typeof finalReplyService.handleFinalEvent !== 'function') {throw new Error('finalReplyService.handleFinalEvent is required');}
 
   return async function handleChatEvent(event) {
     if (event.state === 'final' || event.state === 'error' || event.state === 'aborted') {
@@ -79,82 +78,7 @@ export function createChatEventCoordinator({
         source: 'chat-final',
       });
       try {
-        const replyBody = stripStructuredRoadmapBlock(rawReplyText || '');
-        const preview = replyBody.slice(0, 220);
-        console.log('[wrapper] final reply preview:', preview);
-        const extractedRoadmap = buildRoadmapFromReply(rawReplyText || '');
-        const previousRoadmap = roadmap.loadRoadmapData();
-        const roadmapDecision = roadmap.choosePersistedRoadmap(extractedRoadmap, previousRoadmap);
-        const nextRoadmap = roadmapDecision.roadmap;
-        if (roadmapDecision.replacedPrevious && previousRoadmap) {roadmap.pushRoadmapHistory(previousRoadmap);}
-        roadmap.saveRoadmapData(nextRoadmap);
-        console.log('[wrapper] roadmap source:', nextRoadmap.sourceType, 'items:', nextRoadmap.items?.length || 0, 'decision:', roadmapDecision.reason);
-        broadcast({ type: 'roadmap', roadmap: nextRoadmap, decision: roadmapDecision.reason, extractedRoadmap });
-
-        let projectRoadmapResult = null;
-        try {
-          ensureProjectRoadmap({ context: 'Auto-created by VioDashboard from assistant code-workflow roadmap handling.' });
-          if (nextRoadmap?.items?.length) {
-            projectRoadmapResult = appendProjectRoadmapEntry({
-              roadmap: nextRoadmap,
-              replyBody,
-              changedFiles: [],
-              notes: 'Auto-appended from assistant final reply roadmap extraction.',
-              taskState: {
-                phase: 'development/review turn',
-              },
-            });
-            console.log('[wrapper] project roadmap updated:', JSON.stringify(projectRoadmapResult));
-          }
-        } catch (roadmapFileError) {
-          console.log('[wrapper] project roadmap update failed', roadmapFileError?.message || String(roadmapFileError));
-        }
-
-        const newerRunStillActive = state.activeRunSeq.size > 0 && finishedSeq < state.runSequenceRef.get();
-        if (newerRunStillActive) {
-          routing.setLastRouting({
-            mode: 'thinking',
-            detail: `final for older run ignored while newer run is active (${state.activeRunSeq.size} active)`,
-            preview,
-            phase: 'streaming',
-            runId: event.runId,
-          });
-          syncRuntimeState({ mood: 'thinking', phase: 'streaming', source: 'chat-final-suppressed' });
-          broadcast(buildMoodPacket('thinking', {
-            state: getRuntimeState().bodyState,
-            detail: routing.getLastRouting().detail,
-            preview,
-            phase: 'streaming',
-            runId: event.runId,
-            source: 'chat-final-suppressed',
-          }));
-          return;
-        }
-
-        const result = await sideEffects.onAssistantFinal(replyBody || '');
-        if (event.runId && event.runId !== state.lastAssistantFinalNotifiedRunIdRef.get()) {
-          state.lastAssistantFinalNotifiedRunIdRef.set(event.runId);
-          sideEffects.notifyAssistantFinal({
-            title: 'Vio sent a final reply',
-            message: preview || 'A reply finished and is ready for you.',
-            dashboardPort: wrapperPort,
-          });
-        }
-        routing.setLastRouting({
-          mode: result?.mode ?? 'unknown',
-          detail: `final length=${replyBody.length}`,
-          preview,
-          phase: 'final',
-          runId: event.runId,
-        });
-        broadcast(buildMoodPacket(result?.mode ?? 'unknown', {
-          state: result?.state ?? null,
-          detail: routing.getLastRouting().detail,
-          preview,
-          phase: 'final',
-          runId: event.runId,
-          source: 'chat-final',
-        }));
+        await finalReplyService.handleFinalEvent(event, rawReplyText, { finishedSeq });
       } catch (error) {
         routing.setLastRouting({ mode: 'error', detail: error?.message || String(error), phase: 'final', runId: event.runId });
         console.log('[wrapper] sidecar final routing failed', error?.message || String(error));

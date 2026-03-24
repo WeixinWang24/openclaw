@@ -43,6 +43,7 @@ import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from
 import { createChatEventCoordinator } from './server/runtime/chatEventCoordinator.mjs';
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
+import { createFinalReplyService } from './server/runtime/finalReplyService.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -480,15 +481,8 @@ const tokenUsageService = createTokenUsageService({
   broadcast,
   buildTokensPacket,
 });
-const handleChatEvent = createChatEventCoordinator({
-  bridge: { get sessionKey() { return bridge.sessionKey; }, fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
-  broadcast,
-  buildMoodPacket,
-  getRuntimeState: () => runtimeState,
-  syncRuntimeState,
+const finalReplyService = createFinalReplyService({
   state: {
-    tokenStats,
-    seenFinalRunIds,
     activeRunSeq,
     runSequenceRef: { get: () => runSequence },
     lastAssistantFinalNotifiedRunIdRef: {
@@ -512,11 +506,43 @@ const handleChatEvent = createChatEventCoordinator({
   },
   sideEffects: {
     onAssistantFinal,
-    onAssistantError,
     notifyAssistantFinal,
   },
-  tokenUsageService,
+  broadcast,
+  buildMoodPacket,
+  getRuntimeState: () => runtimeState,
+  syncRuntimeState,
   wrapperPort,
+});
+const handleChatEvent = createChatEventCoordinator({
+  bridge: { get sessionKey() { return bridge.sessionKey; }, fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
+  broadcast,
+  buildMoodPacket,
+  getRuntimeState: () => runtimeState,
+  syncRuntimeState,
+  state: {
+    tokenStats,
+    seenFinalRunIds,
+    activeRunSeq,
+    runSequenceRef: { get: () => runSequence },
+    lastAssistantFinalNotifiedRunIdRef: {
+      get: () => runtimeSessionState.getLastAssistantFinalNotifiedRunId(),
+      set: value => {
+        runtimeSessionState.setLastAssistantFinalNotifiedRunId(value);
+      },
+    },
+  },
+  routing: {
+    getLastRouting: () => runtimeSessionState.getLastRouting(),
+    setLastRouting: value => {
+      runtimeSessionState.setLastRouting(value);
+    },
+  },
+  sideEffects: {
+    onAssistantError,
+  },
+  tokenUsageService,
+  finalReplyService,
 });
 
 bridge = new GatewayBridge({
