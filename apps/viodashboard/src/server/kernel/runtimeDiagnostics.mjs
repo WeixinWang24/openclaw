@@ -8,6 +8,22 @@ export function createRuntimeDiagnostics() {
     lastError: null,
     lastRawEventMeta: null,
     lastHistoryFetch: null,
+    prewarm: {
+      gatewayHelper: {
+        status: 'idle',
+        startedAt: null,
+        finishedAt: null,
+        durationMs: null,
+        error: null,
+      },
+      readPaths: {
+        status: 'idle',
+        startedAt: null,
+        finishedAt: null,
+        durationMs: null,
+        error: null,
+      },
+    },
     mismatches: [],
   };
 
@@ -50,6 +66,15 @@ export function createRuntimeDiagnostics() {
     };
   }
 
+  function recordPrewarm(kind, patch = {}) {
+    if (!kind || !state.prewarm[kind]) {return;}
+    state.prewarm[kind] = {
+      ...state.prewarm[kind],
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   function getSnapshot() {
     return JSON.parse(JSON.stringify(state));
   }
@@ -60,6 +85,7 @@ export function createRuntimeDiagnostics() {
     recordRawEventMeta,
     recordMismatch,
     recordHistoryFetch,
+    recordPrewarm,
     getSnapshot,
   };
 }

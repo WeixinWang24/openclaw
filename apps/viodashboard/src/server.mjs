@@ -46,10 +46,6 @@ import { notifyAssistantFinal, getNotificationPrefs, setNotificationPrefs } from
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
 
-warmGatewayCaller().catch(error => {
-  console.warn('[wrapper] gateway helper prewarm failed', error?.message || String(error));
-});
-
 function resolveInteractiveShell() {
   const candidates = ['/bin/bash', '/bin/sh', process.env.SHELL, '/bin/zsh'].filter(Boolean);
   for (const candidate of candidates) {
@@ -392,12 +388,33 @@ function broadcast(packet) {
 async function prewarmGatewayReadPaths() {
   if (runtimeGatewayReadPrewarmStarted) {return;}
   runtimeGatewayReadPrewarmStarted = true;
+  const startedAtIso = new Date().toISOString();
+  const startedAtMs = Date.now();
+  runtimeDiagnostics.recordPrewarm('readPaths', {
+    status: 'running',
+    startedAt: startedAtIso,
+    finishedAt: null,
+    durationMs: null,
+    error: null,
+  });
   try {
     await bridge.listSessions({ limit: 20 });
     await bridge.fetchSessionUsage();
     await bridge.fetchSessionContextSnapshot();
     await bridge.fetchModelCatalog();
+    runtimeDiagnostics.recordPrewarm('readPaths', {
+      status: 'ok',
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      error: null,
+    });
   } catch (error) {
+    runtimeDiagnostics.recordPrewarm('readPaths', {
+      status: 'error',
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      error: error?.message || String(error),
+    });
     console.warn('[wrapper] gateway read-path prewarm failed', error?.message || String(error));
   }
 }
@@ -427,6 +444,32 @@ if (startupRecovery.recovered.length || startupRecovery.warnings.length) {
 
 const kernelEventBus = createKernelEventBus();
 const runtimeDiagnostics = createRuntimeDiagnostics();
+runtimeDiagnostics.recordPrewarm('gatewayHelper', {
+  status: 'running',
+  startedAt: new Date().toISOString(),
+  finishedAt: null,
+  durationMs: null,
+  error: null,
+});
+const gatewayHelperPrewarmStartedAt = Date.now();
+warmGatewayCaller()
+  .then(() => {
+    runtimeDiagnostics.recordPrewarm('gatewayHelper', {
+      status: 'ok',
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - gatewayHelperPrewarmStartedAt,
+      error: null,
+    });
+  })
+  .catch(error => {
+    runtimeDiagnostics.recordPrewarm('gatewayHelper', {
+      status: 'error',
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - gatewayHelperPrewarmStartedAt,
+      error: error?.message || String(error),
+    });
+    console.warn('[wrapper] gateway helper prewarm failed', error?.message || String(error));
+  });
 const sessionRegistry = createSessionRegistry();
 let bridge;
 const rpcClient = createGatewayRpcClient({
