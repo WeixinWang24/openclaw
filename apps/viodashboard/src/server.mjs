@@ -44,6 +44,7 @@ import { createChatEventCoordinator } from './server/runtime/chatEventCoordinato
 import { createRuntimeSessionState } from './server/runtime/runtimeSessionState.mjs';
 import { createTokenUsageService } from './server/runtime/tokenUsageService.mjs';
 import { createFinalReplyService } from './server/runtime/finalReplyService.mjs';
+import { createRunLifecycleService } from './server/runtime/runLifecycleService.mjs';
 
 const terminalSessions = new Map();
 const MAX_TERMINAL_SESSIONS = 5;
@@ -481,6 +482,31 @@ const tokenUsageService = createTokenUsageService({
   broadcast,
   buildTokensPacket,
 });
+const runLifecycleService = createRunLifecycleService({
+  state: {
+    activeRunSeq,
+    runSequenceRef: {
+      get: () => runSequence,
+      increment: () => {
+        runSequence += 1;
+        return runSequence;
+      },
+    },
+  },
+  routing: {
+    getLastRouting: () => runtimeSessionState.getLastRouting(),
+    setLastRouting: value => {
+      runtimeSessionState.setLastRouting(value);
+    },
+  },
+  getRuntimeState: () => runtimeState,
+  syncRuntimeState,
+  buildMoodPacket,
+  broadcast,
+  sideEffects: {
+    onAssistantError,
+  },
+});
 const finalReplyService = createFinalReplyService({
   state: {
     activeRunSeq,
@@ -515,11 +541,8 @@ const finalReplyService = createFinalReplyService({
   wrapperPort,
 });
 const handleChatEvent = createChatEventCoordinator({
-  bridge: { get sessionKey() { return bridge.sessionKey; }, fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
+  bridge: { get sessionKey() { return bridge.sessionKey; } },
   broadcast,
-  buildMoodPacket,
-  getRuntimeState: () => runtimeState,
-  syncRuntimeState,
   state: {
     tokenStats,
     seenFinalRunIds,
@@ -532,17 +555,9 @@ const handleChatEvent = createChatEventCoordinator({
       },
     },
   },
-  routing: {
-    getLastRouting: () => runtimeSessionState.getLastRouting(),
-    setLastRouting: value => {
-      runtimeSessionState.setLastRouting(value);
-    },
-  },
-  sideEffects: {
-    onAssistantError,
-  },
   tokenUsageService,
   finalReplyService,
+  runLifecycleService,
 });
 
 bridge = new GatewayBridge({
@@ -572,25 +587,7 @@ bridge = new GatewayBridge({
     broadcast(buildTokensPacket());
   },
   onQueuedMood: (runId, sidecarResult = null) => {
-    if (runId) {
-      runSequence += 1;
-      activeRunSeq.set(runId, runSequence);
-    }
-    syncRuntimeState({
-      mood: 'thinking',
-      phase: 'queued',
-      activeRunId: runId || runtimeState.activeRunId,
-      latestRunSeq: runSequence,
-      bodyState: sidecarResult?.state ?? runtimeState.bodyState,
-      source: 'queued',
-    });
-    broadcast(buildMoodPacket('thinking', {
-      detail: 'task-start sent to sidecar',
-      phase: 'queued',
-      runId,
-      state: sidecarResult?.state ?? runtimeState.bodyState ?? { current_status: 'thinking', last_stable_status: 'thinking', light_output: 'thinking' },
-      source: 'queued',
-    }));
+    runLifecycleService.handleQueued(runId, sidecarResult);
   },
   onChatEvent: handleChatEvent,
 });
