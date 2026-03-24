@@ -135,7 +135,6 @@ const LAST_ASSISTANT_REPLY_BY_SESSION_KEY = 'vio-wrapper-last-assistant-reply-by
 let ws;
 let streamingEl = null;
 let streamingRunId = null;
-let activeRunId = null;
 const abortedRunIds = new Set();
 let _stopRequestedAt = null;
 let lastStreamEventAt = 0;
@@ -458,7 +457,6 @@ function resetStoppedUiForNewRun() {
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
     runState.state = 'idle';
   }
-  activeRunId = runState.runId || null;
   syncStopButton();
   syncContinueButton();
 }
@@ -466,11 +464,10 @@ function resetStoppedUiForNewRun() {
 function forceFinalizeFrontState(reason = 'unknown') {
   const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
   const runState = getSessionRunState(sessionKey);
-  addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || activeRunId || '').slice(0, 8)}`, 'pink');
+  addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || '').slice(0, 8)}`, 'pink');
   runState.state = 'final';
   runState.runId = null;
   runState.streamText = '';
-  activeRunId = null;
   streamingEl = null;
   streamingRunId = null;
   lastStreamEventAt = 0;
@@ -2922,7 +2919,6 @@ function connect() {
       const runState = getSessionRunState(selectedSessionKey || gatewayMainSessionKey || null);
       runState.runId = msg.runId || runState.runId || null;
       runState.state = 'streaming';
-      activeRunId = runState.runId || null;
       stopRequestedAt = null;
       if (msg.runId) {registerChatRun(msg.runId);}
       syncStopButton();
@@ -3118,7 +3114,6 @@ stopBtnEl?.addEventListener('click', () => {
   const runState = getSessionRunState(sessionKey);
   if (!runState.runId || runState.state !== 'streaming') {return;}
   runState.state = 'aborting';
-  activeRunId = runState.runId || null;
   syncStopButton();
   _stopRequestedAt = Date.now();
   abortedRunIds.add(runState.runId);
@@ -3130,7 +3125,6 @@ stopBtnEl?.addEventListener('click', () => {
   runState.runId = null;
   runState.streamText = '';
   runState.state = 'aborted';
-  activeRunId = null;
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
   markLatestAssistantReplyAborted(stoppedRunId, sessionKey);
   scheduleSessionRefresh(sessionKey, 'user-stop', 0);
