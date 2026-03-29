@@ -3318,8 +3318,12 @@ function applyProjectionTranscriptPacket(msg = {}) {
     selectedSessionKey === sessionKey &&
     runState?.state === 'streaming' &&
     hasStreamingRowMounted(sessionKey, runState?.runId || null);
+  if (suppressRender) {
+    addDebugLine(`projection.transcript deferred during streaming for ${sessionKey}`, 'cyan');
+    return;
+  }
   if (msg?.viewMeta) {
-    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: !suppressRender });
+    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: true });
   }
 }
 
@@ -3340,6 +3344,11 @@ function handleMessageFlowSessionUpdated(msg = {}) {
   const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
   if (!sessionKey) {return;}
   addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
+  const runState = getSessionRunState(sessionKey);
+  if (sessionKey === selectedSessionKey && runState?.state === 'streaming') {
+    addDebugLine(`session.updated deferred during streaming for ${sessionKey}`, 'cyan');
+    return;
+  }
   const delay = sessionKey === selectedSessionKey ? 0 : 1200;
   scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
 }
