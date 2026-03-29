@@ -3615,7 +3615,6 @@ function createNewChatShell({ chatEl }) {
 
   function handleAck(sessionKey, runId = null) {
     if (!sessionKey || mountedSessionKey !== sessionKey) {return;}
-    claimLiveTranscript(sessionKey, runId || null);
     activeAssistantStream = {
       runId: runId || activeAssistantStream?.runId || null,
       text: '',
@@ -3627,7 +3626,6 @@ function createNewChatShell({ chatEl }) {
 
   function handleDelta(sessionKey, runId = null, text = '') {
     if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
-    claimLiveTranscript(sessionKey, runId || null);
     const firstDelta = !activeAssistantStream || activeAssistantStream.state !== 'streaming';
     const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
     if (!stream?.msg) {return false;}
@@ -3649,7 +3647,6 @@ function createNewChatShell({ chatEl }) {
 
   function handleFinal(sessionKey, runId = null) {
     if (!sessionKey || mountedSessionKey !== sessionKey) {return;}
-    markLiveTranscriptFinalizing(sessionKey, runId || null);
     if (activeAssistantStream && (!runId || activeAssistantStream.runId === runId)) {
       activeAssistantStream = {
         ...activeAssistantStream,
@@ -3682,7 +3679,6 @@ function createNewChatShell({ chatEl }) {
     addDebugLine(`newChatShell.renderCanonicalHistory preservedPending session=${sessionKey} count=${preservedPending.length}`, 'cyan');
     reset(sessionKey);
     pendingMessages = preservedPending;
-    releaseLiveTranscript(sessionKey, { force: true });
     clearStreamingMessageEl();
     for (const message of visibleMessages) {
       addCanonicalRow(message);
