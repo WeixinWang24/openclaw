@@ -1,33 +1,42 @@
-import { createMessageFlow } from '../src/modules/message-flow/index.js';
+import { createMessageFlow } from './modules/message-flow/index.js';
 
 const rootEl = document.getElementById('app');
 
 function createPageShell(root) {
   if (!root) {return null;}
   root.innerHTML = `
-    <main class="vio-shell">
-      <section class="vio-card">
-        <header class="vio-header">
+    <div class="vio-dashboard-shell">
+      <aside class="vio-sidebar">
+        <div class="vio-brand">
           <h1>Vio</h1>
-          <p>Phase 1 bootstrap shell: Message Flow first.</p>
+          <p>Phase 1 · Message Flow first</p>
+        </div>
+        <section class="vio-panel">
+          <h3>Sessions</h3>
+          <div id="sessions-list"></div>
+        </section>
+      </aside>
+      <section class="vio-main">
+        <header class="vio-topbar">
+          <h2>Vio Message Flow</h2>
+          <p>Current Phase 1 seed: session selection, hydration, refresh, and send initiation.</p>
         </header>
-        <section class="vio-grid">
-          <aside>
-            <h2>Sessions</h2>
-            <div id="sessions-list"></div>
-          </aside>
-          <section>
-            <h2>Message Flow</h2>
+        <section class="vio-content">
+          <section class="vio-panel">
+            <h3>Flow status</h3>
             <div id="session-status">No session selected.</div>
             <div class="vio-actions">
               <button id="refresh-session-btn" type="button">Refresh session</button>
               <button id="send-test-btn" type="button">Send test ping</button>
             </div>
+          </section>
+          <section class="vio-panel">
+            <h3>Flow preview</h3>
             <pre id="session-preview">[]</pre>
           </section>
         </section>
       </section>
-    </main>
+    </div>
   `;
   return {
     sessionsListEl: document.getElementById('sessions-list'),
@@ -189,6 +198,6 @@ async function bootstrap() {
 
 bootstrap().catch(error => {
   if (rootEl) {
-    rootEl.innerHTML = `<main class="vio-shell"><section class="vio-card"><h1>Vio</h1><p>Bootstrap failed: ${error?.message || error}</p></section></main>`;
+    rootEl.innerHTML = `<div class="vio-dashboard-shell"><section class="vio-main"><header class="vio-topbar"><h2>Vio</h2><p>Bootstrap failed: ${error?.message || error}</p></header></section></div>`;
   }
 });
