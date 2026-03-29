@@ -29,6 +29,7 @@ function createPageShell(root) {
             <div class="vio-actions">
               <button id="refresh-session-btn" type="button">Refresh session</button>
               <button id="send-test-btn" type="button">Send test ping</button>
+              <button id="send-fail-btn" type="button">Send failing ping</button>
             </div>
           </section>
           <section class="vio-panel">
@@ -45,6 +46,7 @@ function createPageShell(root) {
     sessionPreviewEl: document.getElementById('session-preview'),
     refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
     sendTestBtnEl: document.getElementById('send-test-btn'),
+    sendFailBtnEl: document.getElementById('send-fail-btn'),
   };
 }
 
@@ -147,7 +149,12 @@ function createApiClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, ...options }),
         }, 'send failed'),
-        () => mockApi.sendMessage(sessionKey, text, options),
+        () => {
+          if (options?.simulateFailure === true) {
+            throw new Error('Mock send failure');
+          }
+          return mockApi.sendMessage(sessionKey, text, options);
+        },
       );
     },
   };
@@ -228,6 +235,22 @@ async function bootstrap() {
     flow.sendMessage(sessionKey, 'Vio Phase 1 test ping').then(() => {
       if (refs.sessionStatusEl) {
         refs.sessionStatusEl.textContent = `Sent test ping to ${String(sessionKey)}; refresh scheduled.`;
+      }
+    }).catch(error => {
+      shell.markPendingFailed(sessionKey, localId);
+      if (refs.sessionStatusEl) {
+        refs.sessionStatusEl.textContent = `Send failed: ${error?.message || error}`;
+      }
+    });
+  });
+
+  refs?.sendFailBtnEl?.addEventListener('click', () => {
+    const sessionKey = flow.getActiveSessionKey();
+    if (!sessionKey) {return;}
+    const localId = shell.send(sessionKey, 'Vio Phase 1 failing ping');
+    flow.sendMessage(sessionKey, 'Vio Phase 1 failing ping', { simulateFailure: true }).then(() => {
+      if (refs.sessionStatusEl) {
+        refs.sessionStatusEl.textContent = `Unexpected success for failing ping in ${String(sessionKey)}.`;
       }
     }).catch(error => {
       shell.markPendingFailed(sessionKey, localId);
