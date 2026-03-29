@@ -1,6 +1,6 @@
 import { sendJson } from '../httpUtils.mjs';
 
-export function handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRegistry, defaultSessionKey = null }) {
+export function handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRegistry, defaultSessionKey = null, eventBridge = null }) {
   if (requestUrl.pathname === '/api/sessions' && req.method === 'GET') {
     rpcClient.call('sessions.list', { limit: Number(requestUrl.searchParams.get('limit') || 50) || 50 })
       .then(result => {
@@ -12,6 +12,9 @@ export function handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRe
               ? result
               : [];
         sessionRegistry?.replaceSessions?.(items);
+        for (const item of items.slice(0, 12)) {
+          eventBridge?.subscribeSession?.(item?.key).catch?.(() => {});
+        }
         sendJson(res, 200, {
           ok: true,
           currentSessionKey: defaultSessionKey,

@@ -55,6 +55,7 @@ export function createMessageShell({ mountEl } = {}) {
   let pendingMessages = [];
   let lastCanonicalMessages = [];
   let activeAssistantStream = null;
+  let runtimeRunHint = null;
 
   function ensureMount() {
     return mountEl || null;
@@ -162,6 +163,15 @@ export function createMessageShell({ mountEl } = {}) {
     activeAssistantStream = null;
   }
 
+  function clearRuntimeHintRows() {
+    const target = ensureMount();
+    if (!target) {return;}
+    for (const row of target.querySelectorAll('.msg-row.assistant[data-runtime-hint="true"]')) {
+      row.remove();
+    }
+    runtimeRunHint = null;
+  }
+
   function getOrCreateActiveStreamRow(sessionKey, runId = null) {
     const target = ensureMount();
     if (!target || !sessionKey || mountedSessionKey !== sessionKey) {return null;}
@@ -189,6 +199,7 @@ export function createMessageShell({ mountEl } = {}) {
     lastCanonicalMessages = sourceMessages;
     target.innerHTML = '';
     clearActiveStreamRows();
+    clearRuntimeHintRows();
     for (const message of sourceMessages) {
       addCanonicalRow(message);
     }
@@ -282,6 +293,43 @@ export function createMessageShell({ mountEl } = {}) {
     };
   }
 
+  function setRuntimeRunHint(sessionKey, { runId = null, status = null, text = '' } = {}) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
+    const target = ensureMount();
+    if (!target) {return false;}
+    clearRuntimeHintRows();
+    if (!status) {return false;}
+    const normalizedStatus = String(status).toLowerCase();
+    if (!['started', 'acknowledged', 'streaming', 'finalizing', 'final'].includes(normalizedStatus)) {
+      return false;
+    }
+    const hasAssistantCanonical = lastCanonicalMessages.some(message => normalizeMessageRole(message) === 'assistant');
+    if (normalizedStatus === 'final' && hasAssistantCanonical) {
+      return false;
+    }
+    runtimeRunHint = { runId, status: normalizedStatus, text: String(text || '') };
+    const label = normalizedStatus === 'acknowledged'
+      ? 'thinking…'
+      : normalizedStatus === 'final'
+        ? 'finalizing…'
+        : `${normalizedStatus}…`;
+    const row = createMessageRow('assistant', runtimeRunHint.text || label, {
+      status: normalizedStatus,
+      streamRunId: runId || 'runtime-hint',
+      messageRole: 'runtime-hint',
+      extraClass: 'stream',
+    });
+    row.dataset.runtimeHint = 'true';
+    target.appendChild(row);
+    return true;
+  }
+
+  function clearRuntimeRunHint(sessionKey = null) {
+    if (sessionKey && mountedSessionKey !== sessionKey) {return false;}
+    clearRuntimeHintRows();
+    return true;
+  }
+
   function getMountedSessionKey() {
     return mountedSessionKey;
   }
@@ -292,6 +340,7 @@ export function createMessageShell({ mountEl } = {}) {
       pendingMessages,
       lastCanonicalMessages,
       activeAssistantStream,
+      runtimeRunHint,
     };
   }
 
@@ -306,6 +355,8 @@ export function createMessageShell({ mountEl } = {}) {
     handleDelta,
     handleFinal,
     snapshotActiveStream,
+    setRuntimeRunHint,
+    clearRuntimeRunHint,
     getMountedSessionKey,
     getDebugState,
     hasPendingMessage(sessionKey, localId) {

@@ -90,6 +90,8 @@ export function createApiClient() {
                 text: typeof message?.text === 'string' ? message.text : '',
               }))
             : [],
+          view: data?.view || null,
+          viewMeta: data?.viewMeta || null,
         })),
         () => mockApi.fetchSessionHistory(sessionKey),
       );

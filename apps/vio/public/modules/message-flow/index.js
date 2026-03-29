@@ -13,6 +13,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     sessionLoadingState: new Set(),
     sessionRefreshTimers: new Map(),
     pendingRefreshPlans: new Map(),
+    sessionViews: new Map(),
+    sessionViewMeta: new Map(),
   };
 
   function getSessionMeta(sessionKey) {
@@ -70,6 +72,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     }
     const messages = normalizeMessages(Array.isArray(data?.messages) ? data.messages : data);
     state.sessionMessages.set(sessionKey, messages);
+    state.sessionViews.set(sessionKey, data?.view || null);
+    state.sessionViewMeta.set(sessionKey, data?.viewMeta || null);
     const meta = getSessionMeta(sessionKey);
     meta.dirty = false;
     meta.pending = false;
@@ -104,6 +108,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       meta: getSessionMeta(sessionKey),
       isActive: state.activeSessionKey === sessionKey,
       selectionSeq,
+      view: state.sessionViews.get(sessionKey) || null,
+      viewMeta: state.sessionViewMeta.get(sessionKey) || null,
     });
     return messages;
   }
@@ -135,6 +141,20 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       meta.pending = false;
     }
 
+    const viewMeta = state.sessionViewMeta.get(sessionKey) || null;
+    const activeRunId = viewMeta?.activeRunId || null;
+    const activeRunStatus = viewMeta?.activeRunStatus || null;
+    if (state.activeSessionKey === sessionKey) {
+      if (activeRunId && activeRunStatus) {
+        shell?.setRuntimeRunHint?.(sessionKey, {
+          runId: activeRunId,
+          status: activeRunStatus,
+        });
+      } else {
+        shell?.clearRuntimeRunHint?.(sessionKey);
+      }
+    }
+
     if (cacheOnly) {
       if (state.activeSessionKey === sessionKey) {
         renderChrome?.(sessionKey, {
@@ -146,6 +166,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
           activeSessionKey: state.activeSessionKey,
           meta,
           isActive: state.activeSessionKey === sessionKey,
+          view: state.sessionViews.get(sessionKey) || null,
+          viewMeta: state.sessionViewMeta.get(sessionKey) || null,
         });
       }
       return messages;
@@ -160,6 +182,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
         activeSessionKey: state.activeSessionKey,
         meta,
         isActive: state.activeSessionKey === sessionKey,
+        view: state.sessionViews.get(sessionKey) || null,
+        viewMeta: state.sessionViewMeta.get(sessionKey) || null,
       });
     }
     return messages;
@@ -292,5 +316,11 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     getSessionMeta,
     getSessionMessages,
     isSessionLoading,
+    getSessionView(sessionKey = null) {
+      return state.sessionViews.get(sessionKey || state.activeSessionKey) || null;
+    },
+    getSessionViewMeta(sessionKey = null) {
+      return state.sessionViewMeta.get(sessionKey || state.activeSessionKey) || null;
+    },
   };
 }
