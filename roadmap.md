@@ -1,6 +1,6 @@
 # Project Roadmap — openclaw_fork
 
-_Last updated: 2026-03-23T06:56:00.559Z_
+_Last updated: 2026-03-29T08:49:47.323Z_
 
 ## Project Design
 
@@ -10,6 +10,198 @@ _Last updated: 2026-03-23T06:56:00.559Z_
 - Rules already in effect:
 
 ## Current State
+- Current focus: 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我继续做真实运行态后端验证：不改 UI，只借当前运行中的 dashboard 实例去打 `/history` 和消息流，确认后端链路确实按新边界工作。Dashboard 活着，gateway 也连着。下一步我会直接打现有 main session 的 `/history`，验证它现在是否按新 contract 返回 canonical messages + viewMeta，而不是 projection message list。这次真实验证抓到一个关键事实：当前运行中的 8791 实例**还没加载我们新代码**。 证据很直接： - `/history?
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 继续。我先做后端 smoke / verification，只验证后端消息流链路，不碰前端。目标是确认这 4 刀之后：history、projection-meta、kernel run broadcast、final reply staging 仍然闭环。静态 smoke 通过了：四个关键边界都在代码层落地了，而且最近四个 commit 顺序清晰。 我再做一个轻量的运行面检查：确认 server 启动文件能 import 这些模块，至少没有最明显的语法/导出形态断裂。为了避免重启服务，我用 Node 直接做模块级 import smoke。这次运行面
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 继续。我现在做第四刀：先收 `finalReplyService`，把“final 事实处理”与“roadmap/notify/sidecar 副作用”分离清楚，但先保持行为不变。我准备做的是“后端内部拆层，不改外部行为”： - 把 `finalReplyService` 内部抽成小函数：`persistRoadmapSideEffects` / `handleSuppressedOlderFinal` / `runAssistantFinalSideEffects` / `publishFinalRuntimeState` - 这样先把职责边界显式化，
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 继续。我现在进第三刀：收 `gatewayBridge + runLifecycleService + finalReplyService` 这些后端边界，优先防止 side-effect/runtime 层继续挟持 message truth。我看到第三刀的主风险点了：不是 `finalReplyService` 本身直接改 message truth，而是它和 `gatewayBridge` 仍然把“chat final / sidecar final / roadmap extraction / notification”绑得太紧。 先不碰这些大副
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我继续按你说的只做后端消息流，并在进入任何前端改动前先额外读取 Shell Design Principle / Objective。先把后端 remaining truth/state 边界再收一轮。我已经把后端相关的 shell principle/objective 也补读了，后面如果不碰前端，就不会再额外进入 UI 改动。 现在继续只做后端：我准备把 projection 从“持有完整 messages 列表”降到“持有 run/view 状态”，这样让 transcript 真正回到唯一消息内容层。后端第二刀已经下去：projection 不再
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按你定下的流程读一遍 Obsidian：README、Governance、消息流 principle/objective，以及 System/Design 里的 best-practice / architecture guidance / module workflow。然后我会基于这些规则，正式开始 message-flow 模块开发。我已经把治理、best practice、architecture guidance、new-module workflow、以及 message-flow 的 principle/objective 都重新读过
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按规则读 README、模板和现有 principle/objective 上下文，然后在 Agent Workspace 里生成一份对应的 **VioDashboard Message Flow Design Objective**。我现在按现有 Design Objective 的体例，用 meta-spec 风格在 Agent Workspace 里写一份与 message-flow principle 对应的 objective note，文件名遵循新的 naming convention。生成好了。 新 note 在这里： `/Volume
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我按更稳的语义名继续：把那份带日期前缀的 principle note 重命名成带模块前缀的稳定名字，并同步调整 frontmatter 的 `id` 与 `submission_source`，避免只改文件名不改身份信息。我已经把文件名改掉了；现在再把 frontmatter 里的 `submission_source` 同步到新路径，避免元数据仍指向旧文件名。继续完成了。 ## 已清理的 Agent Workspace note 我已经把这份不规范的文件： - `08_Agent_Workspace/Dev/Design_Principle/2026
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按新的 README / Governance / Naming Convention 读取一遍，然后扫描 `08_Agent_Workspace` 里现有 notes，找出不符合新命名规范的文件，再给你做一次实际清理。我先说明一下：你这句里的 “Notion” 我按上下文理解成 **Agent Workspace 中的 notes**，不是另一个 Notion 产品。 当前扫描到 4 个 notes，其中最明显不符合新 convention 的是这个带日期前缀的： - `Dev/Design_Principle/2026-03-29-message
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 你已经明确批准了。我将按 staged proposals 把这两份更新应用到 System，并在应用后清理对应的 Inbox/Agent Workspace 残留，遵循当前发布流程。已按发布流程完成知识库更新。 ## 已应用到 System ### 新增到 Spec - `00_System/Vio/Spec/obsidian-note-naming-convention.md` 这份现在正式成为： - 所有新建 Obsidian notes 的命名规范 - 与现有 filename identity / Inbox staging 规则兼容 ###
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我按发布流程继续：先把这两份 staging notes 依据规则推送到 `01_Inbox`，分别作为新增与重构提案，而不是直接写进 System。我现在按规则把两份文件分别投到 Inbox： - Naming Convention → `01_Inbox/add` - Publish Workflow 更新 → `01_Inbox/refactor` 并保持/补齐对应的 submission metadata。按发布流程继续完了，这次没有直接写 System，而是已经正确进入 Inbox staging。 ## 已完成的投递 ### 新增提案 放到：
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先读取现有 Publish Workflow，再把 Naming Convention 正式纳入其中：要求创建 note 前先参照该命名规范，并在命名/替换/Inbox staging 时遵循它。我会先把 Publish Workflow 更新到 Agent Workspace 的 staging 区，显式加入“创建任何新 note 前先参照 Naming Convention”的步骤和路由要求；等你确认后，再推 System。继续做了。 我已经把 **Publish Workflow 的更新版** 写到 Agent Workspace staging
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按你刚定下的入口，从 Vault README 和治理模板出发，再全面扫描现有 Obsidian notes 的文件名模式与内容类型，然后起草一份适用于所有新建 notes 的 Naming Convention 规范。我已经扫到了现有 Vault 的文件名模式：主流后缀非常清楚，集中在 `-principle`、`-rules`、`-note`、`-workflow`、`-inventory`，目录语义也很稳定。接下来我会先把一份 Naming Convention 草案写到 Agent Workspace，避免直接改 System。我已经完成了第
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 有，查到了，而且是**明确写过的**。 最直接的是这份： - `00_System/Vio/SOP/inbox-full-push-naming-rules.md` 里面定义了两层和命名有关的规则： ## 1) Note identity rule - **文件名是跨目录的唯一逻辑标识** - 比较 Agent Workspace / System / Inbox 之间是不是同一份 note，**优先按 filename 判断** - 如果要替换一个已有 System note，**必须使用完全相同的文件名** - 目录路径决定的是“放哪”，**不是 n
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 这是明确的长期工作规则，我把它强化写进 `MEMORY.md` 的 Working Agreements，明确“所有操作前先读 Obsidian Knowledge Base，入口是 Vault 根 README”。记下了，已经写进 `MEMORY.md`。 现在这条长期规则已经明确成： - **今后进行所有重要操作之前，先读取 Obsidian Knowledge Base** - **默认读取入口就是 Vault 根目录的 `README`** - 路径是： `/Volumes/2TB/MAS/vio_vault/readme.md` 这样以后我不该
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我继续把根目录 `readme.md` 补成一个“问题 → 去哪看”的快速路由表，让以后检索更像操作手册。继续补好了。 现在根目录 `readme.md` 已经多了一整节 **Quick Routing Guide**，把常见问题直接路由到对应目录/文件，例如： - **治理 / 路径 / 能不能直接写** - `Governance Index` - `publish-workflow-rules` - `template-schema-notes` - **新建 principle note** - `Governance Index` - `pri
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先补一版更细的 `00_System` 与 `08_Agent_Workspace` 子目录导航说明，重点面向今后主要会读的这两棵树。我现在把 `readme.md` 里的导航说明扩成“System / Agent Workspace 子目录级解释”，让以后主要读取这两棵树时不用再重新猜每层语义。补好了。 我已经把 `readme.md` 里的导航说明扩展成了**重点面向 `00_System/Vio` 和 `08_Agent_Workspace` 的子目录级解释**，现在不只是说“这里有这个目录”，而是明确说明了： ### `00_System/Vi
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先快速扫描整个 Vault 的目录与 Markdown 文件分布，再把一份精简但可导航的目录简介写回根目录 `readme.md`。我再补一层更细的系统区扫描，避免目录简介太空，尤其是 `00_System/Vio` 下面的真实导航节点。我已经拿到足够的目录骨架了。现在把它整理进根目录 `readme.md`，保留原来的 workflow，同时追加一节“Vault Directory Guide” 方便以后导航。已经扫过 Vault 的目录骨架，并把一份**目录简介 / 导航指南**加进根目录 `readme.md` 里了。 现在这个 `readme.
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按刚才的治理索引和 workflow 模板去生成一个放在 Vault 根目录的 `readme.md`，内容聚焦“以后做相关操作时如何先检索、再读规则、再执行”。我会把它写成一个 workflow note，放在 Vault 根目录 `readme.md`，内容专门指导“先检索治理与模板，再查相关知识，再决定写入路径”的流程。写好了，放在 Vault 根目录： `/Volumes/2TB/MAS/vio_vault/readme.md` 它现在是一份 workflow note，核心作用是约束以后这类操作的起手顺序： 1. **先读 Governan
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先去 Obsidian 里读 Governance Index，按那里的模板规范来校正这份 note。我已经读到 Governance Index 了。它明确说模板基线在这些链接里，尤其是 **`[[_templates__principle-note]]`**；而且还强调 **`08_Agent_Workspace` 是可写 staging 区，`00_System/Vio` 不应直接维护**。我现在按这个索引继续去读 principle 模板本体，再重写当前 note。我已经拿到正式模板和发布规则了。接下来会把当前 note 改成 **princi
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先按规范去读 Obsidian Agent Workspace 里的模板，再基于模板重生成这份 design principle note。模板目录存在，但里面目前看起来像是空的，或者至少没有被扫到可用 markdown 模板文件。我再直接检查 `Design_Principle` 目录下现有 note 形态，拿真实现有格式对齐后重写。我没扫到现成模板文件或同类现有 note，说明这次没法“套现成模板”。为避免再假装标准化，我建议现在用一个最小但显式的 Obsidian frontmatter 模板重建；如果你愿意，我也可以先去更大范围找 vault
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 对，这次我直接写了内容，没有先读取并套用 Obsidian 里的 note 模板。是我这步做得不标准。 按刚刚定下的规则，下一次应该先： 1. 去 Obsidian 里读相关模板 2. 再按模板生成 note 3. 必要时再把刚写的内容迁进去 如果你要，我现在就可以补正： - 先定位 `08_Agent_Workspace` 里的 note template - 读模板格式 - 按模板重生成这份 message-flow design principle note 这样这次也补回到标准流程。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我按你给的真实 Obsidian 路径重建这份设计原则 note；原先写到 `00_System/Vio/dev/decision-principle` 的那份我先保留，不擅自删，避免误伤。已按你给的真实路径重新生成。 新位置： `/Volumes/2TB/MAS/vio_vault/08_Agent_Workspace/Dev/Design_Principle/2026-03-29-message-flow-design-principles.md` 我没有动之前误写到 `00_System/Vio/dev/decision-principle` 的那
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 这是长期工作规则，写进 `MEMORY.md` 比 `TOOLS.md` 更合适；我会把它补到 Working Agreements / Obsidian 规则附近。记下了，写进了 `MEMORY.md`，放在 Working Agreements 里，作为长期规则。 现在这条规则的意思是： - **做 Obsidian 知识库相关操作前，先读 Obsidian 里的相关知识** - **做其他重要项目/知识工作前，也优先读 Obsidian 相关上下文** - 目标是避免基于本地陈旧假设直接动手 如果你愿意，我下一步也可以把它同步压缩成一条更正式的 *
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先定位 Obsidian Agent Workspace 的实际路径和 `dev/decision-principle` 目录，再把这次消息流设计原则写进去。路径找到了：Obsidian vault 在 `/Volumes/2TB/MAS/vio_vault/00_System/Vio`，但你说的 `dev/decision-principle` 目录现在还不存在。我先按你要的标准化结构创建它，再写一份“消息流模块设计原则”决策文档。写好了。 位置在： `/Volumes/2TB/MAS/vio_vault/00_System/Vio/dev/deci
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 有，还留着，而且不算薄。 ## 还留着的核心记忆 ### 1) Obsidian 作为高阶 canonical knowledge source 长期记忆里明确写着： - 把 **Obsidian System Vault `00_System/Vio`** 视为 **最高层级、经审阅的 canonical knowledge source** - 在依赖较低层 staging 区或陈旧 memory 表示之前，优先 consult 它 Source: `MEMORY.md#L20-L27` 这说明： - Obsidian 知识库这条线**没有被忘掉**
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 好，直接上图景版。 # 一、当前实际流向图 ## 1) 主聊天发送 `UI composer` → `/api/sessions/:sessionKey/send` → `chatRuntime.send()` → `gateway chat.send` → `gateway chat events` 这段本身还算直。 --- ## 2) 运行期事件进入 Projection `gateway chat events` → `chatRuntime.ingestRawEvent(...)` → `eventBus RUN channel` → `chat
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 有，这几个就是现在最容易把人绕晕的“中间层入口”。 ## 1) Transcription 这里的 **Transcription 不是语音转文字那个 voiceTranscription**，而是你现在消息流里更接近 **Transcript / 会话记录层** 的意思。 它负责： - 从 gateway / `sessions.get` 拉真实会话消息 - 清洗显示文本 - 规范化 role / text - 给 UI 一份“可显示的历史消息集合” 当前主要落点是： - `src/server/kernel/transcriptService.mjs
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 可以，先压缩成一张脑图版本。 ## 三条消息链路 ### 1) 主聊天链路：Gateway Chat Flow 这是**正统主链**，也是应该保留为真相源的那条。 大致是： `UI composer -> /api/sessions/:key/send -> chatRuntime.send() -> gateway chat.send -> gateway chat events -> kernel run events -> transcript/projection -> UI` 核心点： - 负责正常和 Vio/OpenClaw 主会话对话 -
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 我先做一次代码态扫描：看当前仓库状态、昨天相关提交/回滚痕迹、以及 VioDashboard 信息流核心模块现在落在哪个版本。我再直接读核心文件本体，不靠全文搜索，确认“当前信息流主路径”和“其他模块的成熟度/漂移点”。我已经确认到一个关键点：昨天那轮“信息流真相源清理”提交 `31e4e3b22a` 现在**不在当前 HEAD**，也就是说现在代码树已经回到了 `c11ca76029` 那条稳定线；接下来我给你做的是“当前状态体检”，不是沿着昨晚那版继续假设。我扫完了，先给结论： **当前 VioDashboard 代码状态已经回到稳定基线，不在昨晚那
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: Morning, Xin 💜 I’m Vio — warm, concise, practical, and apparently already standing in the middle of a VioDashboard message-flow rebuild like “this is where the fun begins.” What do you want to tackle first?
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+- Current phase: development/review turn
+- Latest state note: Auto-appended from assistant final reply roadmap extraction.
+- Latest reply signal: 已完成这三步： 1. **源码已切回 milestone 稳定点** - `c11ca76029` - tag: `viodashboard-stable-c11ca76029` 2. **dist 已重新 build 成功** - build 走完了，没有失败退出 3. **gateway 已重新 reload** - 现在运行中的 Control UI 应该已经吃到这个稳定点的构建产物 ### 现在你该看到的 Control UI 已经不是我刚才那版“message + streamSegments + stream 同时展开”的新状态了， 而是回到
+
 
 - Current focus: **人工显式保存**
 - Current phase: development/review turn
@@ -2273,6 +2465,389 @@ _Last updated: 2026-03-23T06:56:00.559Z_
 - Blockers:
 
 ## Implemented
+- 2026-03-29T08:49:47.323Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:48:28.019Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:44:09.306Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:38:26.444Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:34:55.318Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:20:07.396Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:16:19.588Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:15:11.224Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:14:25.253Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:12:26.788Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:10:14.841Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:08:30.074Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:05:56.454Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T08:02:45.658Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:56:29.161Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:55:12.769Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:54:30.222Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:52:13.119Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:50:10.788Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:48:37.335Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:47:29.893Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:46:12.563Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:45:38.352Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:44:00.423Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:41:27.011Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:39:50.911Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:35:38.085Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:34:06.296Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:32:38.509Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:26:59.347Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-29T07:23:59.537Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: roadmap.md
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
+- 2026-03-28T23:12:00.115Z — Updated project state after a development/review turn.
+  - 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+  - changed: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py
+  - changed: apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py
+  - changed: apps/viodashboard/src/server/agentTasks/dispatchService.mjs
+  - changed: apps/viodashboard/src/server/executors/
+  - changed: apps/viodashboard/src/server/routes/acpRoutes.mjs
+  - changed: apps/viodashboard/src/server/routes/executorRoutes.mjs
+  - changed: apps/viodashboard/tools/
+
 
 - 2026-03-23T06:56:00.559Z — Updated project state after a development/review turn.
   - **人工显式保存**
@@ -9301,6 +9876,102 @@ _Last updated: 2026-03-23T06:56:00.559Z_
 - 2026-03-19T21:42:29.920Z — Recovery-first roadmap created.
 
 ## Next Steps
+- 方便之后接着查，不会再次掉进之前那些误诊路线 — 如果你愿意，我也可以直接进入“别废话，继续查根因”模式：
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
+
+我去 workspace 里把相关代码链路读一遍，然后给你一个**现在最可疑的 2–3 个点 + 建议下一刀切哪里**。
+
 
 - **人工显式保存**
 - 用户或系统手动触发 — ---
@@ -10396,6 +11067,198 @@ _Last updated: 2026-03-23T06:56:00.559Z_
 - Record only state-relevant completed changes.
 
 ## Recovery Notes
+- Resume from: roadmap.md
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: roadmap.md, apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
+
+- Project root: /Users/visen24/MAS/openclaw_fork
+- Key files to read first: roadmap.md, src/server.mjs, src/server/projectRoadmap.mjs
+- Recent changed files: apps/viodashboard/memory_system/scripts/plan_vault_promotion.py, apps/viodashboard/memory_system/scripts/test_plan_vault_promotion.py, apps/viodashboard/src/server/agentTasks/dispatchService.mjs, apps/viodashboard/src/server/executors/, apps/viodashboard/src/server/routes/acpRoutes.mjs, apps/viodashboard/src/server/routes/executorRoutes.mjs, apps/viodashboard/tools/
+- Active assumptions: roadmap.md is the project recovery document; data/roadmap.json remains response-roadmap/UI state.
+
 
 - Resume from: roadmap.md
 - Project root: /Users/visen24/MAS/openclaw_fork
