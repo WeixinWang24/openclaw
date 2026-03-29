@@ -3262,60 +3262,7 @@ function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
 }
 
 function applyKernelRunViewPacket(msg = {}) {
-  const event = msg?.event || {};
-  const sessionKey = event?.sessionKey || null;
-  if (!sessionKey) {return;}
-
-  const runState = getSessionRunState(sessionKey);
-  const runId = event?.runId || runState.runId || null;
-  if (runId) {
-    runState.runId = runId;
-  }
-
-  const isSelectedSession = selectedSessionKey === sessionKey;
-  const isDelta = event?.type === 'run.delta';
-
-  if (isDelta) {
-    runState.state = 'streaming';
-    runState.streamText = sanitizeDisplayedChatText(String(event?.accumulatedText || event?.textDelta || ''));
-  } else if (event?.type === 'run.final') {
-    runState.streamText = '';
-    runState.state = 'final';
-  } else if (event?.type === 'run.aborted') {
-    runState.streamText = '';
-    runState.state = 'aborted';
-  } else if (event?.type === 'run.error') {
-    runState.streamText = '';
-    runState.state = 'error';
-  }
-
-  if (msg?.viewMeta) {
-    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: !(isSelectedSession && isDelta) });
-    if (isSelectedSession && isDelta) {
-      const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
-      if (!patched) {
-        ensureStreamingMessageEl(runId, runState.streamText || '');
-      }
-    }
-    if (event?.type === 'run.final') {
-      scheduleSessionRefresh(sessionKey, 'run-final', 0);
-    }
-    return;
-  }
-
-  if (isSelectedSession) {
-    if (isDelta) {
-      const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
-      if (!patched) {
-        ensureStreamingMessageEl(runId, runState.streamText || '');
-      }
-      return;
-    }
-    if (event?.type === 'run.final') {
-      scheduleSessionRefresh(sessionKey, 'run-final', 0);
-    }
-    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
-  }
+  handleMessageFlowKernelRun(msg);
 }
 
 function hasStreamingRowMounted(sessionKey, runId = null) {
@@ -3358,6 +3305,63 @@ function handleMessageFlowSessionUpdated(msg = {}) {
   addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
   const delay = sessionKey === selectedSessionKey ? 0 : 1200;
   scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
+}
+
+function handleMessageFlowKernelRun(msg = {}) {
+  const event = msg?.event || {};
+  const sessionKey = event?.sessionKey || null;
+  if (!sessionKey) {return;}
+
+  const runState = getSessionRunState(sessionKey);
+  const runId = event?.runId || runState.runId || null;
+  if (runId) {
+    runState.runId = runId;
+  }
+
+  const isSelectedSession = selectedSessionKey === sessionKey;
+  const isDelta = event?.type === 'run.delta';
+  const isFinal = event?.type === 'run.final';
+
+  if (isDelta) {
+    runState.state = 'streaming';
+    runState.streamText = sanitizeDisplayedChatText(String(event?.accumulatedText || event?.textDelta || ''));
+  } else if (isFinal) {
+    runState.streamText = '';
+    runState.state = 'final';
+  } else if (event?.type === 'run.aborted') {
+    runState.streamText = '';
+    runState.state = 'aborted';
+  } else if (event?.type === 'run.error') {
+    runState.streamText = '';
+    runState.state = 'error';
+  }
+
+  if (msg?.viewMeta) {
+    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: !(isSelectedSession && isDelta) });
+  }
+
+  if (!isSelectedSession) {
+    if (isFinal) {
+      scheduleSessionRefresh(sessionKey, 'run-final', 0);
+    }
+    return;
+  }
+
+  if (isDelta) {
+    const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
+    if (!patched) {
+      ensureStreamingMessageEl(runId, runState.streamText || '');
+    }
+    return;
+  }
+
+  if (isFinal) {
+    clearStreamingMessageEl(runId || null);
+    scheduleSessionRefresh(sessionKey, 'run-final', 0);
+    return;
+  }
+
+  renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
 }
 
 function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
