@@ -3030,7 +3030,7 @@ async function sendToSelectedSession(outboundText, { userText = '', attachments 
   });
   if (data?.view) {
     try {
-      applyProjectionViewToSession(targetSessionKey, data.view);
+      applyProjectionViewToSession(targetSessionKey, data.viewMeta || data.view);
     } catch (error) {
       addDebugLine(`sendToSelectedSession: immediate projection apply failed: ${error?.message || error}`, 'pink');
     }
@@ -3187,39 +3187,29 @@ function pruneSupersededStreamingMessages(messages = []) {
 }
 
 function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
-  if (!sessionKey || !view || !Array.isArray(view.messages)) {return;}
-  const normalized = pruneSupersededStreamingMessages(view.messages
-    .map(message => ({
-      id: message.id || null,
-      runId: message.id && String(message.id).startsWith('assistant:') ? String(message.id).slice('assistant:'.length) : null,
-      role: message.role || 'assistant',
-      text: typeof message.text === 'string' ? message.text : '',
-      status: message.status || 'final',
-    }))
-    .filter(message => shouldDisplayChatMessage(message)));
-
+  if (!sessionKey || !view) {return;}
   const runState = getSessionRunState(sessionKey);
-  const hasStreamingAssistantForActiveRun =
-    !!runState?.runId &&
-    normalized.some(message =>
-      message?.role === 'assistant' &&
-      message?.status === 'streaming' &&
-      (message?.runId === runState.runId || message?.id === runState.runId || message?.id === `assistant:${runState.runId}`),
-    );
-  if (runState?.runId && runState?.streamText && !hasStreamingAssistantForActiveRun) {
-    normalized.push({
-      id: `assistant:${runState.runId}`,
-      runId: runState.runId,
-      role: 'assistant',
-      text: runState.streamText,
-      status: 'streaming',
-    });
+  const runs = Array.isArray(view?.runs) ? view.runs : [];
+  const activeRunId = view?.activeRunId || null;
+  const activeRunStatus = view?.activeRunStatus || null;
+  const activeRun = activeRunId
+    ? runs.find(run => run?.runId === activeRunId) || null
+    : null;
+
+  if (activeRunId) {
+    runState.runId = activeRunId;
+  }
+  if (activeRunStatus) {
+    runState.state = activeRunStatus;
+  }
+  if (activeRun && typeof activeRun.text === 'string') {
+    runState.streamText = sanitizeDisplayedChatText(activeRun.text || '');
+  } else if (activeRunStatus !== 'streaming') {
+    runState.streamText = '';
   }
 
-  sessionMessages.set(sessionKey, normalized);
-  reconcileRunStateFromMessages(sessionKey, normalized, view?.runs ? 'projection-view' : 'transcript-view');
   if (selectedSessionKey === sessionKey && options.render !== false) {
-    renderSessionMessages(sessionKey, normalized);
+    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
   }
 }
 
@@ -3251,8 +3241,8 @@ function applyKernelRunViewPacket(msg = {}) {
     runState.state = 'error';
   }
 
-  if (msg?.view) {
-    applyProjectionViewToSession(sessionKey, msg.view, { render: !(isSelectedSession && isDelta) });
+  if (msg?.viewMeta) {
+    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: !(isSelectedSession && isDelta) });
     if (isSelectedSession && isDelta) {
       const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
       if (!patched) {
@@ -3290,8 +3280,8 @@ function applyProjectionTranscriptPacket(msg = {}) {
     selectedSessionKey === sessionKey &&
     runState?.state === 'streaming' &&
     hasStreamingRowMounted(sessionKey, runState?.runId || null);
-  if (msg?.view) {
-    applyProjectionViewToSession(sessionKey, msg.view, { render: !suppressRender });
+  if (msg?.viewMeta) {
+    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: !suppressRender });
   }
 }
 
