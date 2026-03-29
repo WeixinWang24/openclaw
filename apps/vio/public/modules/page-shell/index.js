@@ -1,20 +1,20 @@
 export function createPageShell(root) {
   if (!root) {return null;}
   root.innerHTML = `
-    <div class="dashboard ide-layout vio-phase-shell">
+    <div class="dashboard ide-layout">
       <header class="topbar card cyan">
         <div class="topbar-main">
           <div class="brand">
             <div class="brand-mark">V</div>
             <div class="brand-text">
-              <h1>Vio</h1>
-              <p>Phase 1 · gateway message runtime</p>
+              <h1>Vio Dashboard</h1>
+              <p>Gateway chat · reset shell on old VioDashboard layout</p>
             </div>
           </div>
           <div class="topbar-right">
-            <button type="button" class="chip mode-chip state-idle">mode: phase-1</button>
+            <button id="runModeChip" type="button" class="chip mode-chip state-idle">mode: source</button>
             <div id="session-status-chip" class="chip live">runtime: booting</div>
-            <div class="chip">layout: migrated</div>
+            <div id="routing" class="chip">routing: live</div>
           </div>
         </div>
       </header>
@@ -27,17 +27,17 @@ export function createPageShell(root) {
           </div>
           <section class="file-browser-panel explorer-pane vio-placeholder-pane">
             <div class="vio-placeholder-title">Placeholder</div>
-            <div class="vio-placeholder-body">Explorer layout migrated from old VioDashboard. Phase 1 does not wire file browsing yet.</div>
+            <div class="vio-placeholder-body">Old VioDashboard explorer shell restored first. Backend wiring comes next.</div>
           </section>
         </section>
       </aside>
 
-      <div class="resizer vertical" data-resize="sidebar" aria-hidden="true"></div>
+      <div class="resizer vertical" data-resize="sidebar" title="拖动调整左侧宽度"></div>
 
       <main class="main panel-shell">
         <section class="card section workspace-panel">
           <div class="section-header interaction-header">
-            <h2 class="section-title">Interaction</h2>
+            <h2 class="section-title">INTERACTION</h2>
             <div class="interaction-header-right">
               <div id="sessions-list" class="sessions-list sessions-list-inline"></div>
               <button id="refresh-session-btn" type="button" class="chip state-idle">refresh</button>
@@ -53,25 +53,20 @@ export function createPageShell(root) {
                     <button type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
                   </div>
                   <div class="pane-actions">
-                    <div class="event-sub"><span class="semantic-value">Phase 1 keeps these panes as layout placeholders.</span></div>
-                    <div class="workspace-code-actions">
-                      <button type="button" class="chip state-idle" disabled>undo</button>
-                      <button type="button" class="chip state-idle" disabled>save</button>
-                      <div class="chip state-idle">preview</div>
-                    </div>
+                    <div class="event-sub"><span class="semantic-value">Old workspace shell restored. Rewiring in progress.</span></div>
                   </div>
                 </div>
                 <div class="workspace-view-stack">
                   <div class="workspace-view-pane is-active">
                     <div class="vio-placeholder-pane vio-workspace-placeholder">
-                      <div class="vio-placeholder-title">Workspace placeholder</div>
-                      <div class="vio-placeholder-body">The old VioDashboard code/replies workspace layout is preserved here, but Phase 1 does not wire editor/replies functionality yet.</div>
+                      <div class="vio-placeholder-title">Workspace restored</div>
+                      <div class="vio-placeholder-body">Using the old VioDashboard layout shell so we can reconnect the backend cleanly.</div>
                     </div>
                   </div>
                 </div>
               </section>
 
-              <div class="resizer horizontal" data-resize="editor-terminal" aria-hidden="true"></div>
+              <div class="resizer horizontal" data-resize="editor-terminal" title="拖动调整代码区/终端高度"></div>
 
               <section class="terminal-panel terminal-panel-embedded console-tabs-panel">
                 <div class="console-tabs-header">
@@ -81,15 +76,17 @@ export function createPageShell(root) {
                   </div>
                 </div>
                 <div class="console-pane-stack">
-                  <div class="console-pane is-active vio-placeholder-pane">
-                    <div class="vio-placeholder-title">Terminal / Claude placeholder</div>
-                    <div class="vio-placeholder-body">Old dashboard console layout migrated. Runtime wiring is intentionally absent in Phase 1.</div>
+                  <div class="console-pane is-active">
+                    <div class="vio-placeholder-pane">
+                      <div class="vio-placeholder-title">Console shell restored</div>
+                      <div class="vio-placeholder-body">Runtime tools will be rewired after chat/session flow is stable again.</div>
+                    </div>
                   </div>
                 </div>
               </section>
             </section>
 
-            <div class="resizer split-resizer" data-resize="workspace" aria-hidden="true"></div>
+            <div class="resizer split-resizer" data-resize="workspace" title="拖动调整编辑器/聊天比例"></div>
 
             <section class="chat-pane">
               <div class="chat-stack">
@@ -101,47 +98,37 @@ export function createPageShell(root) {
                   <div class="chip state-idle stop-status-badge" hidden>Stopped</div>
                   <button type="button" class="chat-continue-fab" disabled>继续</button>
                 </div>
-                <form class="composer-panel composer-inline" onsubmit="return false;">
+                <form id="composer-form" class="composer-panel composer-inline">
                   <div class="section-header compact composer-header">
                     <h2 class="section-title">Input</h2>
                   </div>
                   <div class="composer-shell">
                     <div class="composer-input-stack">
                       <div class="composer-toolbar">
-                        <button type="button" class="chip state-idle" disabled>Attach</button>
-                        <button type="button" class="chip state-idle" disabled>🎙️ Voice</button>
-                        <div class="composer-voice-status">Phase 1 message runtime only</div>
+                        <div id="composer-status" class="composer-voice-status">Enter newline · Shift+Enter send</div>
                       </div>
-                      <textarea id="composer-placeholder-input" placeholder="Future composer surface placeholder" rows="4" disabled></textarea>
+                      <textarea id="composer-input" placeholder="输入消息…" rows="4"></textarea>
                     </div>
-                    <button type="submit" class="send-btn" disabled>Send</button>
+                    <button id="composer-send-btn" type="submit" class="send-btn">Send</button>
                   </div>
                 </form>
               </div>
             </section>
           </div>
-
-          <div id="session-status" class="vio-status-summary">No session selected.</div>
-          <div class="vio-actions">
-            <button id="send-test-btn" type="button">Send test ping</button>
-            <button id="send-fail-btn" type="button">Send failing ping</button>
-            <button id="simulate-stream-btn" type="button">Simulate stream</button>
-          </div>
         </section>
       </main>
 
-      <div class="resizer vertical" data-resize="right" aria-hidden="true"></div>
+      <div class="resizer vertical" data-resize="right" title="拖动调整右侧宽度"></div>
 
       <section class="right panel-shell compact-rail">
         <section class="card section compact-rail-card system-core-card">
           <div class="section-header compact compact-rail-header">
             <h2 class="section-title">System</h2>
-            <div class="chip">phase-1</div>
+            <div class="chip">rewire</div>
           </div>
           <div class="status-list compact-event-list">
             <div class="agent-row"><div class="agent-left"><span class="dot status-runtime"></span><div class="agent-meta"><div class="agent-name semantic-label">Runtime</div><div id="runtime-session-summary" class="agent-sub semantic-value">No active session.</div></div></div></div>
             <div class="agent-row"><div class="agent-left"><span class="dot status-link"></span><div class="agent-meta"><div class="agent-name semantic-label">Active run</div><div id="runtime-run-summary" class="agent-sub semantic-value">No active run.</div></div></div></div>
-            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Gateway</div><div class="event-sub semantic-value">Live gateway adapter is wired in Phase 1.</div></div></div>
           </div>
         </section>
 
@@ -150,24 +137,25 @@ export function createPageShell(root) {
             <h2 class="section-title">Debug</h2>
           </div>
           <div class="event-list compact-event-list">
-            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Status</div><div class="event-sub semantic-value">Old dashboard right rail layout migrated; non-Phase-1 cards remain placeholders.</div></div></div>
-            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Next</div><div class="event-sub semantic-value">Wire more cards only when runtime boundaries are ready.</div></div></div>
+            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Status</div><div class="event-sub semantic-value">Old VioDashboard shell is now the active front-end baseline for apps/vio.</div></div></div>
+            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Next</div><div class="event-sub semantic-value">Reconnect sessions, chat send, delta stream, then restore tools progressively.</div></div></div>
           </div>
         </section>
       </section>
     </div>
   `;
+
   return {
     sessionsListEl: document.getElementById('sessions-list'),
-    sessionStatusEl: document.getElementById('session-status'),
     sessionStatusChipEl: document.getElementById('session-status-chip'),
     sessionPreviewEl: document.getElementById('session-preview'),
     refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
-    sendTestBtnEl: document.getElementById('send-test-btn'),
-    sendFailBtnEl: document.getElementById('send-fail-btn'),
-    simulateStreamBtnEl: document.getElementById('simulate-stream-btn'),
     runtimeSessionSummaryEl: document.getElementById('runtime-session-summary'),
     runtimeRunSummaryEl: document.getElementById('runtime-run-summary'),
+    composerFormEl: document.getElementById('composer-form'),
+    composerInputEl: document.getElementById('composer-input'),
+    composerSendBtnEl: document.getElementById('composer-send-btn'),
+    composerStatusEl: document.getElementById('composer-status'),
   };
 }
 
@@ -200,7 +188,7 @@ export function renderPreviewPlaceholder(refs, { title = 'Flow preview', text = 
 
 export function renderBootError(root, error) {
   if (!root) {return;}
-  root.innerHTML = `<div class="dashboard ide-layout vio-phase-shell"><header class="topbar card cyan"><div class="topbar-main"><div class="brand"><div class="brand-mark">V</div><div class="brand-text"><h1>Vio</h1><p>Bootstrap failed: ${String(error?.message || error)}</p></div></div></div></header></div>`;
+  root.innerHTML = `<div class="dashboard ide-layout"><header class="topbar card cyan"><div class="topbar-main"><div class="brand"><div class="brand-mark">V</div><div class="brand-text"><h1>Vio</h1><p>Bootstrap failed: ${String(error?.message || error)}</p></div></div></div></header></div>`;
 }
 
 export function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = null, sessionMeta = null, sessionLoadingState = null } = {}) {
@@ -213,54 +201,40 @@ export function renderSessionListView(flow, refs, { sessions = [], activeSession
     button.dataset.selected = session.key === activeSessionKey ? 'true' : 'false';
     const meta = sessionMeta?.get?.(session.key) || null;
     const loading = !!sessionLoadingState?.has?.(session.key);
-    const suffix = loading
-      ? ' · loading'
-      : meta?.pending
-        ? ' · pending'
-        : meta?.dirty
-          ? ' · dirty'
-          : '';
-    button.textContent = `${session.label || session.displayName || session.key || 'session'}${suffix}`;
+    const rawKey = String(session.key || '');
+    const label = session.label || session.displayName || session.key || 'session';
+    let badge = '';
+    if (rawKey === 'agent:main:main' || rawKey.endsWith(':main')) {badge = 'main';}
+    else if (rawKey.includes(':acp:')) {badge = 'acp';}
+    else if (rawKey.includes(':subagent:')) {badge = 'sub';}
+    const state = loading ? 'loading' : meta?.pending ? 'pending' : meta?.dirty ? 'dirty' : '';
+    button.innerHTML = `${badge ? `<span class="session-item-badge">${badge}</span>` : ''}<span class="session-item-title">${label}</span>${state ? `<span class="session-item-state">${state}</span>` : ''}`;
+    button.title = rawKey || label;
     button.addEventListener('click', () => {
-      flow.selectSession(session.key).catch(error => {
-        if (refs.sessionStatusEl) {
-          refs.sessionStatusEl.textContent = `Session switch failed: ${error?.message || error}`;
-        }
-      });
+      flow.selectSession(session.key).catch(() => {});
     });
     refs.sessionsListEl.appendChild(button);
   }
 }
 
-export function renderSessionStatus(refs, flow, sessionKey, { loading = false, messages = null, reconciled = false, reason = null, meta = null, view = null, viewMeta = null } = {}) {
-  if (!refs?.sessionStatusEl) {return;}
+export function renderSessionStatus(refs, flow, sessionKey, { loading = false, messages = null, reconciled = false, meta = null, view = null, viewMeta = null } = {}) {
   if (loading) {
-    refs.sessionStatusEl.textContent = `Loading session: ${sessionKey}`;
-    if (refs.sessionStatusChipEl) {
-      refs.sessionStatusChipEl.textContent = 'runtime: loading';
-    }
+    if (refs?.sessionStatusChipEl) {refs.sessionStatusChipEl.textContent = 'runtime: loading';}
     return;
   }
   const count = Array.isArray(messages) ? messages.length : flow?.getSessionMessages(sessionKey).length;
-  const mode = reconciled ? 'reconciled' : 'ready';
-  const pendingTag = meta?.pending ? ' · pending' : '';
-  const reasonTag = reason ? ` · ${String(reason)}` : '';
   const activeRunId = viewMeta?.activeRunId || null;
   const activeRunStatus = viewMeta?.activeRunStatus || null;
   const runCount = Array.isArray(viewMeta?.runs) ? viewMeta.runs.length : (view?.runs && typeof view.runs === 'object' ? Object.keys(view.runs).length : 0);
-  const runTag = activeRunId
-    ? ` · run:${String(activeRunStatus || 'active')} · ${String(activeRunId).slice(0, 8)}`
-    : runCount > 0
-      ? ` · runs:${runCount}`
-      : '';
-  refs.sessionStatusEl.textContent = `Selected session: ${sessionKey} · ${count} messages · ${mode}${pendingTag}${reasonTag}${runTag}`;
-  if (refs.sessionStatusChipEl) {
+  if (refs?.sessionStatusChipEl) {
     refs.sessionStatusChipEl.textContent = activeRunId ? `runtime: ${String(activeRunStatus || 'active')}` : 'runtime: idle';
   }
-  if (refs.runtimeSessionSummaryEl) {
+  if (refs?.runtimeSessionSummaryEl) {
+    const mode = reconciled ? 'reconciled' : 'ready';
+    const pendingTag = meta?.pending ? ' · pending' : '';
     refs.runtimeSessionSummaryEl.textContent = `Session ${sessionKey} · ${count} visible messages · mode ${mode}${pendingTag}`;
   }
-  if (refs.runtimeRunSummaryEl) {
+  if (refs?.runtimeRunSummaryEl) {
     refs.runtimeRunSummaryEl.textContent = activeRunId
       ? `Active run ${String(activeRunId)} · status ${String(activeRunStatus || 'active')}`
       : runCount > 0
@@ -273,60 +247,42 @@ export function bindPageShellActions({ refs, flow, shell }) {
   refs?.refreshSessionBtnEl?.addEventListener('click', () => {
     const sessionKey = flow.getActiveSessionKey();
     if (!sessionKey) {return;}
-    flow.refreshSession(sessionKey, 'manual-refresh').catch(error => {
-      if (refs.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Refresh failed: ${error?.message || error}`;
-      }
-    });
+    flow.refreshSession(sessionKey, 'manual-refresh').catch(() => {});
   });
 
-  refs?.sendTestBtnEl?.addEventListener('click', () => {
-    const sessionKey = flow.getActiveSessionKey();
-    if (!sessionKey) {return;}
-    const localId = shell.send(sessionKey, 'Vio Phase 1 test ping');
-    flow.sendMessage(sessionKey, 'Vio Phase 1 test ping', { localId }).then(() => {
-      if (refs.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Sent test ping to ${String(sessionKey)}; refresh scheduled.`;
-      }
-    }).catch(error => {
-      shell.markPendingFailed(sessionKey, localId);
-      if (refs.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Send failed: ${error?.message || error}`;
-      }
-    });
-  });
+  refs?.composerFormEl?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const sessionKey = flow?.getActiveSessionKey?.();
+    const inputEl = refs?.composerInputEl;
+    const sendBtnEl = refs?.composerSendBtnEl;
+    const statusEl = refs?.composerStatusEl;
+    const text = String(inputEl?.value || '').trim();
+    if (!sessionKey || !text) {return;}
 
-  refs?.simulateStreamBtnEl?.addEventListener('click', () => {
-    const sessionKey = flow.getActiveSessionKey();
-    if (!sessionKey) {return;}
-    window.__VIO_STREAM_TRACE__ = ['click'];
+    const localId = shell?.send?.(sessionKey, text) || null;
+    if (inputEl) {inputEl.value = '';}
+    if (sendBtnEl) {sendBtnEl.disabled = true;}
+    if (statusEl) {statusEl.textContent = 'Sending…';}
+
     try {
-      flow.simulateStream(sessionKey, {
-        trace: window.__VIO_STREAM_TRACE__,
-        reason: 'stream-simulated',
-      });
-      window.__VIO_STREAM_TRACE__.push(`debug-exists:${typeof shell.getDebugState}`);
-      window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
-      window.__VIO_STREAM_TRACE__.push('debug-set');
+      await flow?.sendMessage?.(sessionKey, text, { localId });
+      if (statusEl) {statusEl.textContent = 'Streaming…';}
+      window.setTimeout(() => {
+        if (statusEl) {statusEl.textContent = 'Enter newline · Shift+Enter send';}
+      }, 900);
     } catch (error) {
-      window.__VIO_STREAM_TRACE__.push(`simulate-error:${error?.message || error}`);
-      window.__VIO_STREAM_DEBUG__ = { error: error?.message || String(error) };
+      shell?.markPendingFailed?.(sessionKey, localId);
+      if (statusEl) {statusEl.textContent = `Send failed: ${String(error?.message || error)}`;}
+    } finally {
+      if (sendBtnEl) {sendBtnEl.disabled = false;}
     }
   });
 
-  refs?.sendFailBtnEl?.addEventListener('click', () => {
-    const sessionKey = flow.getActiveSessionKey();
-    if (!sessionKey) {return;}
-    const localId = shell.send(sessionKey, 'Vio Phase 1 failing ping');
-    flow.sendMessage(sessionKey, 'Vio Phase 1 failing ping', { simulateFailure: true, localId }).then(() => {
-      if (refs.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Unexpected success for failing ping in ${String(sessionKey)}.`;
-      }
-    }).catch(error => {
-      shell.markPendingFailed(sessionKey, localId);
-      if (refs.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Send failed: ${error?.message || error}`;
-      }
-    });
+  refs?.composerInputEl?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {return;}
+    if (event.shiftKey) {
+      event.preventDefault();
+      refs?.composerFormEl?.requestSubmit?.();
+    }
   });
 }

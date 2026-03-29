@@ -3,6 +3,98 @@ function formatStamp() {
   return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function escapeHtml(text = '') {
+  return String(text || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function renderInlineChatMarkdown(text = '') {
+  return escapeHtml(String(text || ''))
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a class="chat-link" href="$2" target="_blank" rel="noreferrer">$1</a>');
+}
+
+function renderChatMarkdown(text = '') {
+  const source = String(text || '').replace(/\r\n?/g, '\n');
+  const parts = [];
+  const fencedRe = /```([a-zA-Z0-9_-]+)?[ \t]*\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = fencedRe.exec(source)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', value: source.slice(lastIndex, match.index) });
+    }
+    parts.push({
+      type: 'code',
+      lang: String(match[1] || '').trim(),
+      value: String(match[2] || ''),
+    });
+    lastIndex = fencedRe.lastIndex;
+  }
+
+  if (lastIndex < source.length) {
+    parts.push({ type: 'text', value: source.slice(lastIndex) });
+  }
+
+  const out = [];
+  for (const part of parts) {
+    if (part.type === 'code') {
+      const langAttr = part.lang ? ` data-lang="${escapeHtml(part.lang)}"` : '';
+      out.push(`<pre class="chat-code-block"${langAttr}><code>${escapeHtml(part.value)}</code></pre>`);
+      continue;
+    }
+
+    const lines = String(part.value || '').split('\n');
+    let listType = null;
+
+    const closeList = () => {
+      if (!listType) {return;}
+      out.push(listType === 'ol' ? '</ol>' : '</ul>');
+      listType = null;
+    };
+
+    for (const rawLine of lines) {
+      const line = String(rawLine || '');
+      const trimmed = line.trim();
+      const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+
+      if (bullet || numbered) {
+        const nextListType = numbered ? 'ol' : 'ul';
+        if (listType !== nextListType) {
+          closeList();
+          out.push(nextListType === 'ol' ? '<ol class="chat-md-list">' : '<ul class="chat-md-list">');
+          listType = nextListType;
+        }
+        out.push(`<li>${renderInlineChatMarkdown((bullet || numbered)[1])}</li>`);
+        continue;
+      }
+
+      closeList();
+
+      if (!trimmed) {
+        out.push('<div class="chat-md-space"></div>');
+      } else {
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+          const level = Math.min(3, headingMatch[1].length);
+          out.push(`<div class="chat-md-h${level}">${renderInlineChatMarkdown(headingMatch[2])}</div>`);
+        } else if (/^>\s+/.test(trimmed)) {
+          out.push(`<div class="chat-md-quote">${renderInlineChatMarkdown(trimmed.replace(/^>\s+/, ''))}</div>`);
+        } else {
+          out.push(`<div class="chat-md-p">${renderInlineChatMarkdown(line)}</div>`);
+        }
+      }
+    }
+
+    closeList();
+  }
+
+  return out.join('');
+}
+
 function roleForRow(message = {}) {
   const role = String(message?.role || '').toLowerCase();
   if (role === 'user') {return 'user';}
@@ -12,6 +104,16 @@ function roleForRow(message = {}) {
 
 function normalizeMessageRole(message = {}) {
   return String(message?.role || '').toLowerCase();
+}
+
+function avatarLabel(role) {
+  return role === 'user' ? 'X' : role === 'assistant' ? 'V' : '•';
+}
+
+function avatarImageSrc(role) {
+  if (role === 'user') {return '/avatars/Xin.JPEG';}
+  if (role === 'assistant') {return '/avatars/vio.png';}
+  return null;
 }
 
 function createMessageRow(role, text, { status = null, localId = null, runId = null, streamRunId = null, messageRole = null, extraClass = '' } = {}) {
@@ -25,7 +127,20 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
 
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`.trim();
-  avatar.textContent = role === 'user' ? 'X' : role === 'assistant' ? 'V' : '•';
+  const avatarSrc = (role === 'user' || role === 'assistant') ? avatarImageSrc(role) : null;
+  if (avatarSrc) {
+    const img = document.createElement('img');
+    img.className = 'avatar-img';
+    img.alt = role === 'user' ? 'Xin avatar' : 'Vio avatar';
+    img.addEventListener('error', () => {
+      img.remove();
+      avatar.textContent = avatarLabel(role);
+    });
+    img.src = `${avatarSrc}?v=1`;
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = avatarLabel(role);
+  }
 
   const bubbleWrap = document.createElement('div');
   bubbleWrap.className = 'bubble-wrap';
@@ -36,7 +151,7 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
 
   const msg = document.createElement('div');
   msg.className = `msg ${role} ${extraClass}`.trim();
-  msg.textContent = text || '';
+  msg.innerHTML = renderChatMarkdown(text || '');
 
   bubbleWrap.appendChild(meta);
   bubbleWrap.appendChild(msg);
@@ -44,6 +159,8 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
   row.appendChild(bubbleWrap);
   return row;
 }
+
+const MAX_VISIBLE_HISTORY = 3;
 
 function shouldDisplayMessage(message = {}) {
   const role = normalizeMessageRole(message);
@@ -61,13 +178,24 @@ export function createMessageShell({ mountEl } = {}) {
     return mountEl || null;
   }
 
+  function scrollToBottom() {
+    const target = ensureMount();
+    if (!target) {return;}
+    requestAnimationFrame(() => {
+      target.scrollTop = target.scrollHeight;
+    });
+  }
+
   function reset(sessionKey = null) {
     mountedSessionKey = sessionKey || null;
     pendingMessages = [];
     lastCanonicalMessages = [];
     activeAssistantStream = null;
     const target = ensureMount();
-    if (target) {target.innerHTML = '';}
+    if (target) {
+      target.innerHTML = '';
+      scrollToBottom();
+    }
   }
 
   function findPendingRow(localId) {
@@ -105,6 +233,7 @@ export function createMessageShell({ mountEl } = {}) {
       extraClass: options.state === 'failed' ? 'failed' : 'pending',
     });
     target.appendChild(row);
+    scrollToBottom();
     return localId;
   }
 
@@ -195,12 +324,23 @@ export function createMessageShell({ mountEl } = {}) {
     const target = ensureMount();
     if (!target) {return { absorbedIds: [], pendingMessages };}
     const sourceMessages = Array.isArray(messages) ? messages : [];
+    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-MAX_VISIBLE_HISTORY);
     mountedSessionKey = sessionKey || null;
     lastCanonicalMessages = sourceMessages;
+    if (activeAssistantStream) {
+      const hasMatchingAssistant = sourceMessages.some(message => {
+        const role = normalizeMessageRole(message);
+        const runId = message?.runId || message?.id || null;
+        return role === 'assistant' && (!activeAssistantStream.runId || runId === activeAssistantStream.runId || String(message?.text || '') === String(activeAssistantStream.text || ''));
+      });
+      if (hasMatchingAssistant) {
+        activeAssistantStream = null;
+      }
+    }
     target.innerHTML = '';
     clearActiveStreamRows();
     clearRuntimeHintRows();
-    for (const message of sourceMessages) {
+    for (const message of visibleMessages) {
       addCanonicalRow(message);
     }
     const absorbResult = absorbPendingMessages(sourceMessages);
@@ -217,6 +357,7 @@ export function createMessageShell({ mountEl } = {}) {
         markPendingFailed(sessionKey, pending.localId);
       }
     }
+    scrollToBottom();
     return {
       absorbedIds: absorbResult?.absorbedIds || [],
       pendingMessages,
@@ -227,6 +368,18 @@ export function createMessageShell({ mountEl } = {}) {
     if (!sessionKey) {return { absorbedIds: [], pendingMessages };}
     if (mountedSessionKey !== sessionKey) {
       mountedSessionKey = sessionKey;
+    }
+    if (activeAssistantStream?.state === 'streaming' && hasStreamingRowMounted(sessionKey, activeAssistantStream?.runId || null)) {
+      return { absorbedIds: [], pendingMessages };
+    }
+    if (!activeAssistantStream) {
+      const target = ensureMount();
+      const hasCommittedFinalRow = !!target?.querySelector('.msg-row.assistant[data-status="final"][data-run-id]');
+      const sourceMessages = Array.isArray(messages) ? messages : [];
+      const canonicalHasMatchingAssistant = sourceMessages.some(message => normalizeMessageRole(message) === 'assistant');
+      if (hasCommittedFinalRow && !canonicalHasMatchingAssistant) {
+        return { absorbedIds: [], pendingMessages };
+      }
     }
     return renderCanonicalHistory(sessionKey, messages);
   }
@@ -266,7 +419,33 @@ export function createMessageShell({ mountEl } = {}) {
     };
     stream.row.dataset.status = 'streaming';
     if (stream.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`;}
-    stream.msg.textContent = String(text || '');
+    stream.msg.innerHTML = renderChatMarkdown(String(text || ''));
+    scrollToBottom();
+    return true;
+  }
+
+  function commitActiveStreamToHistory(sessionKey, runId = null) {
+    const target = ensureMount();
+    if (!target || !sessionKey || mountedSessionKey !== sessionKey || !activeAssistantStream) {return false;}
+    const effectiveRunId = runId || activeAssistantStream.runId || null;
+    const streamRow = effectiveRunId
+      ? target.querySelector(`.msg-row.assistant[data-stream-run-id="${CSS.escape(String(effectiveRunId))}"]`)
+      : target.querySelector('.msg-row.assistant[data-stream-run-id]');
+    if (!streamRow) {return false;}
+
+    streamRow.removeAttribute('data-stream-run-id');
+    streamRow.dataset.status = 'final';
+    streamRow.dataset.messageRole = 'assistant';
+    if (effectiveRunId) {streamRow.dataset.runId = String(effectiveRunId);}
+    const meta = streamRow.querySelector('.msg-meta.assistant');
+    if (meta) {meta.textContent = `Vio · ${formatStamp()}`;}
+    const msg = streamRow.querySelector('.msg.assistant');
+    if (msg) {
+      msg.classList.remove('stream');
+      msg.innerHTML = renderChatMarkdown(String(activeAssistantStream.text || ''));
+    }
+    activeAssistantStream = null;
+    scrollToBottom();
     return true;
   }
 
@@ -281,6 +460,7 @@ export function createMessageShell({ mountEl } = {}) {
     const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
     if (stream?.row) {stream.row.dataset.status = 'finalizing';}
     if (stream?.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · finalizing`;}
+    commitActiveStreamToHistory(sessionKey, runId || null);
     return true;
   }
 
@@ -330,6 +510,15 @@ export function createMessageShell({ mountEl } = {}) {
     return true;
   }
 
+  function hasStreamingRowMounted(sessionKey, runId = null) {
+    const target = ensureMount();
+    if (!target || mountedSessionKey !== sessionKey) {return false;}
+    if (runId) {
+      return !!target.querySelector(`.msg-row.assistant[data-stream-run-id="${CSS.escape(String(runId))}"][data-status="streaming"]`);
+    }
+    return !!target.querySelector('.msg-row.assistant[data-status="streaming"]');
+  }
+
   function getMountedSessionKey() {
     return mountedSessionKey;
   }
@@ -359,6 +548,7 @@ export function createMessageShell({ mountEl } = {}) {
     clearRuntimeRunHint,
     getMountedSessionKey,
     getDebugState,
+    hasStreamingRowMounted,
     hasPendingMessage(sessionKey, localId) {
       return pendingMessages.some(item => item.sessionKey === sessionKey && item.localId === localId);
     },

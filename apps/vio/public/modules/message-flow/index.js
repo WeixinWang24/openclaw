@@ -144,15 +144,13 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     const viewMeta = state.sessionViewMeta.get(sessionKey) || null;
     const activeRunId = viewMeta?.activeRunId || null;
     const activeRunStatus = viewMeta?.activeRunStatus || null;
-    if (state.activeSessionKey === sessionKey) {
-      if (activeRunId && activeRunStatus) {
-        shell?.setRuntimeRunHint?.(sessionKey, {
-          runId: activeRunId,
-          status: activeRunStatus,
-        });
-      } else {
-        shell?.clearRuntimeRunHint?.(sessionKey);
-      }
+    const shouldSuppressStreamingRerender =
+      state.activeSessionKey === sessionKey &&
+      activeRunStatus === 'streaming' &&
+      shell?.hasStreamingRowMounted?.(sessionKey, activeRunId || null) === true;
+
+    if (cacheOnly && shouldSuppressStreamingRerender) {
+      return messages;
     }
 
     if (cacheOnly) {
@@ -173,7 +171,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       return messages;
     }
 
-    if (state.activeSessionKey === sessionKey) {
+    if (state.activeSessionKey === sessionKey && !shouldSuppressStreamingRerender) {
       renderChrome?.(sessionKey, {
         loading: false,
         messages,
@@ -242,8 +240,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
   function simulateStream(sessionKey, options = {}) {
     if (!sessionKey) {return false;}
     const trace = Array.isArray(options.trace) ? options.trace : null;
-    const delta1 = options.delta1 || 'Vio Phase 1 streaming response...';
-    const delta2 = options.delta2 || 'Vio Phase 1 streaming response... still arriving';
+    const delta1 = options.delta1 || 'Vio is thinking';
+    const delta2 = options.delta2 || '… and composing a reply';
     const ackDelay = Number.isFinite(options.ackDelayMs) ? options.ackDelayMs : 0;
     const delta1Delay = Number.isFinite(options.delta1DelayMs) ? options.delta1DelayMs : 80;
     const delta2Delay = Number.isFinite(options.delta2DelayMs) ? options.delta2DelayMs : 180;
@@ -259,7 +257,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     }, ackDelay + delta1Delay);
 
     timers.setTimeout(() => {
-      shell?.handleDelta?.(sessionKey, delta2);
+      shell?.handleDelta?.(sessionKey, `${delta1}${delta2}`);
       trace?.push('delta-2');
     }, ackDelay + delta2Delay);
 
@@ -270,7 +268,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
         const streamSnapshot = shell?.snapshotActiveStream?.() || null;
         trace?.push(`stream-snapshot:${streamSnapshot ? 'yes' : 'no'}`);
         trace?.push(`append-exists:${typeof api?.appendAssistantMessage}`);
-        api?.appendAssistantMessage?.(sessionKey, streamSnapshot?.text || delta2);
+        api?.appendAssistantMessage?.(sessionKey, streamSnapshot?.text || `${delta1}${delta2}`);
         trace?.push('append-history');
       } catch (error) {
         trace?.push(`final-error:${error?.message || error}`);

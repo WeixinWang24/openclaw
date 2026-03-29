@@ -5,7 +5,7 @@ import { handleChatRoutes } from './routes/chatRoutes.mjs';
 import { handleSessionRoutes } from './routes/sessionRoutes.mjs';
 import { createChatRuntime } from './runtime/chatRuntime.mjs';
 import { createGatewayRpcClient } from './runtime/gatewayRpcClient.mjs';
-import { createKernelEventBus } from './runtime/kernelEventBus.mjs';
+import { createKernelEventBus, KERNEL_CHANNELS } from './runtime/kernelEventBus.mjs';
 import { createRuntimeDiagnostics } from './runtime/runtimeDiagnostics.mjs';
 import { createSessionRegistry } from './runtime/sessionRegistry.mjs';
 import { createTranscriptService } from './runtime/transcriptService.mjs';
@@ -47,6 +47,30 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
 
   const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+
+    if (requestUrl.pathname === '/api/events') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.write(': connected\n\n');
+      const unsubscribe = eventBus.subscribe(KERNEL_CHANNELS.RUN, event => {
+        try {
+          res.write(`data: ${JSON.stringify({ channel: KERNEL_CHANNELS.RUN, event })}\n\n`);
+        } catch {}
+      });
+      const heartbeat = setInterval(() => {
+        try { res.write(': heartbeat\n\n'); } catch {}
+      }, 15000);
+      req.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe?.();
+        try { res.end(); } catch {}
+      });
+      return;
+    }
 
     if (handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRegistry, defaultSessionKey, eventBridge })) {return;}
     if (handleChatRoutes({ req, res, requestUrl, chatRuntime, transcriptService, chatProjection })) {return;}

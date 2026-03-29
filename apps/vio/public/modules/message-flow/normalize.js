@@ -4,6 +4,8 @@ export function normalizeFlowMessages(messages = []) {
         id: message?.id || null,
         role: message?.role || 'unknown',
         text: typeof message?.text === 'string' ? message.text : '',
+        status: message?.status || null,
+        runId: message?.runId || null,
       }))
     : [];
 }
