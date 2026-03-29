@@ -275,11 +275,19 @@ async function bootstrap() {
       window.__VIO_STREAM_TRACE__.push('delta-2');
     }, 180);
     setTimeout(() => {
-      shell.handleFinal(sessionKey);
-      window.__VIO_STREAM_TRACE__.push('final');
-      api.appendAssistantMessage?.(sessionKey, 'Vio Phase 1 streaming response... still arriving');
-      window.__VIO_STREAM_TRACE__.push('append-history');
-      window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
+      try {
+        shell.handleFinal(sessionKey);
+        window.__VIO_STREAM_TRACE__.push('final');
+        window.__VIO_STREAM_TRACE__.push(`append-exists:${typeof api.appendAssistantMessage}`);
+        api.appendAssistantMessage?.(sessionKey, 'Vio Phase 1 streaming response... still arriving');
+        window.__VIO_STREAM_TRACE__.push('append-history');
+        window.__VIO_STREAM_TRACE__.push(`debug-exists:${typeof shell.getDebugState}`);
+        window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
+        window.__VIO_STREAM_TRACE__.push('debug-set');
+      } catch (error) {
+        window.__VIO_STREAM_TRACE__.push(`final-error:${error?.message || error}`);
+        window.__VIO_STREAM_DEBUG__ = { error: error?.message || String(error) };
+      }
     }, 280);
     setTimeout(() => {
       window.__VIO_STREAM_TRACE__.push('refresh-start');
