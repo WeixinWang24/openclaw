@@ -3541,6 +3541,15 @@ function createNewChatShell({ chatEl }) {
     pendingMessages = remaining;
   }
 
+  function clearActiveStreamRows() {
+    if (!chatEl) {return;}
+    const rows = [...chatEl.querySelectorAll('.msg-row.assistant[data-stream-run-id]')];
+    for (const row of rows) {
+      row.remove();
+    }
+    activeAssistantStream = null;
+  }
+
   function getOrCreateActiveStreamRow(sessionKey, runId = null) {
     if (!chatEl || !sessionKey || mountedSessionKey !== sessionKey) {return null;}
     const effectiveRunId = runId || activeAssistantStream?.runId || 'active';
@@ -3656,7 +3665,7 @@ function createNewChatShell({ chatEl }) {
     addDebugLine(`newChatShell.renderCanonicalHistory preservedPending session=${sessionKey} count=${preservedPending.length}`, 'cyan');
     reset(sessionKey);
     pendingMessages = preservedPending;
-    clearStreamingMessageEl();
+    clearActiveStreamRows();
     for (const message of visibleMessages) {
       addCanonicalRow(message);
     }
