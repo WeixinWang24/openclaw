@@ -30,9 +30,6 @@ const voiceInputDeviceEl = document.getElementById('voiceInputDevice');
 const voiceLevelMeterEl = document.getElementById('voiceLevelMeter');
 const voiceLevelBarEl = document.getElementById('voiceLevelBar');
 const chatAttachmentsPreviewEl = document.getElementById('chatAttachmentsPreview');
-const continueBtnEl = document.getElementById('continueBtn');
-const stopBtnEl = document.getElementById('stopBtn');
-const stopStatusBadgeEl = document.getElementById('stopStatusBadge');
 const wrapperDotEl = document.getElementById('wrapperDot');
 const sessionKeyEl = document.getElementById('sessionKey');
 const moodMiniEl = document.getElementById('moodMini');
@@ -509,25 +506,6 @@ function deriveSessionUiState(sessionKey) {
   };
 }
 
-function getSelectedSessionRunState() {
-  if (!selectedSessionKey) {
-    return { sessionKey: null, isMain: false, runId: null, state: 'idle', stoppable: false, canStop: false, canContinue: true, showStopped: false };
-  }
-  const uiState = deriveSessionUiState(selectedSessionKey);
-  return {
-    sessionKey: uiState.sessionKey,
-    isMain: uiState.isMain,
-    runId: uiState.runId,
-    state: uiState.state,
-    stoppable: uiState.canStop,
-    canStop: uiState.canStop,
-    canContinue: uiState.canContinue,
-    showStopped: uiState.showStopped,
-  };
-}
-
-function syncStopButton() {}
-
 function resetStoppedUiForNewRun() {
   lastStreamEventAt = 0;
   const runState = getSessionRunState(getActiveViewedSessionKey());
@@ -545,8 +523,6 @@ function forceFinalizeFrontState(reason = 'unknown') {
   runState.runId = null;
   runState.streamText = '';
   lastStreamEventAt = 0;
-  syncStopButton();
-  syncContinueButton();
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -3055,8 +3031,6 @@ function applyPostSendUiState(sessionKey, {
   if (refreshDelay > 0) {
     scheduleSessionRefresh(sessionKey, 'send-history-reconcile', refreshDelay);
   }
-  syncStopButton();
-  syncContinueButton();
 }
 
 function getSessionRunState(sessionKey) {
@@ -3167,9 +3141,7 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
     runState.streamText = '';
     runState.state = 'final';
     lastStreamEventAt = 0;
-    syncStopButton();
-    syncContinueButton();
-    return;
+        return;
   }
 
   if (assistantForCurrentRun?.status === 'streaming') {
@@ -3180,9 +3152,7 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
   const latestAssistant = [...list].toReversed().find(item => item?.role === 'assistant');
   if (!currentRunId && latestAssistant?.status === 'final' && runState.state !== 'aborted' && runState.state !== 'error') {
     runState.state = 'final';
-    syncStopButton();
-    syncContinueButton();
-  }
+      }
 }
 
 function pruneSupersededStreamingMessages(messages = []) {
@@ -3291,8 +3261,6 @@ function handleMessageFlowAck(msg = {}) {
   if (sessionKey) {
     newChatShell.handleAck(sessionKey, msg.runId || null);
   }
-  syncStopButton();
-  syncContinueButton();
   addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
 }
 
@@ -3788,8 +3756,6 @@ function renderMessageFlowSession(sessionKey, messages = null, { loading = false
   }
   addDebugLine(`renderMessageFlowSession chrome-only active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'cyan');
   syncTopbarForSession(sessionKey);
-  syncStopButton();
-  syncContinueButton();
 }
 
 async function fetchMessageFlowHistory(sessionKey, { force = false } = {}) {
@@ -3955,8 +3921,6 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   }
   renderSessionsList();
   syncTopbarForSession(sessionKey);
-  syncStopButton();
-  syncContinueButton();
 
   const cachedMessages = hasCachedMessages ? (sessionMessages.get(sessionKey) || []) : null;
   const shouldLoadNow = !hasCachedMessages || shouldForce;
@@ -3985,9 +3949,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
         }
         addDebugLine(`selectDashboardSession mountSession seq=${selectionSeq} target=${sessionKey}`, 'cyan');
         newChatShell.mountSession(sessionKey, messages);
-        syncStopButton();
-        syncContinueButton();
-        if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
+                    if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
           addDebugLine(`Session selected: ${sessionKey} seq=${selectionSeq}`, 'cyan');
         }
       })
@@ -4127,9 +4089,7 @@ function connect() {
       } catch (error) {
         addDebugLine(`ws error setRouting failed: ${error?.message || error}`, 'pink');
       }
-      syncStopButton();
-      syncContinueButton();
-      return;
+              return;
     }
     if (msg.type === 'tokens') {
       const last = msg.last;
@@ -4223,8 +4183,6 @@ voiceInputBtnEl?.addEventListener('click', async () => {
 chatAttachmentInputEl?.addEventListener('change', event => {
   handleChatAttachmentFiles(event.target?.files || []);
 });
-
-function syncContinueButton() {}
 
 inputEl?.addEventListener('input', resizeComposer);
 inputEl?.addEventListener('keydown', event => {
@@ -4465,7 +4423,6 @@ void refreshTokenSaverStats();
 void refreshDistInfo();
 void refreshSafeEditState();
 syncTerminalTaskButtons();
-syncContinueButton();
 setInterval(() => {
   const viewedRunState = getSessionRunState(getActiveViewedSessionKey());
   if (viewedRunState.state === 'streaming' && lastStreamEventAt && (Date.now() - lastStreamEventAt) > 10000) {
