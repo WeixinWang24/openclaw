@@ -45,12 +45,26 @@ export function createMessageShell({ mountEl } = {}) {
     if (target) {target.innerHTML = '';}
   }
 
+  function absorbPendingMessages(sessionKey, messages = []) {
+    const canonicalUserTexts = new Set(
+      (Array.isArray(messages) ? messages : [])
+        .filter(message => message?.role === 'user')
+        .map(message => String(message?.text || '')),
+    );
+    pendingMessages = pendingMessages.filter(item => {
+      if (item.sessionKey !== sessionKey) {return true;}
+      return !canonicalUserTexts.has(String(item.text || ''));
+    });
+  }
+
   function renderCanonicalHistory(sessionKey, messages = []) {
     const target = ensureMount();
     if (!target) {return;}
     mountedSessionKey = sessionKey || null;
     target.innerHTML = '';
-    for (const message of Array.isArray(messages) ? messages : []) {
+    const sourceMessages = Array.isArray(messages) ? messages : [];
+    absorbPendingMessages(sessionKey, sourceMessages);
+    for (const message of sourceMessages) {
       const role = message?.role === 'user' ? 'user' : 'assistant';
       target.appendChild(createMessageRow(role, message?.text || '', { status: message?.status || null }));
     }
@@ -76,7 +90,10 @@ export function createMessageShell({ mountEl } = {}) {
     }
     const localId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     pendingMessages.push({ localId, text, sessionKey, state: 'pending' });
-    renderCanonicalHistory(sessionKey, []);
+    const target = ensureMount();
+    if (target && mountedSessionKey === sessionKey) {
+      target.appendChild(createMessageRow('user', text, { status: 'pending' }));
+    }
     return localId;
   }
 
