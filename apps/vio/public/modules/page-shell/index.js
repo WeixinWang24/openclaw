@@ -1,82 +1,160 @@
 export function createPageShell(root) {
   if (!root) {return null;}
   root.innerHTML = `
-    <div class="vio-dashboard-shell">
-      <header class="vio-topbar card cyan">
-        <div class="vio-topbar-main">
-          <div class="vio-brand">
-            <div class="vio-brand-mark">V</div>
-            <div class="vio-brand-text">
+    <div class="dashboard ide-layout vio-phase-shell">
+      <header class="topbar card cyan">
+        <div class="topbar-main">
+          <div class="brand">
+            <div class="brand-mark">V</div>
+            <div class="brand-text">
               <h1>Vio</h1>
-              <p>Phase 1 · Gateway message runtime</p>
+              <p>Phase 1 · gateway message runtime</p>
             </div>
           </div>
-          <div class="vio-topbar-right">
-            <div class="chip">mode: phase-1</div>
-            <div id="session-status-chip" class="chip">runtime: booting</div>
+          <div class="topbar-right">
+            <button type="button" class="chip mode-chip state-idle">mode: phase-1</button>
+            <div id="session-status-chip" class="chip live">runtime: booting</div>
+            <div class="chip">layout: migrated</div>
           </div>
         </div>
       </header>
 
-      <aside class="vio-sidebar">
-        <section class="vio-panel card">
-          <div class="vio-panel-header">
-            <h3>Sessions</h3>
-            <div class="vio-panel-sub">Runtime-backed selection</div>
+      <aside class="sidebar panel-shell">
+        <section class="card section explorer-shell">
+          <div class="section-header">
+            <h2 class="section-title">Explorer</h2>
+            <button type="button" class="chip state-idle" disabled>files</button>
           </div>
-          <div id="sessions-list" class="vio-session-list"></div>
+          <section class="file-browser-panel explorer-pane vio-placeholder-pane">
+            <div class="vio-placeholder-title">Placeholder</div>
+            <div class="vio-placeholder-body">Explorer layout migrated from old VioDashboard. Phase 1 does not wire file browsing yet.</div>
+          </section>
         </section>
       </aside>
 
-      <main class="vio-main">
-        <section class="vio-panel card vio-workspace-panel">
-          <div class="vio-workspace-header">
-            <div class="vio-workspace-header-left">
-              <h2>Interaction</h2>
-              <p>Phase 1 keeps only message flow, shell, and runtime status.</p>
-            </div>
-            <div class="vio-workspace-header-right">
-              <button id="refresh-session-btn" type="button" class="chip">Refresh session</button>
-              <button id="send-test-btn" type="button" class="chip">Send test ping</button>
-              <button id="send-fail-btn" type="button" class="chip">Send failing ping</button>
-              <button id="simulate-stream-btn" type="button" class="chip">Simulate stream</button>
+      <div class="resizer vertical" data-resize="sidebar" aria-hidden="true"></div>
+
+      <main class="main panel-shell">
+        <section class="card section workspace-panel">
+          <div class="section-header interaction-header">
+            <h2 class="section-title">Interaction</h2>
+            <div class="interaction-header-right">
+              <div id="sessions-list" class="sessions-list sessions-list-inline"></div>
+              <button id="refresh-session-btn" type="button" class="chip state-idle">refresh</button>
             </div>
           </div>
 
-          <div id="session-status" class="vio-status-summary">No session selected.</div>
+          <div class="workspace-split" id="workspaceSplit">
+            <section class="editor-stack" id="editorStack">
+              <section class="file-editor-pane">
+                <div class="pane-header workspace-view-header">
+                  <div class="workspace-view-tabs" role="tablist" aria-label="Workspace views">
+                    <button type="button" class="console-tab is-active" role="tab" aria-selected="true">Code</button>
+                    <button type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
+                  </div>
+                  <div class="pane-actions">
+                    <div class="event-sub"><span class="semantic-value">Phase 1 keeps these panes as layout placeholders.</span></div>
+                    <div class="workspace-code-actions">
+                      <button type="button" class="chip state-idle" disabled>undo</button>
+                      <button type="button" class="chip state-idle" disabled>save</button>
+                      <div class="chip state-idle">preview</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="workspace-view-stack">
+                  <div class="workspace-view-pane is-active">
+                    <div class="vio-placeholder-pane vio-workspace-placeholder">
+                      <div class="vio-placeholder-title">Workspace placeholder</div>
+                      <div class="vio-placeholder-body">The old VioDashboard code/replies workspace layout is preserved here, but Phase 1 does not wire editor/replies functionality yet.</div>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-          <div class="vio-chat-frame">
-            <div id="session-preview"></div>
+              <div class="resizer horizontal" data-resize="editor-terminal" aria-hidden="true"></div>
+
+              <section class="terminal-panel terminal-panel-embedded console-tabs-panel">
+                <div class="console-tabs-header">
+                  <div class="console-tabs">
+                    <button type="button" class="console-tab is-active">Terminal</button>
+                    <button type="button" class="console-tab">Claude</button>
+                  </div>
+                </div>
+                <div class="console-pane-stack">
+                  <div class="console-pane is-active vio-placeholder-pane">
+                    <div class="vio-placeholder-title">Terminal / Claude placeholder</div>
+                    <div class="vio-placeholder-body">Old dashboard console layout migrated. Runtime wiring is intentionally absent in Phase 1.</div>
+                  </div>
+                </div>
+              </section>
+            </section>
+
+            <div class="resizer split-resizer" data-resize="workspace" aria-hidden="true"></div>
+
+            <section class="chat-pane">
+              <div class="chat-stack">
+                <div class="chat-shell">
+                  <div id="session-preview" class="chat"></div>
+                </div>
+                <div class="chat-continue-slot">
+                  <button type="button" class="chat-stop-btn" hidden>Stop</button>
+                  <div class="chip state-idle stop-status-badge" hidden>Stopped</div>
+                  <button type="button" class="chat-continue-fab" disabled>继续</button>
+                </div>
+                <form class="composer-panel composer-inline" onsubmit="return false;">
+                  <div class="section-header compact composer-header">
+                    <h2 class="section-title">Input</h2>
+                  </div>
+                  <div class="composer-shell">
+                    <div class="composer-input-stack">
+                      <div class="composer-toolbar">
+                        <button type="button" class="chip state-idle" disabled>Attach</button>
+                        <button type="button" class="chip state-idle" disabled>🎙️ Voice</button>
+                        <div class="composer-voice-status">Phase 1 message runtime only</div>
+                      </div>
+                      <textarea id="composer-placeholder-input" placeholder="Future composer surface placeholder" rows="4" disabled></textarea>
+                    </div>
+                    <button type="submit" class="send-btn" disabled>Send</button>
+                  </div>
+                </form>
+              </div>
+            </section>
+          </div>
+
+          <div id="session-status" class="vio-status-summary">No session selected.</div>
+          <div class="vio-actions">
+            <button id="send-test-btn" type="button">Send test ping</button>
+            <button id="send-fail-btn" type="button">Send failing ping</button>
+            <button id="simulate-stream-btn" type="button">Simulate stream</button>
           </div>
         </section>
       </main>
 
-      <aside class="vio-status-rail">
-        <section class="vio-panel card vio-runtime-card">
-          <div class="vio-panel-header">
-            <h3>Runtime</h3>
-            <div class="vio-panel-sub">Projection-fed session state</div>
+      <div class="resizer vertical" data-resize="right" aria-hidden="true"></div>
+
+      <section class="right panel-shell compact-rail">
+        <section class="card section compact-rail-card system-core-card">
+          <div class="section-header compact compact-rail-header">
+            <h2 class="section-title">System</h2>
+            <div class="chip">phase-1</div>
           </div>
-          <div class="vio-runtime-list">
-            <div class="vio-runtime-item">
-              <div class="vio-runtime-item-label">Session status</div>
-              <div id="runtime-session-summary" class="vio-runtime-item-value">No active session.</div>
-            </div>
-            <div class="vio-runtime-item">
-              <div class="vio-runtime-item-label">Active run</div>
-              <div id="runtime-run-summary" class="vio-runtime-item-value">No active run.</div>
-            </div>
+          <div class="status-list compact-event-list">
+            <div class="agent-row"><div class="agent-left"><span class="dot status-runtime"></span><div class="agent-meta"><div class="agent-name semantic-label">Runtime</div><div id="runtime-session-summary" class="agent-sub semantic-value">No active session.</div></div></div></div>
+            <div class="agent-row"><div class="agent-left"><span class="dot status-link"></span><div class="agent-meta"><div class="agent-name semantic-label">Active run</div><div id="runtime-run-summary" class="agent-sub semantic-value">No active run.</div></div></div></div>
+            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Gateway</div><div class="event-sub semantic-value">Live gateway adapter is wired in Phase 1.</div></div></div>
           </div>
         </section>
 
-        <section class="vio-panel card vio-notes-card">
-          <div class="vio-panel-header">
-            <h3>Notes</h3>
-            <div class="vio-panel-sub">Old VioDashboard layout, narrowed to Phase 1 scope.</div>
+        <section class="card section compact-rail-card system-context-card">
+          <div class="section-header compact compact-rail-header">
+            <h2 class="section-title">Debug</h2>
           </div>
-          <div class="vio-runtime-item-value">Explorer / terminal / replies / system rail are intentionally not migrated into the live Phase 1 surface yet.</div>
+          <div class="event-list compact-event-list">
+            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Status</div><div class="event-sub semantic-value">Old dashboard right rail layout migrated; non-Phase-1 cards remain placeholders.</div></div></div>
+            <div class="event-row"><div class="event-meta"><div class="event-name semantic-label">Next</div><div class="event-sub semantic-value">Wire more cards only when runtime boundaries are ready.</div></div></div>
+          </div>
         </section>
-      </aside>
+      </section>
     </div>
   `;
   return {
@@ -122,7 +200,7 @@ export function renderPreviewPlaceholder(refs, { title = 'Flow preview', text = 
 
 export function renderBootError(root, error) {
   if (!root) {return;}
-  root.innerHTML = `<div class="vio-dashboard-shell"><section class="vio-main"><header class="vio-topbar card cyan"><div class="vio-topbar-main"><div class="vio-brand"><div class="vio-brand-mark">V</div><div class="vio-brand-text"><h1>Vio</h1><p>Bootstrap failed: ${String(error?.message || error)}</p></div></div></div></header></section></div>`;
+  root.innerHTML = `<div class="dashboard ide-layout vio-phase-shell"><header class="topbar card cyan"><div class="topbar-main"><div class="brand"><div class="brand-mark">V</div><div class="brand-text"><h1>Vio</h1><p>Bootstrap failed: ${String(error?.message || error)}</p></div></div></div></header></div>`;
 }
 
 export function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = null, sessionMeta = null, sessionLoadingState = null } = {}) {
