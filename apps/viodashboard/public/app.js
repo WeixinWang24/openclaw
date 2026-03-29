@@ -550,7 +550,9 @@ function syncStopButton() {
 }
 
 function resetStoppedUiForNewRun() {
-  clearStreamingMessageEl();
+  if (!isLiveTranscriptOwnedByNewFlow(getActiveViewedSessionKey())) {
+    clearStreamingMessageEl();
+  }
   lastStreamEventAt = 0;
   const runState = getSessionRunState(getActiveViewedSessionKey());
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
@@ -560,6 +562,7 @@ function resetStoppedUiForNewRun() {
   syncContinueButton();
 }
 
+// Emergency/debug-only cleanup path; not part of the normal chat lifecycle.
 function forceFinalizeFrontState(reason = 'unknown') {
   const sessionKey = getActiveViewedSessionKey();
   const runState = getSessionRunState(sessionKey);
@@ -3183,8 +3186,8 @@ function appendSessionMessage(sessionKey, message) {
   deduped.push(message);
   sessionMessages.set(sessionKey, deduped);
   reconcileRunStateFromMessages(sessionKey, deduped, 'append-session-message');
-  if (selectedSessionKey === sessionKey && !isLiveTranscriptOwnedByNewFlow(sessionKey)) {
-    renderSessionMessages(sessionKey, deduped, { mode: 'append-session-message' });
+  if (selectedSessionKey === sessionKey) {
+    addDebugLine(`appendSessionMessage cache-only selected=${sessionKey}`, 'cyan');
   }
 }
 
@@ -3207,7 +3210,9 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
 
   if (assistantForCurrentRun?.status === 'final') {
     addDebugLine(`Finalized from ${source} · run ${String(currentRunId || '').slice(0, 8) || '-'} `, 'cyan');
-    clearStreamingMessageEl(currentRunId || null);
+    if (!isLiveTranscriptOwnedByNewFlow(sessionKey)) {
+      clearStreamingMessageEl(currentRunId || null);
+    }
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'final';
@@ -3307,8 +3312,8 @@ function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
     selectedSessionKey === sessionKey &&
     options.render !== false &&
     !(runState.state === 'streaming' && hasStreamingRowMounted(sessionKey, runState.runId || null));
-  if (shouldRender && !isLiveTranscriptOwnedByNewFlow(sessionKey) && selectedSessionKey !== sessionKey) {
-    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || [], { mode: 'projection-view' });
+  if (shouldRender && selectedSessionKey !== sessionKey) {
+    addDebugLine(`applyProjectionViewToSession cache-only target=${sessionKey}`, 'cyan');
   }
 }
 
@@ -3450,7 +3455,7 @@ function handleMessageFlowKernelRun(msg = {}) {
     return;
   }
 
-  renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+  addDebugLine(`handleMessageFlowKernelRun fallback cache-only session=${sessionKey}`, 'cyan');
 }
 
 function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
@@ -3764,11 +3769,15 @@ function createNewChatShell({ chatEl }) {
 
 const newChatShell = createNewChatShell({ chatEl });
 
-function renderSessionMessages(sessionKey, messages = [], options = {}) {
+// Retired legacy renderer kept only as a temporary reference while the active chat UI
+// runs through newChatShell + message-flow reducer paths. Do not route selected-session
+// or live-transcript rendering back through this function.
+// eslint-disable-next-line no-unused-vars
+function renderSessionMessagesRetiredLegacy(sessionKey, messages = [], options = {}) {
   if (!chatEl) {return;}
-  const mode = options.mode || 'legacy';
+  const mode = options.mode || 'retired-legacy';
   if (selectedSessionKey === sessionKey || isLiveTranscriptOwnedByNewFlow(sessionKey)) {
-    addDebugLine(`LEGACY renderSessionMessages blocked mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'pink');
+    addDebugLine(`RETIRED renderSessionMessages blocked mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'pink');
     return;
   }
   const sourceMessages = Array.isArray(messages) ? messages : [];
@@ -3776,7 +3785,7 @@ function renderSessionMessages(sessionKey, messages = [], options = {}) {
   const uiState = deriveSessionUiState(sessionKey);
   const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-  addDebugLine(`LEGACY renderSessionMessages mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'pink');
+  addDebugLine(`RETIRED renderSessionMessages mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'pink');
   const preservedStreamingText = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.streamText || '') : '';
   const preservedStreamingRunId = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.runId || null) : null;
   clearChat();
