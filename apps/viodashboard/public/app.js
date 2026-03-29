@@ -526,18 +526,7 @@ function getSelectedSessionRunState() {
   };
 }
 
-function syncStopButton() {
-  const selectedRun = getSelectedSessionRunState();
-  if (stopBtnEl) {
-    stopBtnEl.hidden = !selectedRun.canStop;
-    stopBtnEl.textContent = selectedRun.state === 'aborting' ? 'Stopping...' : 'Stop';
-    stopBtnEl.disabled = selectedRun.state === 'aborting';
-  }
-  if (stopStatusBadgeEl) {
-    stopStatusBadgeEl.hidden = !selectedRun.showStopped;
-    stopStatusBadgeEl.textContent = 'Stopped';
-  }
-}
+function syncStopButton() {}
 
 function resetStoppedUiForNewRun() {
   lastStreamEventAt = 0;
@@ -545,8 +534,6 @@ function resetStoppedUiForNewRun() {
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
     runState.state = 'idle';
   }
-  syncStopButton();
-  syncContinueButton();
 }
 
 // Emergency/debug-only cleanup path; not part of the normal chat lifecycle.
@@ -2843,22 +2830,6 @@ function getLatestSessionAssistantFinalMeta(sessionKey = null) {
   };
 }
 
-function buildContinuePayload() {
-  const latest = getLatestSessionAssistantFinalMeta(selectedSessionKey || null);
-  const lastAssistantReply = latest.text;
-  const selectedRun = getSelectedSessionRunState();
-  warnRoadmapLeak('buildContinuePayload(source)', lastAssistantReply);
-  if (!lastAssistantReply || latest.aborted || selectedRun.state === 'streaming' || selectedRun.state === 'aborting') {return '继续';}
-  const replyTail = tailSnippet(stripRoadmapBlockForDisplay(lastAssistantReply), 1200);
-  return [
-    '继续上一条 assistant 回复里最后明确提出的事情。',
-    '',
-    '上一条 assistant 回复(尾段,作为继续锚点):',
-    replyTail,
-    '',
-    '要求:默认延续上一条回复最后提出的具体动作,不要重开话题。',
-  ].join('\n');
-}
 
 function generateAttachmentId() {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -3323,22 +3294,6 @@ function handleMessageFlowAck(msg = {}) {
   syncStopButton();
   syncContinueButton();
   addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
-}
-
-function handleMessageFlowSessionUpdated(msg = {}) {
-  const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
-  if (!sessionKey) {return;}
-  addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
-  const runState = getSessionRunState(sessionKey);
-  if (sessionKey === selectedSessionKey) {
-    addDebugLine(`session.updated muted for selected session under single-path flow: ${sessionKey}`, 'cyan');
-    return;
-  }
-  if (runState?.state === 'streaming') {
-    addDebugLine(`session.updated deferred during streaming for ${sessionKey}`, 'cyan');
-    return;
-  }
-  scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', 1200);
 }
 
 function handleMessageFlowKernelRun(msg = {}) {
@@ -4220,10 +4175,6 @@ function connect() {
       try {applyClaudeStateData(msg);} catch (error) {addDebugLine(`ws claude-state apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
-    if (msg.type === 'session.updated') {
-      handleMessageFlowSessionUpdated(msg);
-      return;
-    }
     if (msg.type === 'kernel.run') {
       try {applyKernelRunViewPacket(msg);} catch (error) {addDebugLine(`ws kernel.run apply failed: ${error?.message || error}`, 'pink');}
       return;
@@ -4273,39 +4224,7 @@ chatAttachmentInputEl?.addEventListener('change', event => {
   handleChatAttachmentFiles(event.target?.files || []);
 });
 
-function syncContinueButton() {
-  if (!continueBtnEl) {return;}
-  const selectedRun = getSelectedSessionRunState();
-  continueBtnEl.disabled = !selectedRun.canContinue;
-}
-
-continueBtnEl?.addEventListener('click', () => {
-  if (continueBtnEl?.disabled) {return;}
-  submitChatText('继续', { outboundText: buildContinuePayload() }).catch(error => {
-    addDebugLine(`continue failed: ${error?.message || error}`, 'pink');
-  });
-});
-
-stopBtnEl?.addEventListener('click', () => {
-  const sessionKey = selectedSessionKey || gatewayMainSessionKey || null;
-  const runState = getSessionRunState(sessionKey);
-  if (!runState.runId || runState.state !== 'streaming') {return;}
-  runState.state = 'aborting';
-  syncStopButton();
-  _stopRequestedAt = Date.now();
-  abortedRunIds.add(runState.runId);
-  if (abortedRunIds.size > 200) {abortedRunIds.clear();}
-  updateChatRunStatus(runState.runId, 'aborted');
-  const stoppedRunId = runState.runId;
-  runState.runId = null;
-  runState.streamText = '';
-  runState.state = 'aborted';
-  addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
-  markLatestAssistantReplyAborted(stoppedRunId, sessionKey);
-  scheduleSessionRefresh(sessionKey, 'user-stop', 0, { cacheOnly: true });
-  syncStopButton();
-  syncContinueButton();
-});
+function syncContinueButton() {}
 
 inputEl?.addEventListener('input', resizeComposer);
 inputEl?.addEventListener('keydown', event => {
@@ -4314,13 +4233,6 @@ inputEl?.addEventListener('keydown', event => {
     event.preventDefault();
     submitChatText(inputEl.value).catch(error => {
       addDebugLine(`submit failed: ${error?.message || error}`, 'pink');
-    });
-    return;
-  }
-  if (event.shiftKey) {
-    event.preventDefault();
-    submitChatText('继续', { outboundText: buildContinuePayload() }).catch(error => {
-      addDebugLine(`continue failed: ${error?.message || error}`, 'pink');
     });
     return;
   }

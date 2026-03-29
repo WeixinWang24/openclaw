@@ -287,7 +287,7 @@ function buildProjectionViewMeta(sessionKey) {
   const runs = view && typeof view.runs === 'object' && view.runs
     ? Object.values(view.runs)
     : [];
-  const activeRun = [...runs].reverse().find(run => run && (run.status === 'started' || run.status === 'acknowledged' || run.status === 'streaming')) || null;
+  const activeRun = [...runs].toReversed().find(run => run && (run.status === 'started' || run.status === 'acknowledged' || run.status === 'streaming')) || null;
   return {
     sessionKey,
     updatedAt: view?.updatedAt || null,
@@ -364,9 +364,6 @@ bridge = new GatewayBridge({
         prewarmGatewayReadPaths().catch(() => {});
       }, 0);
     }
-  },
-  onSessionUpdated: payload => {
-    broadcast({ type: 'session.updated', ...payload });
   },
   onDiagnosticEvent: event => {
     const used = typeof event?.context?.used === 'number' ? event.context.used : null;
