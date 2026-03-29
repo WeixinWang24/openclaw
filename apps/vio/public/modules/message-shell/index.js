@@ -176,6 +176,18 @@ export function createMessageShell({ mountEl } = {}) {
     return mountedSessionKey;
   }
 
+  function getDebugState() {
+    return {
+      mountedSessionKey,
+      pendingMessages,
+      lastCanonicalMessages,
+      activeAssistantStream: activeAssistantStream ? {
+        text: activeAssistantStream.text,
+        rowConnected: !!activeAssistantStream.row?.isConnected,
+      } : null,
+    };
+  }
+
   return {
     mountSession,
     reconcileHistory,
@@ -186,5 +198,6 @@ export function createMessageShell({ mountEl } = {}) {
     handleDelta,
     handleFinal,
     getMountedSessionKey,
+    getDebugState,
   };
 }

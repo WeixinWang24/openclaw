@@ -252,7 +252,10 @@ async function bootstrap() {
     shell.handleAck(sessionKey);
     setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response...'), 80);
     setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response... still arriving'), 180);
-    setTimeout(() => shell.handleFinal(sessionKey), 280);
+    setTimeout(() => {
+      shell.handleFinal(sessionKey);
+      window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
+    }, 280);
     setTimeout(() => flow.refreshSession(sessionKey, 'stream-simulated').catch(() => {}), 420);
   });
 
