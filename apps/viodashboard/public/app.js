@@ -3590,6 +3590,7 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
   messages = mergeOptimisticHistoryContinuity(sessionKey, messages);
   sessionMessages.set(sessionKey, messages);
   reconcileRunStateFromMessages(sessionKey, messages, 'session-history');
+  const runState = getSessionRunState(sessionKey);
   const uiState = deriveSessionUiState(sessionKey);
   if (!runState?.runId && uiState.state !== 'final' && uiState.state !== 'aborted' && uiState.state !== 'error' && uiState.state !== 'streaming') {
     runState.runId = null;
@@ -3641,10 +3642,11 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   syncContinueButton();
 
   const cachedMessages = hasCachedMessages ? (sessionMessages.get(sessionKey) || []) : null;
+  const shouldLoadNow = !hasCachedMessages || shouldForce;
   if (cachedMessages) {
     setSessionLoading(sessionKey, false);
     renderSessionMessages(sessionKey, cachedMessages);
-  } else if (shouldForce) {
+  } else if (shouldLoadNow) {
     setSessionLoading(sessionKey, true);
     renderSessionLoadingPlaceholder(sessionKey);
   } else {
