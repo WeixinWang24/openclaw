@@ -217,14 +217,6 @@ const messageFlowState = {
   historyReqSeq: 0,
 };
 
-const liveMessageFlow = {
-  ownedSessionKey: null,
-  activeRunId: null,
-  activeText: '',
-  active: false,
-  finalizing: false,
-};
-
 const runModeState = {
   mode: 'source',
   switching: false,
@@ -3308,10 +3300,6 @@ function applyKernelRunViewPacket(msg = {}) {
   handleMessageFlowKernelRun(msg);
 }
 
-function isLiveTranscriptOwnedByNewFlow(sessionKey) {
-  return !!sessionKey && !!liveMessageFlow.active && liveMessageFlow.ownedSessionKey === sessionKey;
-}
-
 function hasStreamingRowMounted(sessionKey, runId = null) {
   if (!chatEl || selectedSessionKey !== sessionKey) {return false;}
   if (runId) {
@@ -3607,7 +3595,6 @@ function createNewChatShell({ chatEl }) {
       text: text || '',
       state: 'streaming',
     };
-    liveMessageFlow.activeText = text || '';
     stream.row.dataset.status = 'streaming';
     if (stream.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`;}
     stream.msg.textContent = text || '';
@@ -4077,13 +4064,12 @@ async function refreshSessionHistory(sessionKey, reason = 'manual', options = {}
     sessionKey === selectedSessionKey &&
     runState?.state === 'streaming' &&
     hasStreamingRowMounted(sessionKey, runState?.runId || null);
-  const liveOwned = isLiveTranscriptOwnedByNewFlow(sessionKey);
-  if (cacheOnly || liveOwned) {
+  if (cacheOnly) {
     if (sessionKey === selectedSessionKey) {
       addDebugLine(`refreshSessionHistory reconcile selected session=${sessionKey} reason=${reason} len=${messages.length}`, 'cyan');
       newChatShell.reconcileHistory(sessionKey, messages);
     }
-    addDebugLine(`refreshSessionHistory cache-only seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason} liveOwned=${liveOwned ? 'yes' : 'no'}`, 'cyan');
+    addDebugLine(`refreshSessionHistory cache-only seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason}`, 'cyan');
     return messages;
   }
   if (sessionKey === selectedSessionKey && !shouldSuppressStreamingRerender) {
