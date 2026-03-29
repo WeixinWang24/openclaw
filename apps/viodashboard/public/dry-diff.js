@@ -19,7 +19,7 @@ async function loadRuns() {
   if (!res.ok) {throw new Error(data.error || 'failed to load runs');}
   runs = Array.isArray(data.items) ? data.items : [];
   renderRuns();
-  if (!activeRunId && runs[0]?.runId) {loadRun(runs[0].runId);}
+  if (!activeRunId && runs[0]?.runId) {void loadRun(runs[0].runId);}
 }
 
 function renderRuns() {

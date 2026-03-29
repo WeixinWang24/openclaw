@@ -87,13 +87,17 @@ export function startContextUsageMonitor(opts: ContextUsageMonitorOptions = {}):
 
   return onDiagnosticEvent((event) => {
     // Only care about model usage events that include context window data.
-    if (event.type !== "model.usage") return;
+    if (event.type !== "model.usage") {
+      return;
+    }
 
     const used = event.context?.used;
     const limit = event.context?.limit;
 
     // Events fired before the first LLM call may not have context data yet.
-    if (!used || !limit || limit <= 0) return;
+    if (!used || !limit || limit <= 0) {
+      return;
+    }
 
     const pct = (used / limit) * 100;
 

@@ -31,7 +31,9 @@ const argv = process.argv.slice(2);
 
 function parseFlag<T>(flag: string, parser: (v: string) => T, fallback: T): T {
   const idx = argv.indexOf(flag);
-  if (idx === -1 || !argv[idx + 1]) return fallback;
+  if (idx === -1 || !argv[idx + 1]) {
+    return fallback;
+  }
   return parser(argv[idx + 1]);
 }
 
@@ -70,7 +72,9 @@ async function poll(): Promise<{ overThreshold: boolean }> {
   });
 
   const rows = result.sessions.filter((s) => {
-    if (filterKey && s.key !== filterKey) return false;
+    if (filterKey && s.key !== filterKey) {
+      return false;
+    }
     // Only show sessions that have actual context data.
     return s.totalTokens != null && s.contextTokens != null;
   });
@@ -81,7 +85,9 @@ async function poll(): Promise<{ overThreshold: boolean }> {
     return { overThreshold: false };
   }
 
-  if (!onceMode) process.stdout.write("\x1b[2J\x1b[H"); // clear screen
+  if (!onceMode) {
+    process.stdout.write("\x1b[2J\x1b[H");
+  } // clear screen
 
   console.log(
     `Context Monitor  ${new Date().toLocaleTimeString()}  threshold=${threshold}%  interval=${intervalMs}ms`,
@@ -95,7 +101,9 @@ async function poll(): Promise<{ overThreshold: boolean }> {
     const limit = s.contextTokens!;
     const pct = (used / limit) * 100;
     const over = pct >= threshold;
-    if (over) anyOver = true;
+    if (over) {
+      anyOver = true;
+    }
 
     const bar = pctBar(used, limit);
     const label = over ? " ⚠  OVER THRESHOLD" : "";
@@ -127,7 +135,9 @@ async function main() {
   }
 
   console.log(`Starting context monitor  interval=${intervalMs}ms  threshold=${threshold}%`);
-  if (filterKey) console.log(`Filtering to session key: ${filterKey}`);
+  if (filterKey) {
+    console.log(`Filtering to session key: ${filterKey}`);
+  }
 
   for (;;) {
     try {

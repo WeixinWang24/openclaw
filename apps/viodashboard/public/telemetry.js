@@ -44,11 +44,9 @@ const TASK_HISTORY_KEY = 'vio-telemetry-task-history-v2';
 const TASK_HISTORY_KEY_LEGACY = 'vio-telemetry-task-history-v1';
 const DELETED_TASKS_KEY = 'vio-telemetry-deleted-tasks-v1';
 const TELEMETRY_PREFS_KEY = 'vio-telemetry-prefs-v1';
-const PACKAGE_IMPORTS_KEY = 'vio-telemetry-package-imports-v1';
 const LAST_REPLY_ROADMAP_KEY = 'vio-wrapper-last-reply-roadmap-v1';
 const STRUCTURED_ROADMAP_KEY = 'vio-wrapper-roadmap-v2';
 const ACTIVE_TASK_STATUSES = new Set(['todo', 'doing', 'blocked', 'done_candidate']);
-const TERMINAL_TASK_STATUSES = new Set(['done', 'deleted']);
 
 let ws;
 let tokenStats = { last: null, total: 0, modelName: null, modelUsagePercent: null };
@@ -369,14 +367,14 @@ function transitionTask(index, targetStatus) {
     if (completed) {archiveTask(completed, 'done', 'archived', shouldAutoArchiveOnCompletion(completed) ? 'auto-archived completion artifact' : 'completed and moved to Task History');}
     saveTasks(tasks);
     renderTasks();
-    renderHistoryPanels();
+    void renderHistoryPanels();
     return item;
   }
 
   tasks[Number(index)] = normalizeTask(item, Number(index));
   saveTasks(tasks);
   renderTasks();
-  renderHistoryPanels();
+  void renderHistoryPanels();
   return tasks[Number(index)];
 }
 
@@ -396,18 +394,6 @@ function cleanupSmokeTestArtifacts() {
   }
   if (changed) {saveTasks(active);}
   return changed;
-}
-
-function loadPackageImports() {
-  try {
-    return JSON.parse(localStorage.getItem(PACKAGE_IMPORTS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function savePackageImports(imports) {
-  localStorage.setItem(PACKAGE_IMPORTS_KEY, JSON.stringify(imports));
 }
 
 function loadLastReplyRoadmap() {
@@ -587,8 +573,8 @@ async function importRoadmapItems(roadmapId, itemIds = [], options = {}) {
   }
   for (const item of items) {selectedRoadmapItemIds.delete(roadmapSelectionKey(roadmapId, item.id));}
   renderTasks();
-  renderWorkingPackages();
-  renderHistoryPanels();
+  void renderWorkingPackages();
+  void renderHistoryPanels();
   return { count: items.length, claimGroupId };
 }
 
@@ -669,7 +655,7 @@ async function deploySelectedTasks() {
     saveTasks(tasks.map((task, index) => normalizeTask(task, index)).filter(Boolean));
     clearSelectedTasks();
     renderTasks();
-    renderHistoryPanels();
+    void renderHistoryPanels();
     addLog(`batch deployed · ${deployedCount} tasks · ${batchId}`);
   } finally {
     batchDeployInFlight = false;
@@ -826,7 +812,7 @@ function renderHero() {
   heroModelEl.textContent = tokenStats.modelName || 'n/a';
   heroLastTokensEl.textContent = tokenStats.last?.total != null ? String(tokenStats.last.total) : 'n/a';
   heroTotalTokensEl.textContent = String(tokenStats.total || 0);
-  heroWindowEl.textContent = tokenStats.modelUsagePercent != null ? `${tokenStats.modelUsagePercent}%` : 'n/a';
+  heroWindowEl.textContent = tokenStats.modelUsagePercent != null ? `${String(tokenStats.modelUsagePercent)}%` : 'n/a';
 }
 
 function setEnvironment(data = {}) {
@@ -936,8 +922,8 @@ function connect() {
       updateHistoryClearButtons();
     }
     if (packet.type === 'roadmap') {
-      renderWorkingPackages();
-      renderHistoryPanels();
+      void renderWorkingPackages();
+      void renderHistoryPanels();
       const decisionSuffix = packet.decision ? ` · ${packet.decision}` : '';
       const sourceLabel = formatRoadmapSourceLabel(packet.roadmap?.sourceType);
       addLog(`roadmap updated · ${(packet.roadmap?.items || []).length} items · ${sourceLabel}${decisionSuffix}`);
@@ -970,7 +956,7 @@ clearRoadmapHistoryBtnEl?.addEventListener('click', async () => {
   } finally {
     pendingClearRoadmapHistory = false;
     updateHistoryClearButtons();
-    renderHistoryPanels();
+    void renderHistoryPanels();
   }
 });
 
@@ -985,7 +971,7 @@ clearTaskHistoryBtnEl?.addEventListener('click', () => {
   saveTaskHistory([]);
   pendingClearTaskHistory = false;
   updateHistoryClearButtons();
-  renderHistoryPanels();
+  void renderHistoryPanels();
   addLog('task history cleared');
 });
 
@@ -1000,7 +986,7 @@ clearDeletedTasksBtnEl?.addEventListener('click', () => {
   saveDeletedTasks([]);
   pendingClearDeletedTasks = false;
   updateHistoryClearButtons();
-  renderHistoryPanels();
+  void renderHistoryPanels();
   addLog('deleted tasks cleared');
 });
 
@@ -1019,7 +1005,7 @@ taskBatchDeployBtnEl?.addEventListener('click', async () => {
 
 roadmapBatchClearBtnEl?.addEventListener('click', () => {
   clearSelectedRoadmapItems();
-  renderWorkingPackages();
+  void renderWorkingPackages();
 });
 
 roadmapBatchClaimBtnEl?.addEventListener('click', async () => {
@@ -1079,7 +1065,7 @@ taskListEl?.addEventListener('click', async event => {
     pendingDeleteTaskId = null;
     saveTasks(tasks);
     renderTasks();
-    renderHistoryPanels();
+    void renderHistoryPanels();
     addLog('task deleted');
     return;
   }
@@ -1090,18 +1076,18 @@ packageListEl?.addEventListener('click', event => {
   const selectRoadmapId = event.target?.getAttribute?.('data-roadmap-id');
   if (selectId && selectRoadmapId) {
     toggleRoadmapSelection(selectRoadmapId, selectId, !!event.target.checked);
-    renderWorkingPackages();
+    void renderWorkingPackages();
     return;
   }
   const roadmapId = event.target?.getAttribute?.('data-roadmap-import-all');
   if (roadmapId) {
-    importAllRoadmapItems(roadmapId);
+    void importAllRoadmapItems(roadmapId);
     return;
   }
   const itemId = event.target?.getAttribute?.('data-roadmap-item-id');
   const itemRoadmapId = event.target?.getAttribute?.('data-roadmap-id');
   if (!itemId || !itemRoadmapId) {return;}
-  importRoadmapItem(itemRoadmapId, itemId);
+  void importRoadmapItem(itemRoadmapId, itemId);
 });
 
 window.addEventListener('storage', event => {
@@ -1111,9 +1097,9 @@ window.addEventListener('storage', event => {
     pendingClearTaskHistory = false;
     pendingClearDeletedTasks = false;
     updateHistoryClearButtons();
-    renderWorkingPackages();
+    void renderWorkingPackages();
     renderTasks();
-    renderHistoryPanels();
+    void renderHistoryPanels();
   }
 });
 
@@ -1123,12 +1109,12 @@ bindFoldPersistence(telemetryVisionFoldEl, 'visionFoldOpen', false);
 bindFoldPersistence(deletedTasksFoldEl, 'deletedTasksFoldOpen', false);
 if (cleanupSmokeTestArtifacts()) {addLog('archived residual smoke-test tasks');}
 renderTasks();
-renderWorkingPackages();
-renderHistoryPanels();
-refreshEnvironment();
-refreshCamera();
+void renderWorkingPackages();
+void renderHistoryPanels();
+void refreshEnvironment();
+void refreshCamera();
 connect();
-setInterval(refreshEnvironment, 5000);
-setInterval(refreshCamera, 2500);
-setInterval(renderWorkingPackages, 4000);
-setInterval(renderHistoryPanels, 6000);
+setInterval(() => { void refreshEnvironment(); }, 5000);
+setInterval(() => { void refreshCamera(); }, 2500);
+setInterval(() => { void renderWorkingPackages(); }, 4000);
+setInterval(() => { void renderHistoryPanels(); }, 6000);

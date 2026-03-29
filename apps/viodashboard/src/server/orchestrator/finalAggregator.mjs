@@ -40,7 +40,6 @@ export function buildFinalResponse(stores, rootTaskId) {
   const reviewModels = uniq(reviewTasks.map(task => task.model_used).filter(Boolean));
   const sameModelReview =
     workModels.length > 0 &&
-    reviewModels.length > 0 &&
     reviewModels.some(model => workModels.includes(model));
 
   const finalResponse = {

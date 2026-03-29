@@ -21,7 +21,7 @@ export function canTransitionRoot(from, to) {
   return Array.isArray(ALLOWED_ROOT_TRANSITIONS[from]) && ALLOWED_ROOT_TRANSITIONS[from].includes(to);
 }
 
-export function runRootTransitionGuards({ from, to, context = {}, rootTask = null }) {
+export function runRootTransitionGuards({ from, to, context = {}, rootTask: _rootTask = null }) {
   assert(canTransitionRoot(from, to), `Illegal root transition: ${from} -> ${to}`);
 
   if (from === 'created' && to === 'planned') {

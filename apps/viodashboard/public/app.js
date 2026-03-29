@@ -1,4 +1,6 @@
 // Main browser UI for VioDashboard: chat, telemetry, camera controls, and file browser.
+import { createVioMessageEnvironment } from './modules/vio-message-environment/index.js';
+
 const CLAUDE_TERMINAL_INIT_ERROR = 'Claude terminal failed to initialize; PTY text fallback has been removed.';
 const serverConfig = {
   defaultClaudeCwd: '',
@@ -150,6 +152,35 @@ let _stopRequestedAt = null;
 let lastStreamEventAt = 0;
 const taskRegistry = new Map();
 let latestWrapperRuntime = null;
+const vioMessageEnvironment = createVioMessageEnvironment({
+  refs: {
+    moodEl,
+    moodMiniEl,
+    streamStateEl,
+    moodRouterDotEl,
+    currentMoodDotEl,
+    tokenSaverDetailEl,
+    tokenSaverToggleBtnEl,
+    tokenSaverPhase1BtnEl,
+    tokenSaverPhase2BtnEl,
+    tokenSaverDotEl,
+  },
+  helpers: {
+    applyStateClass,
+    applyDotState,
+    fetchJson: async (url, errorMessage) => {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!res.ok) {throw new Error(data.error || errorMessage || 'request failed');}
+      return data;
+    },
+  },
+  getLatestWrapperRuntime: () => latestWrapperRuntime,
+  setLatestWrapperRuntime: runtime => { latestWrapperRuntime = runtime; },
+});
+const renderVioMessageEnvironmentMood = vioMessageEnvironment.renderMood;
+const renderVioMessageEnvironmentTokenSaverState = vioMessageEnvironment.renderTokenSaverState;
+const refreshVioMessageEnvironmentTokenSaverStats = vioMessageEnvironment.refreshTokenSaverStats;
 let lastVisitedDirs = [];
 let dashboardSessions = [];
 let selectedSessionKey = null;
@@ -219,7 +250,7 @@ const runModeState = {
   switching: false,
 };
 
-function getDefaultClaudeCwd() {
+function getDefaultClaudeCodeInterfaceCwd() {
   return String(currentDir || '.').trim() || '.';
 }
 
@@ -230,7 +261,7 @@ function isPlaceholderClaudeCwd(value) {
 
 const claude = {
   sessionId: 'claude-default',
-  cwd: getDefaultClaudeCwd(),
+  cwd: getDefaultClaudeCodeInterfaceCwd(),
   status: 'idle',
   running: false,
   started: false,
@@ -415,13 +446,6 @@ function registerChatRun(runId) {
     startedAt: Date.now(),
     updatedAt: Date.now(),
   });
-}
-
-function updateChatRunStatus(runId, status) {
-  const task = taskRegistry.get(runId);
-  if (!task) {return;}
-  task.status = status;
-  task.updatedAt = Date.now();
 }
 
 function registerExecTask(taskId, command) {
@@ -640,7 +664,7 @@ function resizeComposer() {
   inputEl.style.height = `${next}px`;
 }
 
-function resizeClaudeComposer() {
+function resizeClaudeCodeInterfaceComposer() {
   if (!claudeComposerInputEl) {return;}
   claudeComposerInputEl.style.height = 'auto';
   const minHeight = 56;
@@ -1112,21 +1136,7 @@ function _persistLatestReplyRoadmap(text = '') {
   } catch {}
 }
 
-function setMood(mode, detail = '', runtime = null) {
-  if (runtime && typeof runtime === 'object') {latestWrapperRuntime = runtime;}
-  const value = mode || runtime?.mood || runtime?.lightOutput || 'idle';
-  const state = value === 'thinking' ? 'thinking' : value === 'waiting' ? 'waiting' : value === 'error' ? 'error' : value === 'streaming' ? 'streaming' : 'idle';
-  if (moodEl) {moodEl.innerHTML = `<span class="semantic-label">mood:</span> <span class="semantic-value">${value}</span>`;}
-  if (moodMiniEl) {moodMiniEl.innerHTML = `<span class="semantic-value state-text-${state}">${value}</span>`;}
-  if (streamStateEl) {streamStateEl.innerHTML = `<span class="semantic-value">${value}</span>`;}
-  if (moodEl) {applyStateClass(moodEl, state);}
-  if (moodMiniEl) {applyStateClass(moodMiniEl, state);}
-  if (streamStateEl) {applyStateClass(streamStateEl, state);}
-  if (moodRouterDotEl) {applyDotState(moodRouterDotEl, 'mood', state);}
-  if (currentMoodDotEl) {applyDotState(currentMoodDotEl, 'mood', state);}
-}
-
-function setRouting(summary, _detail = '') {
+function renderLegacyRoutingSurface(summary, _detail = '') {
   if (routingEl) {routingEl.innerHTML = `<span class="semantic-label">routing:</span> <span class="semantic-value">${summary || 'n/a'}</span>`;}
 }
 
@@ -1154,8 +1164,8 @@ function syncTopbarForSession(sessionKey) {
           : uiState.state === 'final'
             ? 'settled'
             : 'idle';
-  setMood(mode, `ui session state: ${uiState.state}`, latestWrapperRuntime || null);
-  setRouting(routing, `session=${sessionKey || 'none'} · state=${uiState.state}`);
+  renderVioMessageEnvironmentMood(mode, `ui session state: ${uiState.state}`, latestWrapperRuntime || null);
+  renderLegacyRoutingSurface(routing, `session=${sessionKey || 'none'} · state=${uiState.state}`);
 }
 
 // eslint-disable-next-line no-unused-vars
@@ -1170,13 +1180,13 @@ function routingProxyLabel(mode, phase) {
   return mode || 'n/a';
 }
 
-function setCameraState(state = 'off', result = 'none', vision = 'none', gesture = 'none') {
+function renderLegacyCameraSurface(state = 'off', result = 'none', vision = 'none', gesture = 'none') {
   if (cameraDetailEl) {cameraDetailEl.innerHTML = `<span class="semantic-label">state</span> <span class="semantic-value">${state}</span><br><span class="semantic-label">result</span> <span class="semantic-value">${result}</span><br><span class="semantic-label">vision</span> <span class="semantic-value">${vision}</span><br><span class="semantic-label">gesture</span> <span class="semantic-value">${gesture}</span>`;}
   if (cameraTopbarEl) {cameraTopbarEl.innerHTML = `<span class="semantic-label">camera:</span> <span class="semantic-value">${state}</span> <span class="semantic-value">· ${gesture}</span>`;}
   if (cameraDotEl) {applyDotState(cameraDotEl, 'window', state === 'on' ? 'safe' : state === 'busy' ? 'mid' : state === 'error' ? 'danger' : 'safe');}
 }
 
-function setGestureRuntime(data = {}) {
+function renderLegacyGestureSurface(data = {}) {
   const watcherEnabled = !!data.watcherEnabled;
   const busy = !!data.watcherBusy;
   const provider = data.provider?.label || 'unknown provider';
@@ -1197,7 +1207,7 @@ function setGestureRuntime(data = {}) {
   if (gestureWatcherDotEl) {applyDotState(gestureWatcherDotEl, 'window', busy ? 'mid' : watcherEnabled ? 'safe' : 'danger');}
 }
 
-async function setGestureWatcher(enabled) {
+async function setLegacyGestureSurfaceWatcher(enabled) {
   const res = await fetch('/api/gesture/watcher', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1205,10 +1215,10 @@ async function setGestureWatcher(enabled) {
   });
   const data = await res.json();
   if (!res.ok) {throw new Error(data.error || 'watcher update failed');}
-  setGestureRuntime(data.gestureRuntime || {});
+  renderLegacyGestureSurface(data.gestureRuntime || {});
 }
 
-function setEnvironmentTelemetry(_vioBody = {}) {
+function renderLegacyEnvironmentTelemetrySurface(_vioBody = {}) {
   if (environmentDetailEl) {environmentDetailEl.innerHTML = '<span class="semantic-value">disabled · pending redesign</span>';}
   if (nightLogicDetailEl) {nightLogicDetailEl.innerHTML = '<span class="semantic-value">disabled · pending redesign</span>';}
   if (bodyLinkValueEl) {bodyLinkValueEl.textContent = 'disabled';}
@@ -1217,57 +1227,8 @@ function setEnvironmentTelemetry(_vioBody = {}) {
   if (nightLogicDotEl) {applyDotState(nightLogicDotEl, 'window', 'mid');}
 }
 
-async function refreshVioBodyState() {
-  setEnvironmentTelemetry();
-}
-
-function renderTokenSaverState(data = {}) {
-  const enabled = data?.enabled === true || data?.disabled === false;
-  const rules = data?.rules || {};
-  const stats = data?.stats || {};
-  const last = data?.lastSend?.stats || stats?.last || null;
-  const totalSaved = Number(stats?.totalSavedChars || 0) || 0;
-  const sendCount = Number(stats?.sendCount || 0) || 0;
-  const savedLast = Number(last?.savedChars || 0) || 0;
-  const contextChars = Number(last?.contextChars || 0) || 0;
-  const savedPct = Number(last?.savedPct || 0) || 0;
-  const totalSavedPct = Number(stats?.totalSavedPctWeighted || 0) || 0;
-  const detail = enabled
-    ? (sendCount
-        ? `on · last ${savedLast} chars (${savedPct}%) · total ${totalSaved} (${totalSavedPct}%) · sends ${sendCount} · ctx ${contextChars}`
-        : 'on · no savings recorded yet')
-    : 'off · pass-through mode';
-  if (tokenSaverDetailEl) {tokenSaverDetailEl.innerHTML = `<span class="semantic-value">${detail}</span>`;}
-  if (tokenSaverToggleBtnEl) {
-    tokenSaverToggleBtnEl.textContent = enabled ? 'on' : 'off';
-    tokenSaverToggleBtnEl.className = `chip ${enabled ? 'state-thinking' : 'state-idle'} token-saver-toggle`;
-    tokenSaverToggleBtnEl.dataset.enabled = enabled ? 'true' : 'false';
-  }
-  if (tokenSaverPhase1BtnEl) {
-    const on = rules.phase1Summary !== false;
-    tokenSaverPhase1BtnEl.textContent = `L1 ${on ? 'on' : 'off'}`;
-    tokenSaverPhase1BtnEl.className = `chip ${on ? 'state-thinking' : 'state-idle'} token-saver-toggle`;
-    tokenSaverPhase1BtnEl.dataset.enabled = on ? 'true' : 'false';
-  }
-  if (tokenSaverPhase2BtnEl) {
-    const on = rules.phase2ToolCompression === true;
-    tokenSaverPhase2BtnEl.textContent = `L2 ${on ? 'on' : 'off'}`;
-    tokenSaverPhase2BtnEl.className = `chip ${on ? 'state-thinking' : 'state-idle'} token-saver-toggle`;
-    tokenSaverPhase2BtnEl.dataset.enabled = on ? 'true' : 'false';
-  }
-  if (tokenSaverDotEl) {applyDotState(tokenSaverDotEl, 'window', enabled ? (totalSaved > 0 || savedLast > 0 ? 'safe' : sendCount > 0 ? 'mid' : 'safe') : 'danger');}
-}
-
-async function refreshTokenSaverStats() {
-  try {
-    const res = await fetch('/api/coms/token-saver');
-    const data = await res.json();
-    if (!res.ok) {throw new Error(data.error || 'token saver stats unavailable');}
-    renderTokenSaverState(data?.tokenSaver || {});
-  } catch (error) {
-    if (tokenSaverDetailEl) {tokenSaverDetailEl.innerHTML = `<span class="semantic-value">${error.message || error}</span>`;}
-    if (tokenSaverDotEl) {applyDotState(tokenSaverDotEl, 'window', 'danger');}
-  }
+async function refreshLegacyEnvironmentTelemetryState() {
+  renderLegacyEnvironmentTelemetrySurface();
 }
 
 function formatDistBuiltAt(value) {
@@ -1400,14 +1361,14 @@ async function updateTokenSaverConfig(patch = {}) {
   });
   const data = await res.json();
   if (!res.ok) {throw new Error(data.error || 'token saver toggle failed');}
-  renderTokenSaverState(data?.tokenSaver || {});
+  renderVioMessageEnvironmentTokenSaverState(data?.tokenSaver || {});
 }
 
 async function setTokenSaverEnabled(enabled) {
   return updateTokenSaverConfig({ enabled });
 }
 
-async function refreshCameraTelemetry() {
+async function refreshLegacyCameraSurfaceTelemetry() {
   try {
     const res = await fetch('/api/camera');
     const data = await res.json();
@@ -1421,7 +1382,7 @@ async function refreshCameraTelemetry() {
     const vision = sampleCount ? `${visionBase} · ${detectedCount ?? 0}/${sampleCount}` : visionBase;
     const gestureBase = data.vision?.gesture || 'none';
     const gesture = stable === false ? `${gestureBase} · unstable` : stable === true ? `${gestureBase} · stable` : gestureBase;
-    setCameraState(state, result, vision, gesture);
+    renderLegacyCameraSurface(state, result, vision, gesture);
     if (cameraPreviewEl) {
       if (data.latestCapture?.url) {
         cameraPreviewEl.src = `${data.latestCapture.url}?t=${Date.now()}`;
@@ -1433,26 +1394,26 @@ async function refreshCameraTelemetry() {
     }
     if (cameraVisionLabelEl) {cameraVisionLabelEl.textContent = data.vision?.label || 'none';}
     if (cameraGestureLabelEl) {cameraGestureLabelEl.textContent = data.vision?.gesture || 'none';}
-    setGestureRuntime(data.gestureRuntime || {});
+    renderLegacyGestureSurface(data.gestureRuntime || {});
   } catch {
-    setCameraState('error', 'telemetry unavailable', 'unknown', 'unknown');
+    renderLegacyCameraSurface('error', 'telemetry unavailable', 'unknown', 'unknown');
   }
 }
 
-async function runCameraCapture() {
+async function runLegacyCameraSurfaceCapture() {
   if (cameraCaptureBtnEl) {
     cameraCaptureBtnEl.disabled = true;
     cameraCaptureBtnEl.textContent = 'capturing';
   }
-  setCameraState('busy', 'warmup capture running', 'capturing', 'pending');
+  renderLegacyCameraSurface('busy', 'warmup capture running', 'capturing', 'pending');
   try {
     const captureRes = await fetch('/api/camera/capture-step', { method: 'POST' });
     const captureData = await captureRes.json();
     if (!captureRes.ok) {throw new Error(captureData.error || 'capture failed');}
-    await refreshCameraTelemetry();
+    await refreshLegacyCameraSurfaceTelemetry();
     addDebugLine(`Camera capture ok: ${captureData.capture?.path || 'unknown'}`, 'cyan');
   } catch (error) {
-    setCameraState('error', error.message || 'capture failed', 'error', 'error');
+    renderLegacyCameraSurface('error', error.message || 'capture failed', 'error', 'error');
     addDebugLine(`Camera capture failed: ${error.message || error}`, 'pink');
   } finally {
     if (cameraCaptureBtnEl) {
@@ -1528,12 +1489,12 @@ async function ensureTerminalSession() {
   if (terminalOutputEl) {terminalOutputEl.textContent = data.output || '';}
 }
 
-function updateClaudeFocusState() {
+function updateClaudeCodeInterfaceFocusState() {
   if (!claudeTerminalHostEl) {return;}
   claudeTerminalHostEl.classList.toggle('is-focused', !!claude.focused);
 }
 
-async function sendClaudeRawInput(text) {
+async function sendClaudeCodeInterfaceRawInput(text) {
   if (!text) {return;}
   await fetch('/api/claude/input', {
     method: 'POST',
@@ -1542,7 +1503,7 @@ async function sendClaudeRawInput(text) {
   });
 }
 
-async function flushClaudeInputBuffer() {
+async function flushClaudeCodeInterfaceInputBuffer() {
   if (claude.inputFlushTimer) {
     clearTimeout(claude.inputFlushTimer);
     claude.inputFlushTimer = null;
@@ -1551,18 +1512,18 @@ async function flushClaudeInputBuffer() {
   if (!payload) {return;}
   claude.inputBuffer = '';
   try {
-    await sendClaudeRawInput(payload);
+    await sendClaudeCodeInterfaceRawInput(payload);
   } catch {}
 }
 
-function scheduleClaudeInputFlush() {
+function scheduleClaudeCodeInterfaceInputFlush() {
   if (claude.inputFlushTimer) {return;}
   claude.inputFlushTimer = window.setTimeout(() => {
-    void flushClaudeInputBuffer();
+    void flushClaudeCodeInterfaceInputBuffer();
   }, claude.inputFlushDelayMs);
 }
 
-function shouldSendClaudeInputImmediately(data) {
+function shouldSendClaudeCodeInterfaceInputImmediately(data) {
   if (!data) {return false;}
   if (data === '\r' || data === '\n') {return true;}
   if (data === '\u001b') {return true;}
@@ -1575,7 +1536,7 @@ function shouldSendClaudeInputImmediately(data) {
   return false;
 }
 
-function ensureClaudeTerminal() {
+function ensureClaudeCodeInterfaceTerminal() {
   if (claude.terminalReady || !claudeTerminalHostEl || !window.Terminal || !window.FitAddon?.FitAddon) {return;}
   claude.term = new window.Terminal({
     convertEol: false,
@@ -1600,30 +1561,30 @@ function ensureClaudeTerminal() {
   claude.fitAddon.fit();
   claudeTerminalHostEl?.addEventListener('focusin', () => {
     claude.focused = true;
-    updateClaudeFocusState();
+    updateClaudeCodeInterfaceFocusState();
   });
   claudeTerminalHostEl?.addEventListener('focusout', () => {
     claude.focused = false;
-    updateClaudeFocusState();
+    updateClaudeCodeInterfaceFocusState();
   });
   claude.term.onData(data => {
     if (!claude.running) {return;}
-    if (shouldSendClaudeInputImmediately(data)) {
-      void flushClaudeInputBuffer().finally(() => {
-        sendClaudeRawInput(data).catch(() => {});
+    if (shouldSendClaudeCodeInterfaceInputImmediately(data)) {
+      void flushClaudeCodeInterfaceInputBuffer().finally(() => {
+        sendClaudeCodeInterfaceRawInput(data).catch(() => {});
       });
       return;
     }
     claude.inputBuffer += data;
-    scheduleClaudeInputFlush();
+    scheduleClaudeCodeInterfaceInputFlush();
   });
   claude.term.onFocus?.(() => {
     claude.focused = true;
-    updateClaudeFocusState();
+    updateClaudeCodeInterfaceFocusState();
   });
   claude.term.onBlur?.(() => {
     claude.focused = false;
-    updateClaudeFocusState();
+    updateClaudeCodeInterfaceFocusState();
   });
   claudeTerminalHostEl?.addEventListener('pointerdown', () => {
     requestAnimationFrame(() => claude.term?.focus());
@@ -1642,7 +1603,7 @@ function sanitizeClaudeTerminalChunk(text) {
 }
 
 function syncClaudeTerminalOutput() {
-  ensureClaudeTerminal();
+  ensureClaudeCodeInterfaceTerminal();
   const text = claude.output || '';
   if (!claude.term) {
     claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
@@ -1662,7 +1623,7 @@ function syncClaudeTerminalOutput() {
 }
 
 function resetClaudeTerminalOutput() {
-  ensureClaudeTerminal();
+  ensureClaudeCodeInterfaceTerminal();
   if (!claude.term) {
     claude.error = claude.error || CLAUDE_TERMINAL_INIT_ERROR;
     claude.renderedLength = 0;
@@ -1685,33 +1646,33 @@ function setClaudeComposerStatus(message, tone = 'hint') {
   }
 }
 
-function getClaudeComposerMode() {
+function getClaudeCodeInterfaceComposerMode() {
   return claude.running ? 'reply' : 'dispatch';
 }
 
-function getClaudeComposerHint(mode = getClaudeComposerMode()) {
+function getClaudeComposerHint(mode = getClaudeCodeInterfaceComposerMode()) {
   return mode === 'reply'
     ? 'Reply to running Claude session: Enter send · Shift+Enter newline'
     : 'Dispatch new task: Enter send · Shift+Enter newline';
 }
 
-function getClaudeComposerPlaceholder(mode = getClaudeComposerMode()) {
+function getClaudeCodeInterfaceComposerPlaceholder(mode = getClaudeCodeInterfaceComposerMode()) {
   return mode === 'reply'
     ? 'Reply to the running Claude session...'
     : 'Dispatch a new task to Claude...';
 }
 
 function renderClaudeComposer() {
-  const mode = getClaudeComposerMode();
+  const mode = getClaudeCodeInterfaceComposerMode();
   if (claudeComposerInputEl && document.activeElement !== claudeComposerInputEl) {
     if (claudeComposerInputEl.value !== claude.composerDraft) {claudeComposerInputEl.value = claude.composerDraft;}
   }
-  resizeClaudeComposer();
+  resizeClaudeCodeInterfaceComposer();
   const trimmed = (claude.composerDraft || '').trim();
   const disabled = claude.loading || claude.composerSending;
   if (claudeComposerInputEl) {
     claudeComposerInputEl.disabled = disabled;
-    claudeComposerInputEl.placeholder = getClaudeComposerPlaceholder(mode);
+    claudeComposerInputEl.placeholder = getClaudeCodeInterfaceComposerPlaceholder(mode);
   }
   if (claudeComposerSendBtnEl) {
     claudeComposerSendBtnEl.disabled = disabled || !trimmed.length;
@@ -1723,9 +1684,9 @@ function renderClaudeComposer() {
   setClaudeComposerStatus(claude.composerStatus, claude.composerStatusTone);
 }
 
-async function submitClaudeComposer() {
+async function submitClaudeCodeInterfaceComposer() {
   const value = String(claude.composerDraft || '').trim();
-  const mode = getClaudeComposerMode();
+  const mode = getClaudeCodeInterfaceComposerMode();
   if (!value || claude.composerSending || claude.loading) {return;}
   claude.composerSending = true;
   setClaudeComposerStatus(mode === 'reply' ? 'Sending reply to Claude...' : 'Dispatching task to Claude...', 'busy');
@@ -1733,7 +1694,7 @@ async function submitClaudeComposer() {
   setConsoleTab('claude');
   addDebugLine(`Claude composer ${mode} len=${value.length}`, 'cyan');
   try {
-    await flushClaudeInputBuffer();
+    await flushClaudeCodeInterfaceInputBuffer();
     const endpoint = mode === 'reply' ? '/api/claude/input' : '/api/agent-tasks/dispatch';
     const body = mode === 'reply'
       ? { text: value, cwd: claude.cwd, raw: false }
@@ -1745,11 +1706,11 @@ async function submitClaudeComposer() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || `Failed to ${mode} Claude`);}
-    if (data.session) {applyClaudeStateData(data.session);}
-    else {applyClaudeStateData(data);}
+    if (data.session) {applyClaudeCodeInterfaceState(data.session);}
+    else {applyClaudeCodeInterfaceState(data);}
     claude.composerDraft = '';
     if (claudeComposerInputEl) {claudeComposerInputEl.value = '';}
-    resizeClaudeComposer();
+    resizeClaudeCodeInterfaceComposer();
     renderClaudeComposer();
     addDebugLine(`Claude composer ${mode} accepted.`, 'cyan');
     setClaudeComposerStatus(
@@ -1790,7 +1751,7 @@ async function fetchServerConfig() {
     if (!res.ok) {throw new Error(data?.error || 'config fetch failed');}
     Object.assign(serverConfig, data?.config || {});
     renderSetupBanner();
-    const nextDefaultCwd = getDefaultClaudeCwd();
+    const nextDefaultCwd = getDefaultClaudeCodeInterfaceCwd();
     claude.cwd = nextDefaultCwd;
     if (fileBrowserRootEl && serverConfig.projectRoot) {fileBrowserRootEl.textContent = serverConfig.projectRoot;}
     renderClaudeChrome();
@@ -1810,7 +1771,7 @@ function renderClaudeChrome() {
     if (claudeStatusBadgeEl.dataset.status !== nextStatus) {claudeStatusBadgeEl.dataset.status = nextStatus;}
   }
   if (claudeCwdInputEl && document.activeElement !== claudeCwdInputEl) {
-    const nextCwd = claude.cwd || getDefaultClaudeCwd();
+    const nextCwd = claude.cwd || getDefaultClaudeCodeInterfaceCwd();
     if (claudeCwdInputEl.value !== nextCwd) {claudeCwdInputEl.value = nextCwd;}
   }
   if (claudeMetaEl) {
@@ -1828,7 +1789,7 @@ function renderClaudeChrome() {
 }
 
 function renderClaudePanel() {
-  ensureClaudeTerminal();
+  ensureClaudeCodeInterfaceTerminal();
   if (claudeOutputEl) {claudeOutputEl.hidden = true;}
   if (claudeTerminalHostEl) {claudeTerminalHostEl.hidden = !claude.term;}
   if (!claude.term) {
@@ -1866,7 +1827,7 @@ function measureClaudeTerminalGeometry() {
 }
 
 async function resizeClaudeSession() {
-  ensureClaudeTerminal();
+  ensureClaudeCodeInterfaceTerminal();
   if (!claude.term) {return;}
   if (claude.fitAddon) {claude.fitAddon.fit();}
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1889,7 +1850,7 @@ async function resizeClaudeSession() {
   } catch {}
 }
 
-function applyClaudeStateData(data) {
+function applyClaudeCodeInterfaceState(data) {
   const prevOutput = claude.output || '';
   const prevStatus = claude.status;
   const prevRunning = claude.running;
@@ -1925,10 +1886,10 @@ function applyClaudeStateData(data) {
 }
 
 async function fetchClaudeState() {
-  const res = await fetch(`/api/claude/state?cwd=${encodeURIComponent(claude.cwd || getDefaultClaudeCwd())}`, { cache: 'no-store' });
+  const res = await fetch(`/api/claude/state?cwd=${encodeURIComponent(claude.cwd || getDefaultClaudeCodeInterfaceCwd())}`, { cache: 'no-store' });
   const data = await res.json();
   if (!res.ok) {throw new Error(data?.error || 'Failed to fetch Claude state');}
-  applyClaudeStateData(data);
+  applyClaudeCodeInterfaceState(data);
 }
 
 function ensureClaudePolling() {
@@ -1958,7 +1919,7 @@ function queueClaudeAutoStart() {
   return;
 }
 
-async function startClaude() {
+async function startClaudeCodeInterface() {
   claude.inputBuffer = '';
   if (claude.inputFlushTimer) {
     clearTimeout(claude.inputFlushTimer);
@@ -1967,7 +1928,7 @@ async function startClaude() {
   claude.loading = true;
   claude.error = '';
   claude.status = 'starting';
-  claude.cwd = (claudeCwdInputEl?.value || getDefaultClaudeCwd()).trim() || getDefaultClaudeCwd();
+  claude.cwd = (claudeCwdInputEl?.value || getDefaultClaudeCodeInterfaceCwd()).trim() || getDefaultClaudeCodeInterfaceCwd();
   renderClaudePanel();
   try {
     const res = await fetch('/api/claude/start', {
@@ -1977,7 +1938,7 @@ async function startClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to start Claude');}
-    applyClaudeStateData(data);
+    applyClaudeCodeInterfaceState(data);
     window.setTimeout(() => fetchClaudeState().catch(() => {}), 250);
   } catch (error) {
     claude.error = error?.message || String(error);
@@ -1989,8 +1950,8 @@ async function startClaude() {
   }
 }
 
-async function stopClaude() {
-  flushClaudeInputBuffer().catch(() => {});
+async function stopClaudeCodeInterface() {
+  flushClaudeCodeInterfaceInputBuffer().catch(() => {});
   syncClaudeCwdToExplorer({ force: true });
   claude.loading = true;
   claude.error = '';
@@ -2003,7 +1964,7 @@ async function stopClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to stop Claude');}
-    applyClaudeStateData(data);
+    applyClaudeCodeInterfaceState(data);
   } catch (error) {
     claude.error = error?.message || String(error);
   } finally {
@@ -2012,13 +1973,13 @@ async function stopClaude() {
   }
 }
 
-async function restartClaude() {
+async function restartClaudeCodeInterface() {
   claude.inputBuffer = '';
   if (claude.inputFlushTimer) {clearTimeout(claude.inputFlushTimer); claude.inputFlushTimer = null;}
   syncClaudeCwdToExplorer({ force: true });
   claude.loading = true;
   claude.error = '';
-  claude.cwd = (claudeCwdInputEl?.value || getDefaultClaudeCwd()).trim() || getDefaultClaudeCwd();
+  claude.cwd = (claudeCwdInputEl?.value || getDefaultClaudeCodeInterfaceCwd()).trim() || getDefaultClaudeCodeInterfaceCwd();
   renderClaudePanel();
   try {
     const res = await fetch('/api/claude/restart', {
@@ -2028,7 +1989,7 @@ async function restartClaude() {
     });
     const data = await res.json();
     if (!res.ok) {throw new Error(data?.error || 'Failed to restart Claude');}
-    applyClaudeStateData(data);
+    applyClaudeCodeInterfaceState(data);
   } catch (error) {
     claude.error = error?.message || String(error);
   } finally {
@@ -2451,13 +2412,13 @@ function bindConsoleTabEvents() {
 
 function bindClaudeEvents() {
   if (claudeStartBtnEl) {
-    claudeStartBtnEl.addEventListener('click', startClaude);
+    claudeStartBtnEl.addEventListener('click', startClaudeCodeInterface);
     claudeStartBtnEl.dataset.bound = '1';
   }
-  if (claudeStopBtnEl) {claudeStopBtnEl.addEventListener('click', stopClaude);}
-  if (claudeRestartBtnEl) {claudeRestartBtnEl.addEventListener('click', restartClaude);}
+  if (claudeStopBtnEl) {claudeStopBtnEl.addEventListener('click', stopClaudeCodeInterface);}
+  if (claudeRestartBtnEl) {claudeRestartBtnEl.addEventListener('click', restartClaudeCodeInterface);}
   claudeCwdInputEl?.addEventListener('change', event => {
-    claude.cwd = String(event.target.value || '').trim() || getDefaultClaudeCwd();
+    claude.cwd = String(event.target.value || '').trim() || getDefaultClaudeCodeInterfaceCwd();
   });
   claudeAutoScrollEl?.addEventListener('change', event => {
     claude.autoScroll = !!event.target.checked;
@@ -2474,11 +2435,11 @@ function bindClaudeEvents() {
     if (event.key !== 'Enter') {return;}
     if (event.shiftKey || event.isComposing) {return;}
     event.preventDefault();
-    submitClaudeComposer().catch(() => {});
+    submitClaudeCodeInterfaceComposer().catch(() => {});
   });
   claudeComposerFormEl?.addEventListener('submit', event => {
     event.preventDefault();
-    submitClaudeComposer().catch(() => {});
+    submitClaudeCodeInterfaceComposer().catch(() => {});
   });
   window.__CLAUDE_PANEL_BOUND__ = true;
 }
@@ -2508,7 +2469,7 @@ function initClaudePanel() {
   if (window.ResizeObserver && claudeTerminalHostEl) {
     const ro = new ResizeObserver(() => {
       scheduleClaudeResize();
-      resizeClaudeComposer();
+      resizeClaudeCodeInterfaceComposer();
     });
     ro.observe(claudeTerminalHostEl);
     if (consolePaneClaudeEl) {ro.observe(consolePaneClaudeEl);}
@@ -2730,25 +2691,6 @@ function openDirectory(dirPath) {
   void loadFileTree(dirPath);
 }
 
-function markLatestAssistantReplyAborted(runId = null, sessionKey = null) {
-  try {
-    const raw = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_KEY) || 'null') || {};
-    const next = {
-      ...raw,
-      runId: runId || raw.runId || null,
-      aborted: true,
-      sessionKey: sessionKey || raw.sessionKey || selectedSessionKey || null,
-      updatedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(LAST_ASSISTANT_REPLY_KEY, JSON.stringify(next));
-    const bySession = JSON.parse(localStorage.getItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY) || '{}') || {};
-    if (next.sessionKey) {
-      bySession[next.sessionKey] = next;
-      localStorage.setItem(LAST_ASSISTANT_REPLY_BY_SESSION_KEY, JSON.stringify(bySession));
-    }
-  } catch {}
-}
-
 function getPersistedLatestAssistantReplyMeta(sessionKey = null) {
   try {
     const targetSessionKey = sessionKey || selectedSessionKey || null;
@@ -2769,13 +2711,6 @@ function getPersistedLatestAssistantReplyMeta(sessionKey = null) {
 
 function _getPersistedLatestAssistantReply(sessionKey = null) {
   return getPersistedLatestAssistantReplyMeta(sessionKey).text;
-}
-
-function tailSnippet(text = '', maxChars = 1200) {
-  const normalized = String(text || '').replace(/\r/g, '').trim();
-  if (!normalized) {return '';}
-  if (normalized.length <= maxChars) {return normalized;}
-  return `...\n${normalized.slice(-maxChars).trim()}`;
 }
 
 function isContinueAnchorWrappedText(text = '') {
@@ -4080,12 +4015,12 @@ function connect() {
       addDebugLine(`Wrapper error routed to session=${sessionKey || 'none'}: ${errorText}`, 'pink');
       const fallbackMode = latestWrapperRuntime?.mood || latestWrapperRuntime?.lightOutput || 'idle';
       try {
-        setMood(fallbackMode, `send failed: ${errorText}`, latestWrapperRuntime || null);
+        renderVioMessageEnvironmentMood(fallbackMode, `send failed: ${errorText}`, latestWrapperRuntime || null);
       } catch (error) {
         addDebugLine(`ws error setMood failed: ${error?.message || error}`, 'pink');
       }
       try {
-        setRouting('send failed', errorText);
+        renderLegacyRoutingSurface('send failed', errorText);
       } catch (error) {
         addDebugLine(`ws error setRouting failed: ${error?.message || error}`, 'pink');
       }
@@ -4127,12 +4062,12 @@ function connect() {
       return;
     }
     if (msg.type === 'token-saver') {
-      renderTokenSaverState(msg.tokenSaver || {});
+      renderVioMessageEnvironmentTokenSaverState(msg.tokenSaver || {});
       addDebugLine(`Token saver ${msg.tokenSaver?.enabled ? 'enabled' : 'disabled'}.`, 'cyan');
       return;
     }
     if (msg.type === 'claude-state') {
-      try {applyClaudeStateData(msg);} catch (error) {addDebugLine(`ws claude-state apply failed: ${error?.message || error}`, 'pink');}
+      try {applyClaudeCodeInterfaceState(msg);} catch (error) {addDebugLine(`ws claude-state apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
     if (msg.type === 'kernel.run') {
@@ -4196,7 +4131,7 @@ inputEl?.addEventListener('keydown', event => {
   }
 });
 window.addEventListener('resize', resizeComposer);
-window.addEventListener('resize', resizeClaudeComposer);
+window.addEventListener('resize', resizeClaudeCodeInterfaceComposer);
 fileBackBtnEl?.addEventListener('click', () => {
   if (currentDir === '.') {return;}
   const parent = currentDir.includes('/') ? currentDir.split('/').slice(0, -1).join('/') : '.';
@@ -4287,12 +4222,12 @@ terminalTerminateBtnEl?.addEventListener('click', async () => {
     syncTerminalTaskButtons();
   }
 });
-cameraCaptureBtnEl?.addEventListener('click', () => runCameraCapture());
+cameraCaptureBtnEl?.addEventListener('click', () => runLegacyCameraSurfaceCapture());
 gestureWatcherBtnEl?.addEventListener('click', async () => {
   try {
     const turnOn = !String(gestureWatcherBtnEl.textContent || '').includes('on');
-    await setGestureWatcher(turnOn);
-    await refreshCameraTelemetry();
+    await setLegacyGestureSurfaceWatcher(turnOn);
+    await refreshLegacyCameraSurfaceTelemetry();
   } catch (error) {
     addDebugLine(`Watcher toggle failed: ${error.message || error}`, 'pink');
   }
@@ -4410,16 +4345,16 @@ fileEditorEl?.addEventListener('input', syncEditorHighlight);
 fileEditorEl?.addEventListener('scroll', syncEditorHighlight);
 
 resizeComposer();
-resizeClaudeComposer();
+resizeClaudeCodeInterfaceComposer();
 setVoiceInputStatus('Click Voice to record', 'idle');
 applyLayoutPrefs();
 fetchServerConfig().catch(() => {});
 bindFoldPersistence(cameraFoldEl, 'cameraFoldOpen', false);
 bindFoldPersistence(gestureFoldEl, 'gestureFoldOpen', false);
 setupResizers();
-void refreshCameraTelemetry();
-void refreshVioBodyState();
-void refreshTokenSaverStats();
+void refreshLegacyCameraSurfaceTelemetry();
+void refreshLegacyEnvironmentTelemetryState();
+void refreshVioMessageEnvironmentTokenSaverStats();
 void refreshDistInfo();
 void refreshSafeEditState();
 syncTerminalTaskButtons();
@@ -4429,9 +4364,9 @@ setInterval(() => {
     forceFinalizeFrontState('stream-watchdog-timeout');
   }
 }, 2000);
-setInterval(refreshCameraTelemetry, 2500);
-setInterval(refreshVioBodyState, 5000);
-setInterval(refreshTokenSaverStats, 4000);
+setInterval(refreshLegacyCameraSurfaceTelemetry, 2500);
+setInterval(refreshLegacyEnvironmentTelemetryState, 5000);
+setInterval(refreshVioMessageEnvironmentTokenSaverStats, 4000);
 setInterval(refreshDistInfo, 15000);
 setInterval(refreshSafeEditState, 5000);
 syncFileNavButtons();

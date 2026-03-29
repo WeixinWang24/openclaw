@@ -1,21 +1,20 @@
 ---
 name: obsidian
-description: Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli.
+description: Work with Obsidian vaults (plain Markdown notes) and automate via the local `obsidian` command.
 homepage: https://help.obsidian.md
 metadata:
   {
     "openclaw":
       {
         "emoji": "💎",
-        "requires": { "bins": ["obsidian-cli"] },
+        "requires": { "bins": ["obsidian"] },
         "install":
           [
             {
-              "id": "brew",
-              "kind": "brew",
-              "formula": "yakitrak/yakitrak/obsidian-cli",
-              "bins": ["obsidian-cli"],
-              "label": "Install obsidian-cli (brew)",
+              "id": "local-obsidian-cli",
+              "kind": "manual",
+              "bins": ["obsidian"],
+              "label": "Install or expose the local `obsidian` command",
             },
           ],
       },
@@ -39,43 +38,63 @@ Obsidian desktop tracks vaults here (source of truth):
 
 - `~/Library/Application Support/obsidian/obsidian.json`
 
-`obsidian-cli` resolves vaults from that file; vault name is typically the **folder name** (path suffix).
+The local `obsidian` command works against the running Obsidian app and supports explicit vault targeting via:
+
+- `vault="<vault-name>"`
 
 Fast “what vault is active / where are the notes?”
 
-- If you’ve already set a default: `obsidian-cli print-default --path-only`
+- `obsidian vault`
+- `obsidian vault info=path`
+- `obsidian vaults`
 - Otherwise, read `~/Library/Application Support/obsidian/obsidian.json` and use the vault entry with `"open": true`.
 
 Notes
 
-- Multiple vaults common (iCloud vs `~/Documents`, work/personal, etc.). Don’t guess; read config.
-- Avoid writing hardcoded vault paths into scripts; prefer reading the config or using `print-default`.
+- Multiple vaults are common (iCloud vs `~/Documents`, work/personal, etc.). Don’t guess; inspect `obsidian vaults` or the Obsidian config.
+- Avoid hardcoded vault paths in scripts; prefer `vault="..."` or reading the Obsidian config.
 
-## obsidian-cli quick start
+## Local `obsidian` command quick start
 
-Pick a default vault (once):
+Vault selection
 
-- `obsidian-cli set-default "<vault-folder-name>"`
-- `obsidian-cli print-default` / `obsidian-cli print-default --path-only`
+- Most commands accept `vault="<vault-name>"`
+- If omitted, commands usually act on the currently active vault
 
 Search
 
-- `obsidian-cli search "query"` (note names)
-- `obsidian-cli search-content "query"` (inside notes; shows snippets + lines)
+- `obsidian search query="query"`
+- `obsidian search:context query="query"`
+
+Read
+
+- `obsidian read path="Folder/Note.md"`
+- `obsidian file path="Folder/Note.md"`
 
 Create
 
-- `obsidian-cli create "Folder/New note" --content "..." --open`
-- Requires Obsidian URI handler (`obsidian://…`) working (Obsidian installed).
-- Avoid creating notes under “hidden” dot-folders (e.g. `.something/...`) via URI; Obsidian may refuse.
+- `obsidian create path="Folder/New note.md" content="..." open`
+- Requires the local Obsidian app to be installed and responsive.
 
 Move/rename (safe refactor)
 
-- `obsidian-cli move "old/path/note" "new/path/note"`
-- Updates `[[wikilinks]]` and common Markdown links across the vault (this is the main win vs `mv`).
+- `obsidian move path="old/path/note.md" to="new/path/note.md"`
+- `obsidian rename path="Folder/Note.md" name="New name.md"`
+- Prefer these over raw `mv` when you want Obsidian-aware note operations.
+
+Append / prepend
+
+- `obsidian append path="Folder/Note.md" content="..."`
+- `obsidian prepend path="Folder/Note.md" content="..."`
 
 Delete
 
-- `obsidian-cli delete "path/note"`
+- `obsidian delete path="Folder/Note.md"`
 
-Prefer direct edits when appropriate: open the `.md` file and change it; Obsidian will pick it up.
+Open / UI integration
+
+- `obsidian open path="Folder/Note.md"`
+- `obsidian daily`
+- `obsidian command id="..."`
+
+Prefer direct edits when appropriate: open the `.md` file and change it; Obsidian will pick it up. When using the CLI, prefer the local `obsidian` command syntax over the older `obsidian-cli` examples.

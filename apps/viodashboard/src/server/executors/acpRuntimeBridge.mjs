@@ -30,7 +30,7 @@ async function fetchAcpHistoryBaseline(sessionKey) {
     bridge.connected = true;
     const history = await bridge.fetchSessionHistory(sessionKey, { limit: 20 });
     const messages = Array.isArray(history) ? history : [];
-    const lastAssistant = [...messages].reverse().find(message => message?.role === 'assistant' && String(message?.text || '').trim()) || null;
+    const lastAssistant = messages.toReversed().find(message => message?.role === 'assistant' && String(message?.text || '').trim()) || null;
     const lastSummary = String(lastAssistant?.text || '').trim().slice(0, 240);
     return {
       historyCount: messages.length,

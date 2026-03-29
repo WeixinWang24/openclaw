@@ -100,7 +100,7 @@ export function extractRoadmapItems(text = '') {
     sawBody = true;
   }
 
-  return items.map(({ baseIndent, ...item }) => ({
+  return items.map(({ baseIndent: _baseIndent, ...item }) => ({
     ...item,
     description: String(item.description || '').trim(),
   }));

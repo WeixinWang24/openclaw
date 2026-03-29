@@ -167,7 +167,7 @@ const roadmapStateService = createRoadmapStateService({
   roadmapHistoryDataPath: ROADMAP_HISTORY_DATA_PATH,
 });
 const runtimeSessionState = createRuntimeSessionState();
-const { tokenStats, seenFinalRunIds, activeRunSeq } = runtimeSessionState;
+const { tokenStats, activeRunSeq } = runtimeSessionState;
 const runtimeMoodStateService = createRuntimeMoodStateService({ activeRunSeq });
 let runSequence = 0;
 let runtimeGatewayReadPrewarmStarted = false;
@@ -297,7 +297,7 @@ function buildProjectionViewMeta(sessionKey) {
     runs,
   };
 }
-const tokenUsageService = createTokenUsageService({
+const _tokenUsageService = createTokenUsageService({
   bridge: { fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
   tokenStats,
   broadcast,
@@ -328,7 +328,7 @@ const runLifecycleService = createRunLifecycleService({
     onAssistantError,
   },
 });
-const finalReplyService = createFinalReplyService({
+const _finalReplyService = createFinalReplyService({
   state: {
     activeRunSeq,
     runSequenceRef: { get: () => runSequence },
