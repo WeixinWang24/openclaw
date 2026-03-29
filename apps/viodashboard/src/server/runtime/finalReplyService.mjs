@@ -21,10 +21,7 @@ export function createFinalReplyService({
   if (typeof getRuntimeState !== 'function') {throw new Error('getRuntimeState is required');}
   if (typeof syncRuntimeState !== 'function') {throw new Error('syncRuntimeState is required');}
 
-  async function handleFinalEvent(event, rawReplyText, { finishedSeq = 0 } = {}) {
-    const replyBody = stripStructuredRoadmapBlock(rawReplyText || '');
-    const preview = replyBody.slice(0, 220);
-    console.log('[wrapper] final reply preview:', preview);
+  function persistRoadmapSideEffects(rawReplyText, replyBody) {
     const extractedRoadmap = buildRoadmapFromReply(rawReplyText || '');
     const previousRoadmap = roadmap.loadRoadmapData();
     const roadmapDecision = roadmap.choosePersistedRoadmap(extractedRoadmap, previousRoadmap);
@@ -34,11 +31,10 @@ export function createFinalReplyService({
     console.log('[wrapper] roadmap source:', nextRoadmap.sourceType, 'items:', nextRoadmap.items?.length || 0, 'decision:', roadmapDecision.reason);
     broadcast({ type: 'roadmap', roadmap: nextRoadmap, decision: roadmapDecision.reason, extractedRoadmap });
 
-    let projectRoadmapResult = null;
     try {
       ensureProjectRoadmap({ context: 'Auto-created by VioDashboard from assistant code-workflow roadmap handling.' });
       if (nextRoadmap?.items?.length) {
-        projectRoadmapResult = appendProjectRoadmapEntry({
+        const projectRoadmapResult = appendProjectRoadmapEntry({
           roadmap: nextRoadmap,
           replyBody,
           changedFiles: [],
@@ -53,27 +49,30 @@ export function createFinalReplyService({
       console.log('[wrapper] project roadmap update failed', roadmapFileError?.message || String(roadmapFileError));
     }
 
-    const newerRunStillActive = state.activeRunSeq.size > 0 && finishedSeq < state.runSequenceRef.get();
-    if (newerRunStillActive) {
-      routing.setLastRouting({
-        mode: 'thinking',
-        detail: `final for older run ignored while newer run is active (${state.activeRunSeq.size} active)`,
-        preview,
-        phase: 'streaming',
-        runId: event.runId,
-      });
-      syncRuntimeState({ mood: 'thinking', phase: 'streaming', source: 'chat-final-suppressed' });
-      broadcast(buildMoodPacket('thinking', {
-        state: getRuntimeState().bodyState,
-        detail: routing.getLastRouting().detail,
-        preview,
-        phase: 'streaming',
-        runId: event.runId,
-        source: 'chat-final-suppressed',
-      }));
-      return { suppressed: true, preview, replyBody };
-    }
+    return { extractedRoadmap, roadmapDecision, nextRoadmap };
+  }
 
+  function handleSuppressedOlderFinal(event, preview) {
+    routing.setLastRouting({
+      mode: 'thinking',
+      detail: `final for older run ignored while newer run is active (${state.activeRunSeq.size} active)`,
+      preview,
+      phase: 'streaming',
+      runId: event.runId,
+    });
+    syncRuntimeState({ mood: 'thinking', phase: 'streaming', source: 'chat-final-suppressed' });
+    broadcast(buildMoodPacket('thinking', {
+      state: getRuntimeState().bodyState,
+      detail: routing.getLastRouting().detail,
+      preview,
+      phase: 'streaming',
+      runId: event.runId,
+      source: 'chat-final-suppressed',
+    }));
+    return { suppressed: true, preview };
+  }
+
+  async function runAssistantFinalSideEffects(event, replyBody, preview) {
     let result = null;
     let sidecarFinalError = null;
     try {
@@ -92,6 +91,10 @@ export function createFinalReplyService({
       });
     }
 
+    return { result, sidecarFinalError };
+  }
+
+  function publishFinalRuntimeState(event, replyBody, preview, result, sidecarFinalError) {
     const fallbackMode = state.activeRunSeq.size > 0 ? 'thinking' : 'idle';
     const finalMode = result?.mode ?? fallbackMode;
     const finalState = result?.state ?? getRuntimeState().bodyState ?? null;
@@ -99,13 +102,14 @@ export function createFinalReplyService({
     const finalDetail = sidecarFinalError
       ? `final length=${replyBody.length} · sidecar sync failed: ${sidecarFinalErrorDetail}`
       : `final length=${replyBody.length}`;
+    const source = sidecarFinalError ? 'chat-final-sidecar-error' : 'chat-final';
 
     syncRuntimeState({
       mood: finalMode,
       phase: 'final',
       activeRunId: state.activeRunSeq.size ? getRuntimeState().activeRunId : null,
       bodyState: finalState,
-      source: sidecarFinalError ? 'chat-final-sidecar-error' : 'chat-final',
+      source,
     });
     routing.setLastRouting({
       mode: finalMode,
@@ -120,9 +124,37 @@ export function createFinalReplyService({
       preview,
       phase: 'final',
       runId: event.runId,
-      source: sidecarFinalError ? 'chat-final-sidecar-error' : 'chat-final',
+      source,
     }));
-    return { suppressed: false, preview, replyBody, result, sidecarFinalError };
+  }
+
+  async function handleFinalEvent(event, rawReplyText, { finishedSeq = 0 } = {}) {
+    const replyBody = stripStructuredRoadmapBlock(rawReplyText || '');
+    const preview = replyBody.slice(0, 220);
+    console.log('[wrapper] final reply preview:', preview);
+
+    const roadmapEffects = persistRoadmapSideEffects(rawReplyText, replyBody);
+
+    const newerRunStillActive = state.activeRunSeq.size > 0 && finishedSeq < state.runSequenceRef.get();
+    if (newerRunStillActive) {
+      return {
+        ...handleSuppressedOlderFinal(event, preview),
+        replyBody,
+        roadmapEffects,
+      };
+    }
+
+    const { result, sidecarFinalError } = await runAssistantFinalSideEffects(event, replyBody, preview);
+    publishFinalRuntimeState(event, replyBody, preview, result, sidecarFinalError);
+
+    return {
+      suppressed: false,
+      preview,
+      replyBody,
+      roadmapEffects,
+      result,
+      sidecarFinalError,
+    };
   }
 
   return {
