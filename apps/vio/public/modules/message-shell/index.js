@@ -102,8 +102,19 @@ export function createMessageShell({ mountEl } = {}) {
 
   function markPendingFailed(sessionKey, localId) {
     pendingMessages = pendingMessages.map(item => item.localId === localId && item.sessionKey === sessionKey ? { ...item, state: 'failed' } : item);
-    if (mountedSessionKey === sessionKey) {
-      renderCanonicalHistory(sessionKey, lastCanonicalMessages);
+    if (mountedSessionKey !== sessionKey) {return;}
+    const target = ensureMount();
+    if (!target) {return;}
+    const sourceMessages = Array.isArray(lastCanonicalMessages) ? lastCanonicalMessages : [];
+    target.innerHTML = '';
+    for (const message of sourceMessages) {
+      const role = message?.role === 'user' ? 'user' : 'assistant';
+      target.appendChild(createMessageRow(role, message?.text || '', { status: message?.status || null }));
+    }
+    for (const pending of pendingMessages) {
+      if (pending.sessionKey === sessionKey) {
+        target.appendChild(createMessageRow('user', pending.text || '', { status: pending.state || 'pending' }));
+      }
     }
   }
 
