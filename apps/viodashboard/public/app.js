@@ -268,7 +268,7 @@ const claude = {
 
 function renderRunModeChip() {
   if (!runModeChipEl) {return;}
-  runModeChipEl.textContent = runModeState.switching ? `mode: ${runModeState.mode} → switching…` : `mode: ${runModeState.mode}`;
+  runModeChipEl.textContent = runModeState.switching ? `mode: ${runModeState.mode} → switching...` : `mode: ${runModeState.mode}`;
   runModeChipEl.disabled = !!runModeState.switching;
   runModeChipEl.dataset.mode = runModeState.mode;
   runModeChipEl.classList.remove('state-idle', 'state-thinking');
@@ -745,7 +745,7 @@ function updateLiveTranscript() {
   }
   voiceLiveTranscriptEl.hidden = false;
   voiceLiveTranscriptEl.dataset.tone = voiceInputState.pendingChunks > 0 ? 'working' : voiceInputState.recording ? 'recording' : 'idle';
-  voiceLiveTranscriptEl.textContent = text || (voiceInputState.recording ? 'Listening… waiting for the first chunk.' : 'Finishing transcript…');
+  voiceLiveTranscriptEl.textContent = text || (voiceInputState.recording ? 'Listening... waiting for the first chunk.' : 'Finishing transcript...');
 }
 
 function stopVoiceMediaStream() {
@@ -911,7 +911,7 @@ async function startVoiceRecording() {
       voiceInputState.pendingChunks += 1;
       updateLiveTranscript();
       if (voiceInputState.recording) {
-        setVoiceInputStatus(`Listening… transcribing chunk ${idx + 1}.`, 'recording');
+        setVoiceInputStatus(`Listening... transcribing chunk ${idx + 1}.`, 'recording');
       }
       transcribeChunk(blob).then(text => {
         if (voiceInputState.aborted || runToken !== voiceInputState.runToken) {return;}
@@ -926,7 +926,7 @@ async function startVoiceRecording() {
         updateLiveTranscript();
         if (voiceInputState.recording) {
           const heard = mergeVoiceChunkTranscripts(voiceInputState.chunkTranscripts);
-          setVoiceInputStatus(heard ? 'Listening… live transcript updating below.' : 'Recording… speak naturally.', 'recording');
+          setVoiceInputStatus(heard ? 'Listening... live transcript updating below.' : 'Recording... speak naturally.', 'recording');
         } else if (voiceInputState.finalizing && voiceInputState.pendingChunks === 0) {
           void finalizeVoiceTranscript(runToken);
         }
@@ -939,7 +939,7 @@ async function startVoiceRecording() {
       voiceInputState.transcribing = true;
       voiceInputState.finalizing = true;
       voiceInputState.stoppedAt = Date.now();
-      setVoiceInputStatus(voiceInputState.pendingChunks > 0 ? 'Finishing transcript from recent chunks…' : 'Merging transcript…', 'working');
+      setVoiceInputStatus(voiceInputState.pendingChunks > 0 ? 'Finishing transcript from recent chunks...' : 'Merging transcript...', 'working');
       updateLiveTranscript();
       if (voiceInputState.pendingChunks === 0) {
         void finalizeVoiceTranscript(runToken);
@@ -947,7 +947,7 @@ async function startVoiceRecording() {
     }, { once: true });
 
     recorder.start(1000);
-    setVoiceInputStatus('Recording… speak naturally; live transcript will appear below.', 'recording');
+    setVoiceInputStatus('Recording... speak naturally; live transcript will appear below.', 'recording');
     updateLiveTranscript();
   } catch (error) {
     resetVoiceInputState();
@@ -962,7 +962,7 @@ async function finalizeVoiceTranscript(runToken = voiceInputState.runToken) {
   const shouldRunFinalPass = Array.isArray(voiceInputState.chunks) && voiceInputState.chunks.length > 0 && (!transcript || voiceInputState.chunks.length >= 2);
   if (shouldRunFinalPass) {
     try {
-      setVoiceInputStatus('Running final full-pass transcription…', 'working');
+      setVoiceInputStatus('Running final full-pass transcription...', 'working');
       updateLiveTranscript();
       const fullBlob = new Blob(voiceInputState.chunks, { type: voiceInputState.mimeType || 'audio/webm' });
       const finalTranscript = await transcribeBlob(fullBlob, { mode: 'final' });
@@ -1002,7 +1002,7 @@ function stopVoiceRecording() {
   voiceInputState.transcribing = true;
   voiceInputState.finalizing = true;
   stopVoiceLevelMeter();
-  setVoiceInputStatus('Stopping… waiting for the last chunk.', 'working');
+  setVoiceInputStatus('Stopping... waiting for the last chunk.', 'working');
   recorder.stop();
 }
 
@@ -1407,7 +1407,7 @@ async function rebuildDist() {
   if (!distRebuildBtnEl || distRebuildBtnEl.disabled) {return;}
   const prevText = distRebuildBtnEl.textContent;
   distRebuildBtnEl.disabled = true;
-  distRebuildBtnEl.textContent = 'Rebuilding…';
+  distRebuildBtnEl.textContent = 'Rebuilding...';
   addDebugLine('Dist rebuild requested.', 'cyan');
   try {
     await runInfraAction('dist-rebuild', async () => {
@@ -1708,7 +1708,7 @@ function resetClaudeTerminalOutput() {
   claude.term.reset();
   claude.renderedLength = 0;
   if (claude.outputTruncated) {
-    const notice = '\x1b[2m[... earlier output not shown — log exceeded 50 KB limit ...]\x1b[0m\r\n';
+    const notice = '\x1b[2m[... earlier output not shown - log exceeded 50 KB limit ...]\x1b[0m\r\n';
     claude.term.write(notice);
   }
 }
@@ -1734,8 +1734,8 @@ function getClaudeComposerHint(mode = getClaudeComposerMode()) {
 
 function getClaudeComposerPlaceholder(mode = getClaudeComposerMode()) {
   return mode === 'reply'
-    ? 'Reply to the running Claude session…'
-    : 'Dispatch a new task to Claude…';
+    ? 'Reply to the running Claude session...'
+    : 'Dispatch a new task to Claude...';
 }
 
 function renderClaudeComposer() {
@@ -1752,7 +1752,7 @@ function renderClaudeComposer() {
   }
   if (claudeComposerSendBtnEl) {
     claudeComposerSendBtnEl.disabled = disabled || !trimmed.length;
-    claudeComposerSendBtnEl.textContent = claude.composerSending ? 'Sending…' : (mode === 'reply' ? 'Reply' : 'Dispatch');
+    claudeComposerSendBtnEl.textContent = claude.composerSending ? 'Sending...' : (mode === 'reply' ? 'Reply' : 'Dispatch');
   }
   if (claude.composerStatusTone === 'hint') {
     claude.composerStatus = getClaudeComposerHint(mode);
@@ -1765,7 +1765,7 @@ async function submitClaudeComposer() {
   const mode = getClaudeComposerMode();
   if (!value || claude.composerSending || claude.loading) {return;}
   claude.composerSending = true;
-  setClaudeComposerStatus(mode === 'reply' ? 'Sending reply to Claude…' : 'Dispatching task to Claude…', 'busy');
+  setClaudeComposerStatus(mode === 'reply' ? 'Sending reply to Claude...' : 'Dispatching task to Claude...', 'busy');
   renderClaudeComposer();
   setConsoleTab('claude');
   addDebugLine(`Claude composer ${mode} len=${value.length}`, 'cyan');
@@ -1791,8 +1791,8 @@ async function submitClaudeComposer() {
     addDebugLine(`Claude composer ${mode} accepted.`, 'cyan');
     setClaudeComposerStatus(
       mode === 'reply'
-        ? 'Reply sent to running Claude session. Waiting for PTY output…'
-        : 'Task dispatched to Claude. Waiting for PTY output…',
+        ? 'Reply sent to running Claude session. Waiting for PTY output...'
+        : 'Task dispatched to Claude. Waiting for PTY output...',
       'success',
     );
     window.setTimeout(() => {
@@ -2078,7 +2078,7 @@ async function restartWrapper() {
   if (!wrapperRestartBtnEl || wrapperRestartBtnEl.disabled) {return;}
   const prevText = wrapperRestartBtnEl.textContent;
   wrapperRestartBtnEl.disabled = true;
-  wrapperRestartBtnEl.textContent = 'Restarting…';
+  wrapperRestartBtnEl.textContent = 'Restarting...';
   addDebugLine('Wrapper restart requested.', 'cyan');
   try {
     await runInfraAction('wrapper-restart', async () => {
@@ -2103,7 +2103,7 @@ async function restartGateway() {
   if (!gatewayRestartBtnEl || gatewayRestartBtnEl.disabled) {return;}
   const prevText = gatewayRestartBtnEl.textContent;
   gatewayRestartBtnEl.disabled = true;
-  gatewayRestartBtnEl.textContent = 'Restarting gateway…';
+  gatewayRestartBtnEl.textContent = 'Restarting gateway...';
   addDebugLine('Gateway restart requested.', 'cyan');
   try {
     await runInfraAction('gateway-restart', async () => {
@@ -2128,7 +2128,7 @@ async function compactContext() {
   if (!contextCompactBtnEl || contextCompactBtnEl.disabled) {return;}
   const prevText = contextCompactBtnEl.textContent;
   contextCompactBtnEl.disabled = true;
-  contextCompactBtnEl.textContent = 'Compacting…';
+  contextCompactBtnEl.textContent = 'Compacting...';
   addDebugLine('Context compaction requested.', 'cyan');
   try {
     const res = await fetch('/api/context/compact', {
@@ -2714,7 +2714,7 @@ async function loadFile(relPath) {
   if (dir !== currentDir) {await loadFileTree(dir || '.');}
   currentFilePath = relPath;
   activeFilePathEl.innerHTML = `<span class="semantic-label">file</span> <span class="semantic-value">${relPath}</span>`;
-  fileEditorEl.value = 'Loading…';
+  fileEditorEl.value = 'Loading...';
   syncEditorHighlight();
   try {
     const res = await fetch(`/api/file?path=${encodeURIComponent(relPath)}`);
@@ -2732,7 +2732,7 @@ async function loadFile(relPath) {
 
 async function loadFileTree(dir = currentDir) {
   if (!fileTreeEl) {return;}
-  fileTreeEl.innerHTML = '<div class="event-sub"><span class="semantic-value">Loading files…</span></div>';
+  fileTreeEl.innerHTML = '<div class="event-sub"><span class="semantic-value">Loading files...</span></div>';
   try {
     const res = await fetch(`/api/files?dir=${encodeURIComponent(dir)}`);
     const data = await res.json();
@@ -2812,15 +2812,15 @@ function tailSnippet(text = '', maxChars = 1200) {
   const normalized = String(text || '').replace(/\r/g, '').trim();
   if (!normalized) {return '';}
   if (normalized.length <= maxChars) {return normalized;}
-  return `…\n${normalized.slice(-maxChars).trim()}`;
+  return `...\n${normalized.slice(-maxChars).trim()}`;
 }
 
 function isContinueAnchorWrappedText(text = '') {
   const source = String(text || '');
   return (
     /继续上一条 assistant 回复里最后明确提出的事情。/u.test(source) ||
-    /上一条 assistant 回复（尾段，作为继续锚点）：/u.test(source) ||
-    /要求：默认延续上一条回复最后明确提出的具体动作，不要重开话题。/u.test(source)
+    /上一条 assistant 回复(尾段,作为继续锚点):/u.test(source) ||
+    /要求:默认延续上一条回复最后明确提出的具体动作,不要重开话题。/u.test(source)
   );
 }
 
@@ -2853,10 +2853,10 @@ function buildContinuePayload() {
   return [
     '继续上一条 assistant 回复里最后明确提出的事情。',
     '',
-    '上一条 assistant 回复（尾段，作为继续锚点）：',
+    '上一条 assistant 回复(尾段,作为继续锚点):',
     replyTail,
     '',
-    '要求：默认延续上一条回复最后提出的具体动作，不要重开话题。',
+    '要求:默认延续上一条回复最后提出的具体动作,不要重开话题。',
   ].join('\n');
 }
 
@@ -3555,7 +3555,7 @@ function renderSessionLoadingPlaceholder(sessionKey) {
   row.dataset.messageRole = 'loading';
   const avatar = document.createElement('div');
   avatar.className = 'avatar system';
-  avatar.textContent = '…';
+  avatar.textContent = '...';
   const bubbleWrap = document.createElement('div');
   bubbleWrap.className = 'bubble-wrap';
   const meta = document.createElement('div');
@@ -3563,7 +3563,7 @@ function renderSessionLoadingPlaceholder(sessionKey) {
   meta.textContent = `Loading · ${formatStamp()}`;
   const el = document.createElement('div');
   el.className = 'msg system session-loading';
-  el.textContent = `Loading session ${sessionKey || 'unknown'}…`;
+  el.textContent = `Loading session ${sessionKey || 'unknown'}...`;
   bubbleWrap.appendChild(meta);
   bubbleWrap.appendChild(el);
   row.appendChild(avatar);
@@ -3619,6 +3619,7 @@ async function selectMessageFlowSession(sessionKey, { force = false } = {}) {
   selectedSessionKey = sessionKey;
   messageFlowState.activeSessionKey = sessionKey;
   messageFlowState.selectionSeq += 1;
+  sessionSelectionSeq = messageFlowState.selectionSeq;
   renderSessionsList();
   renderMessageFlowSession(sessionKey, null, { loading: true });
   refreshSelectedSessionContext(sessionKey).catch(error => {
@@ -3788,9 +3789,9 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
 }
 
 async function refreshSessionHistory(sessionKey, reason = 'manual') {
-  if (!sessionKey) {return [];}
-  const refreshSeq = sessionSelectionSeq;
-  const messages = await loadSessionHistory(sessionKey, { force: true, selectionSeq: refreshSeq });
+  if (!sessionKey) {return [];} 
+  const refreshSeq = messageFlowState.selectionSeq;
+  const messages = await fetchMessageFlowHistory(sessionKey, { force: true });
   const meta = getSessionMeta(sessionKey);
   meta.dirty = false;
   meta.pending = false;
@@ -3801,13 +3802,12 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
   const runState = getSessionRunState(sessionKey);
   const shouldSuppressStreamingRerender =
     sessionKey === selectedSessionKey &&
-    refreshSeq === sessionSelectionSeq &&
     runState?.state === 'streaming' &&
     hasStreamingRowMounted(sessionKey, runState?.runId || null);
-  if (sessionKey === selectedSessionKey && refreshSeq === sessionSelectionSeq && !shouldSuppressStreamingRerender) {
-    renderSessionMessages(sessionKey, messages);
+  if (sessionKey === selectedSessionKey && !shouldSuppressStreamingRerender) {
+    renderMessageFlowSession(sessionKey, messages, { loading: false });
   } else {
-    addDebugLine(`refreshSessionHistory render skipped seq=${refreshSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} streamingSuppress=${shouldSuppressStreamingRerender ? 'yes' : 'no'}`, 'cyan');
+    addDebugLine(`refreshSessionHistory render skipped seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} streamingSuppress=${shouldSuppressStreamingRerender ? 'yes' : 'no'}`, 'cyan');
   }
   return messages;
 }
@@ -3845,7 +3845,7 @@ function connect() {
     try {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'status') {
-      statusEl.textContent = msg.connected ? `gateway connected · ${msg.sessionKey}` : 'gateway connecting…';
+      statusEl.textContent = msg.connected ? `gateway connected · ${msg.sessionKey}` : 'gateway connecting...';
       applyDotState(wrapperDotEl, 'link', 'online');
       applyDotState(gatewayDotEl, 'link', msg.connected ? 'online' : 'offline');
       gatewayMainSessionKey = msg.sessionKey || gatewayMainSessionKey;
@@ -3970,7 +3970,7 @@ function connect() {
     }
   });
   ws.addEventListener('close', () => {
-    statusEl.textContent = 'wrapper disconnected; retrying…';
+    statusEl.textContent = 'wrapper disconnected; retrying...';
     applyDotState(wrapperDotEl, 'link', 'offline');
     applyDotState(gatewayDotEl, 'link', 'offline');
     if (wrapperRestartBtnEl) {
@@ -3981,7 +3981,7 @@ function connect() {
       gatewayRestartBtnEl.disabled = false;
       if (String(gatewayRestartBtnEl.textContent || '').startsWith('Restarting')) {gatewayRestartBtnEl.textContent = 'Restart';}
     }
-    addDebugLine('Wrapper websocket disconnected; retrying…', 'pink');
+    addDebugLine('Wrapper websocket disconnected; retrying...', 'pink');
     setTimeout(connect, 1000);
   });
 }
