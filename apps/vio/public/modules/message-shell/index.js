@@ -157,8 +157,18 @@ export function createMessageShell({ mountEl } = {}) {
 
   function handleFinal(sessionKey) {
     if (mountedSessionKey !== sessionKey || !activeAssistantStream?.row?.isConnected) {return false;}
-    if (activeAssistantStream.meta) {activeAssistantStream.meta.textContent = `Vio · ${formatStamp()} · finalizing`; }
-    activeAssistantStream.row.dataset.status = 'finalizing';
+    if (activeAssistantStream.meta) {activeAssistantStream.meta.textContent = `Vio · ${formatStamp()} · final`; }
+    activeAssistantStream.row.dataset.status = 'final';
+    const finalText = String(activeAssistantStream.text || '').trim();
+    if (finalText) {
+      lastCanonicalMessages = [
+        ...lastCanonicalMessages,
+        { id: `stream-final-${Date.now()}`, role: 'assistant', text: finalText, status: 'final' },
+      ];
+      activeAssistantStream = null;
+      renderCanonicalHistory(sessionKey, lastCanonicalMessages);
+      return true;
+    }
     return true;
   }
 
