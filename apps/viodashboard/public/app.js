@@ -550,9 +550,6 @@ function syncStopButton() {
 }
 
 function resetStoppedUiForNewRun() {
-  if (!isLiveTranscriptOwnedByNewFlow(getActiveViewedSessionKey())) {
-    clearStreamingMessageEl();
-  }
   lastStreamEventAt = 0;
   const runState = getSessionRunState(getActiveViewedSessionKey());
   if (runState.state === 'aborted' || runState.state === 'final' || runState.state === 'idle') {
