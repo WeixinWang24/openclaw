@@ -282,6 +282,21 @@ const transcriptService = createTranscriptService({
   diagnostics: runtimeDiagnostics,
 });
 const chatProjection = createChatProjection({ eventBus: kernelEventBus });
+function buildProjectionViewMeta(sessionKey) {
+  const view = chatProjection.getSessionView(sessionKey);
+  const runs = view && typeof view.runs === 'object' && view.runs
+    ? Object.values(view.runs)
+    : [];
+  const activeRun = [...runs].reverse().find(run => run && (run.status === 'started' || run.status === 'acknowledged' || run.status === 'streaming')) || null;
+  return {
+    sessionKey,
+    updatedAt: view?.updatedAt || null,
+    transcriptMeta: view?.transcriptMeta || null,
+    activeRunId: activeRun?.runId || null,
+    activeRunStatus: activeRun?.status || null,
+    runs,
+  };
+}
 const tokenUsageService = createTokenUsageService({
   bridge: { fetchSessionUsage: (...args) => bridge.fetchSessionUsage(...args), fetchModelCatalog: (...args) => bridge.fetchModelCatalog(...args), fetchSessionContextSnapshot: (...args) => bridge.fetchSessionContextSnapshot(...args) },
   tokenStats,
@@ -420,7 +435,7 @@ kernelEventBus.subscribe('kernel.run', event => {
   broadcast({
     type: 'kernel.run',
     event,
-    view: event?.sessionKey ? chatProjection.getSessionView(event.sessionKey) : null,
+    viewMeta: event?.sessionKey ? buildProjectionViewMeta(event.sessionKey) : null,
   });
 });
 kernelEventBus.subscribe('kernel.transcript', event => {
@@ -428,7 +443,7 @@ kernelEventBus.subscribe('kernel.transcript', event => {
     broadcast({
       type: 'projection.transcript',
       sessionKey: event.sessionKey,
-      view: chatProjection.getSessionView(event.sessionKey),
+      viewMeta: buildProjectionViewMeta(event.sessionKey),
       source: 'kernel.transcript',
     });
   }
