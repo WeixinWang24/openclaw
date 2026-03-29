@@ -2937,7 +2937,7 @@ async function submitChatText(text = '', options = {}) {
   addDebugLine(`submitChatText: len=${outboundText.length} attachments=${attachments.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
   if ((!value && attachments.length === 0) || (!outboundText && attachments.length === 0) || !selectedSessionKey) {return;}
 
-  const pendingLocalId = value ? newChatShell.send(selectedSessionKey, value) : null;
+  const pendingLocalId = value ? messageShell.send(selectedSessionKey, value) : null;
   const sendResult = await sendToSelectedSession(outboundText, {
     userText: value,
     attachments,
@@ -2945,7 +2945,7 @@ async function submitChatText(text = '', options = {}) {
   });
   if (!sendResult?.ok) {
     if (pendingLocalId) {
-      newChatShell.markPendingFailed(selectedSessionKey, pendingLocalId);
+      messageShell.markPendingFailed(selectedSessionKey, pendingLocalId);
     }
     throw new Error(sendResult?.error || 'session send failed');
   }
@@ -3259,7 +3259,7 @@ function handleMessageFlowAck(msg = {}) {
   stopRequestedAt = null;
   if (msg.runId) {registerChatRun(msg.runId);}
   if (sessionKey) {
-    newChatShell.handleAck(sessionKey, msg.runId || null);
+    messageShell.handleAck(sessionKey, msg.runId || null);
   }
   addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
 }
@@ -3305,12 +3305,12 @@ function handleMessageFlowKernelRun(msg = {}) {
   }
 
   if (isDelta) {
-    newChatShell.handleDelta(sessionKey, runId, runState.streamText || '');
+    messageShell.handleDelta(sessionKey, runId, runState.streamText || '');
     return;
   }
 
   if (isFinal) {
-    newChatShell.handleFinal(sessionKey, runId || null);
+    messageShell.handleFinal(sessionKey, runId || null);
     scheduleSessionRefresh(sessionKey, 'run-final', 0, { cacheOnly: true });
     return;
   }
@@ -3327,7 +3327,7 @@ function createNewChatShell({ chatEl }) {
     mountedSessionKey = sessionKey || null;
     pendingMessages = [];
     activeAssistantStream = null;
-    addDebugLine(`newChatShell.reset session=${sessionKey || 'none'}`, 'cyan');
+    addDebugLine(`messageShell.reset session=${sessionKey || 'none'}`, 'cyan');
     if (chatEl) {chatEl.innerHTML = '';}
   }
 
@@ -3401,14 +3401,14 @@ function createNewChatShell({ chatEl }) {
     if (!pendingMessages.some(item => item.localId === localId)) {
       pendingMessages.push({ localId, text, sessionKey, state: 'pending' });
     }
-    addDebugLine(`newChatShell.pending.append session=${sessionKey} localId=${localId} len=${text.length}`, 'cyan');
+    addDebugLine(`messageShell.pending.append session=${sessionKey} localId=${localId} len=${text.length}`, 'cyan');
     tracePendingDom('after-append', localId);
     return localId;
   }
 
   function markPendingFailed(sessionKey, localId) {
     if (!sessionKey || mountedSessionKey !== sessionKey || !localId) {return;}
-    addDebugLine(`newChatShell.pending.failed session=${sessionKey} localId=${localId}`, 'pink');
+    addDebugLine(`messageShell.pending.failed session=${sessionKey} localId=${localId}`, 'pink');
     const row = findPendingRow(localId);
     if (!row) {return;}
     row.dataset.status = 'failed';
@@ -3429,7 +3429,7 @@ function createNewChatShell({ chatEl }) {
         continue;
       }
       if (pending.text && canonicalUserTexts.has(String(pending.text))) {
-        addDebugLine(`newChatShell.pending.absorb session=${mountedSessionKey} localId=${pending.localId}`, 'cyan');
+        addDebugLine(`messageShell.pending.absorb session=${mountedSessionKey} localId=${pending.localId}`, 'cyan');
         const row = findPendingRow(pending.localId);
         row?.remove();
         continue;
@@ -3504,7 +3504,7 @@ function createNewChatShell({ chatEl }) {
       text: '',
       state: 'streaming',
     };
-    addDebugLine(`newChatShell.handleAck session=${sessionKey} run=${String(runId || '').slice(0, 8) || '-'}`, 'cyan');
+    addDebugLine(`messageShell.handleAck session=${sessionKey} run=${String(runId || '').slice(0, 8) || '-'}`, 'cyan');
     tracePendingDom('after-ack');
   }
 
@@ -3546,7 +3546,7 @@ function createNewChatShell({ chatEl }) {
     if (mountedSessionKey !== sessionKey) {
       mountedSessionKey = sessionKey;
     }
-    addDebugLine(`newChatShell.reconcileHistory session=${sessionKey} len=${Array.isArray(messages) ? messages.length : -1} streamState=${activeAssistantStream?.state || 'none'}`, 'cyan');
+    addDebugLine(`messageShell.reconcileHistory session=${sessionKey} len=${Array.isArray(messages) ? messages.length : -1} streamState=${activeAssistantStream?.state || 'none'}`, 'cyan');
     absorbPendingMessages(messages);
     renderCanonicalHistory(sessionKey, messages);
   }
@@ -3557,9 +3557,9 @@ function createNewChatShell({ chatEl }) {
     const visibleMessages = sourceMessages;
     const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
     const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-    addDebugLine(`newChatShell.renderCanonicalHistory active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
+    addDebugLine(`messageShell.renderCanonicalHistory active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
     const preservedPending = pendingMessages.filter(item => item.sessionKey === sessionKey);
-    addDebugLine(`newChatShell.renderCanonicalHistory preservedPending session=${sessionKey} count=${preservedPending.length}`, 'cyan');
+    addDebugLine(`messageShell.renderCanonicalHistory preservedPending session=${sessionKey} count=${preservedPending.length}`, 'cyan');
     reset(sessionKey);
     pendingMessages = preservedPending;
     clearActiveStreamRows();
@@ -3607,7 +3607,7 @@ function createNewChatShell({ chatEl }) {
   };
 }
 
-const newChatShell = createNewChatShell({ chatEl });
+const messageShell = createNewChatShell({ chatEl });
 
 
 function addMessage(role, text, extraClass = '', options = {}) {
@@ -3719,7 +3719,7 @@ function setSessionLoading(sessionKey, loading) {
 
 function renderSessionLoadingPlaceholder(sessionKey) {
   if (!chatEl) {return;}
-  if (newChatShell?.getMountedSessionKey?.() === sessionKey && chatEl.children.length > 0) {
+  if (messageShell?.getMountedSessionKey?.() === sessionKey && chatEl.children.length > 0) {
     addDebugLine(`renderSessionLoadingPlaceholder skipped: mounted transcript already present for ${sessionKey}`, 'cyan');
     return;
   }
@@ -3803,7 +3803,7 @@ async function selectMessageFlowSession(sessionKey, { force = false } = {}) {
     return;
   }
   addDebugLine(`selectMessageFlowSession mountSession seq=${selectionSeq} target=${sessionKey}`, 'cyan');
-  newChatShell.mountSession(sessionKey, messages);
+  messageShell.mountSession(sessionKey, messages);
   renderMessageFlowSession(sessionKey, messages, { loading: false });
 }
 
@@ -3913,7 +3913,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const hasCachedMessages = sessionMessages.has(sessionKey);
   const selectedRun = getSessionRunState(sessionKey);
   const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || selectedRun.state === 'streaming';
-  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'} mounted=${newChatShell?.getMountedSessionKey?.() || 'none'}`, 'cyan');
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'} mounted=${messageShell?.getMountedSessionKey?.() || 'none'}`, 'cyan');
   selectedSessionKey = sessionKey;
   clearChat();
   if (activeFilePathEl) {
@@ -3926,7 +3926,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const shouldLoadNow = !hasCachedMessages || shouldForce;
   if (cachedMessages) {
     setSessionLoading(sessionKey, false);
-    newChatShell.mountSession(sessionKey, cachedMessages);
+    messageShell.mountSession(sessionKey, cachedMessages);
   } else if (shouldLoadNow) {
     setSessionLoading(sessionKey, true);
     renderSessionLoadingPlaceholder(sessionKey);
@@ -3948,7 +3948,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
           return;
         }
         addDebugLine(`selectDashboardSession mountSession seq=${selectionSeq} target=${sessionKey}`, 'cyan');
-        newChatShell.mountSession(sessionKey, messages);
+        messageShell.mountSession(sessionKey, messages);
                     if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
           addDebugLine(`Session selected: ${sessionKey} seq=${selectionSeq}`, 'cyan');
         }
@@ -3984,7 +3984,7 @@ async function refreshSessionHistory(sessionKey, reason = 'manual', options = {}
   if (cacheOnly) {
     if (sessionKey === selectedSessionKey) {
       addDebugLine(`refreshSessionHistory reconcile selected session=${sessionKey} reason=${reason} len=${messages.length}`, 'cyan');
-      newChatShell.reconcileHistory(sessionKey, messages);
+      messageShell.reconcileHistory(sessionKey, messages);
     }
     addDebugLine(`refreshSessionHistory cache-only seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason}`, 'cyan');
     return messages;
