@@ -57,6 +57,28 @@ export function createShellHost(refs) {
   return mountEl;
 }
 
+export function renderPreviewPlaceholder(refs, { title = 'Flow preview', text = 'Select a session to load history.' } = {}) {
+  const mountEl = refs?.sessionPreviewEl;
+  if (!mountEl) {return;}
+  mountEl.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'vio-preview-placeholder';
+  const heading = document.createElement('div');
+  heading.className = 'vio-preview-placeholder-title';
+  heading.textContent = title;
+  const body = document.createElement('div');
+  body.className = 'vio-preview-placeholder-body';
+  body.textContent = text;
+  card.appendChild(heading);
+  card.appendChild(body);
+  mountEl.appendChild(card);
+}
+
+export function renderBootError(root, error) {
+  if (!root) {return;}
+  root.innerHTML = `<div class="vio-dashboard-shell"><section class="vio-main"><header class="vio-topbar"><h2>Vio</h2><p>Bootstrap failed: ${String(error?.message || error)}</p></header></section></div>`;
+}
+
 export function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = null, sessionMeta = null, sessionLoadingState = null } = {}) {
   if (!refs?.sessionsListEl) {return;}
   refs.sessionsListEl.innerHTML = '';
