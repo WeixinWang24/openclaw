@@ -3339,6 +3339,27 @@ function applyProjectionTranscriptPacket(msg = {}) {
   }
 }
 
+function handleMessageFlowAck(msg = {}) {
+  const sessionKey = getActiveViewedSessionKey();
+  const runState = getSessionRunState(sessionKey);
+  resetStoppedUiForNewRun();
+  runState.runId = msg.runId || runState.runId || null;
+  runState.state = 'streaming';
+  stopRequestedAt = null;
+  if (msg.runId) {registerChatRun(msg.runId);}
+  syncStopButton();
+  syncContinueButton();
+  addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
+}
+
+function handleMessageFlowSessionUpdated(msg = {}) {
+  const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
+  if (!sessionKey) {return;}
+  addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
+  const delay = sessionKey === selectedSessionKey ? 0 : 1200;
+  scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
+}
+
 function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
   if (!chatEl || selectedSessionKey !== sessionKey || !runId) {return false;}
   const row = chatEl.querySelector(`.msg-row.assistant[data-run-id="${CSS.escape(String(runId))}"][data-status="streaming"]`);
@@ -3837,16 +3858,7 @@ function connect() {
       return;
     }
     if (msg.type === 'ack') {
-      resetStoppedUiForNewRun();
-      const sessionKey = getActiveViewedSessionKey();
-      const runState = getSessionRunState(sessionKey);
-      runState.runId = msg.runId || runState.runId || null;
-      runState.state = 'streaming';
-      stopRequestedAt = null;
-      if (msg.runId) {registerChatRun(msg.runId);}
-      syncStopButton();
-      syncContinueButton();
-      addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
+      handleMessageFlowAck(msg);
       fetch('/api/coms/token-saver')
         .then(res => res.json())
         .then(data => {
@@ -3938,11 +3950,7 @@ function connect() {
       return;
     }
     if (msg.type === 'session.updated') {
-      const sessionKey = typeof msg.sessionKey === 'string' ? msg.sessionKey : null;
-      addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
-      if (!sessionKey) {return;}
-      const delay = sessionKey === selectedSessionKey ? 0 : 1200;
-      scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
+      handleMessageFlowSessionUpdated(msg);
       return;
     }
     if (msg.type === 'kernel.run') {
