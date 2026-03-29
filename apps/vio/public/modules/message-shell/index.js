@@ -4,14 +4,24 @@ function formatStamp() {
 }
 
 function roleForRow(message = {}) {
-  return message?.role === 'user' ? 'user' : 'assistant';
+  const role = String(message?.role || '').toLowerCase();
+  if (role === 'user') {return 'user';}
+  if (role === 'assistant') {return 'assistant';}
+  return 'assistant';
 }
 
-function createMessageRow(role, text, { status = null, localId = null } = {}) {
+function normalizeMessageRole(message = {}) {
+  return String(message?.role || '').toLowerCase();
+}
+
+function createMessageRow(role, text, { status = null, localId = null, runId = null, streamRunId = null, messageRole = null, extraClass = '' } = {}) {
   const row = document.createElement('div');
   row.className = `msg-row ${role}`.trim();
   if (status) {row.dataset.status = String(status);}
   if (localId) {row.dataset.pendingId = String(localId);}
+  if (runId) {row.dataset.runId = String(runId);}
+  if (streamRunId) {row.dataset.streamRunId = String(streamRunId);}
+  if (messageRole) {row.dataset.messageRole = String(messageRole);}
 
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`.trim();
@@ -25,7 +35,7 @@ function createMessageRow(role, text, { status = null, localId = null } = {}) {
   meta.textContent = `${role === 'user' ? 'Xin' : 'Vio'} · ${formatStamp()}${status ? ` · ${String(status)}` : ''}`;
 
   const msg = document.createElement('div');
-  msg.className = `msg ${role}`.trim();
+  msg.className = `msg ${role} ${extraClass}`.trim();
   msg.textContent = text || '';
 
   bubbleWrap.appendChild(meta);
@@ -33,6 +43,11 @@ function createMessageRow(role, text, { status = null, localId = null } = {}) {
   row.appendChild(avatar);
   row.appendChild(bubbleWrap);
   return row;
+}
+
+function shouldDisplayMessage(message = {}) {
+  const role = normalizeMessageRole(message);
+  return role === 'user' || role === 'assistant';
 }
 
 export function createMessageShell({ mountEl } = {}) {
@@ -60,28 +75,65 @@ export function createMessageShell({ mountEl } = {}) {
     return target.querySelector(`.msg-row.user[data-pending-id="${CSS.escape(String(localId))}"]`);
   }
 
+  function addCanonicalRow(message = {}) {
+    if (!shouldDisplayMessage(message)) {return;}
+    const target = ensureMount();
+    if (!target) {return;}
+    const bubbleRole = roleForRow(message);
+    const extraClass = message?.role === 'assistant' && message?.status === 'streaming' ? 'stream' : '';
+    const row = createMessageRow(bubbleRole, message?.text || '', {
+      status: message?.status || null,
+      runId: message?.runId || message?.id || null,
+      messageRole: normalizeMessageRole(message) || null,
+      extraClass,
+    });
+    target.appendChild(row);
+  }
+
   function appendPendingUserMessage(sessionKey, text = '', options = {}) {
     const target = ensureMount();
     if (!target || !sessionKey || mountedSessionKey !== sessionKey || !text) {return null;}
     const localId = options.localId || `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!pendingMessages.some(item => item.localId === localId)) {
-      pendingMessages.push({ localId, text, sessionKey, state: 'pending' });
+      pendingMessages.push({ localId, text, sessionKey, state: options.state || 'pending' });
     }
-    const row = createMessageRow('user', text, { status: options.state || 'pending', localId });
+    const row = createMessageRow('user', text, {
+      status: options.state || 'pending',
+      localId,
+      messageRole: 'user',
+      extraClass: options.state === 'failed' ? 'failed' : 'pending',
+    });
     target.appendChild(row);
     return localId;
   }
 
   function markPendingFailed(sessionKey, localId) {
+    if (!sessionKey || !localId) {return;}
     pendingMessages = pendingMessages.map(item => item.localId === localId && item.sessionKey === sessionKey ? { ...item, state: 'failed' } : item);
-    if (mountedSessionKey === sessionKey) {
-      renderCanonicalHistory(sessionKey, lastCanonicalMessages);
+    const row = findPendingRow(localId);
+    if (!row) {
+      if (mountedSessionKey === sessionKey) {
+        renderCanonicalHistory(sessionKey, lastCanonicalMessages);
+      }
+      return;
+    }
+    row.dataset.status = 'failed';
+    const meta = row.querySelector('.msg-meta.user');
+    if (meta) {meta.textContent = `Xin · ${formatStamp()} · failed`;}
+    const msg = row.querySelector('.msg.user');
+    if (msg) {
+      msg.classList.remove('pending');
+      msg.classList.add('failed');
     }
   }
 
   function absorbPendingMessages(messages = []) {
     if (!mountedSessionKey || !Array.isArray(messages) || !pendingMessages.length) {return;}
-    const canonicalUserTexts = new Set(messages.filter(item => item?.role === 'user').map(item => String(item?.text || '')));
+    const canonicalUserTexts = new Set(
+      messages
+        .filter(item => normalizeMessageRole(item) === 'user')
+        .map(item => String(item?.text || '')),
+    );
     const remaining = [];
     for (const pending of pendingMessages) {
       if (pending.sessionKey !== mountedSessionKey) {
@@ -101,10 +153,29 @@ export function createMessageShell({ mountEl } = {}) {
   function clearActiveStreamRows() {
     const target = ensureMount();
     if (!target) {return;}
-    for (const row of target.querySelectorAll('.msg-row.assistant[data-stream="true"]')) {
+    for (const row of target.querySelectorAll('.msg-row.assistant[data-stream-run-id]')) {
       row.remove();
     }
     activeAssistantStream = null;
+  }
+
+  function getOrCreateActiveStreamRow(sessionKey, runId = null) {
+    const target = ensureMount();
+    if (!target || !sessionKey || mountedSessionKey !== sessionKey) {return null;}
+    const effectiveRunId = runId || activeAssistantStream?.runId || 'active';
+    let row = target.querySelector(`.msg-row.assistant[data-stream-run-id="${CSS.escape(String(effectiveRunId))}"]`);
+    if (!row) {
+      row = createMessageRow('assistant', '', {
+        status: 'streaming',
+        streamRunId: effectiveRunId,
+        messageRole: 'stream',
+        extraClass: 'stream',
+      });
+      target.appendChild(row);
+    }
+    const msg = row.querySelector('.msg.assistant');
+    const meta = row.querySelector('.msg-meta.assistant');
+    return { row, msg, meta, runId: effectiveRunId };
   }
 
   function renderCanonicalHistory(sessionKey, messages = []) {
@@ -118,15 +189,17 @@ export function createMessageShell({ mountEl } = {}) {
     pendingMessages = preservedPending;
     clearActiveStreamRows();
     for (const message of sourceMessages) {
-      target.appendChild(createMessageRow(roleForRow(message), message?.text || '', { status: message?.status || null }));
+      addCanonicalRow(message);
     }
     absorbPendingMessages(sourceMessages);
     for (const pending of pendingMessages) {
       if (pending.sessionKey === sessionKey) {
-        appendPendingUserMessage(sessionKey, pending.text || '', { localId: pending.localId, state: pending.state || 'pending' });
+        appendPendingUserMessage(sessionKey, pending.text || '', {
+          localId: pending.localId,
+          state: pending.state || 'pending',
+        });
         if (pending.state === 'failed') {
-          const row = findPendingRow(pending.localId);
-          if (row) {row.dataset.status = 'failed';}
+          markPendingFailed(sessionKey, pending.localId);
         }
       }
     }
@@ -145,61 +218,62 @@ export function createMessageShell({ mountEl } = {}) {
     renderCanonicalHistory(sessionKey, messages);
   }
 
-  function getOrCreateActiveStreamRow() {
-    const target = ensureMount();
-    if (!target) {return null;}
-    if (activeAssistantStream?.row?.isConnected) {
-      return activeAssistantStream;
-    }
-    const row = createMessageRow('assistant', '', { status: 'streaming' });
-    row.dataset.stream = 'true';
-    target.appendChild(row);
-    const msg = row.querySelector('.msg.assistant');
-    const meta = row.querySelector('.msg-meta.assistant');
-    activeAssistantStream = { row, msg, meta, text: '' };
-    return activeAssistantStream;
-  }
-
   function send(sessionKey, text = '') {
     if (!sessionKey || !text) {return null;}
     if (mountedSessionKey !== sessionKey) {
-      mountedSessionKey = sessionKey;
+      mountSession(sessionKey, []);
     }
     return appendPendingUserMessage(sessionKey, text, { state: 'pending' });
   }
 
-  function handleAck(sessionKey) {
-    if (mountedSessionKey !== sessionKey) {return false;}
-    const stream = getOrCreateActiveStreamRow();
-    if (stream?.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`;}
-    return !!stream;
+  function handleAck(sessionKey, runId = null) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
+    activeAssistantStream = {
+      runId: runId || activeAssistantStream?.runId || null,
+      text: activeAssistantStream?.text || '',
+      state: 'streaming',
+    };
+    return true;
   }
 
-  function handleDelta(sessionKey, text = '') {
-    if (mountedSessionKey !== sessionKey) {return false;}
-    const stream = getOrCreateActiveStreamRow();
+  function handleDelta(sessionKey, runIdOrText = null, maybeText = null) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
+    const runId = typeof maybeText === 'string' ? runIdOrText : null;
+    const text = typeof maybeText === 'string' ? maybeText : runIdOrText;
+    const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
     if (!stream?.msg) {return false;}
-    stream.text = String(text || '');
-    stream.msg.textContent = stream.text;
+    activeAssistantStream = {
+      runId: stream.runId,
+      text: String(text || ''),
+      state: 'streaming',
+    };
+    stream.row.dataset.status = 'streaming';
     if (stream.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`;}
+    stream.msg.textContent = String(text || '');
     return true;
   }
 
-  function handleFinal(sessionKey) {
-    if (mountedSessionKey !== sessionKey || !activeAssistantStream?.row?.isConnected) {return false;}
-    if (activeAssistantStream.meta) {activeAssistantStream.meta.textContent = `Vio · ${formatStamp()} · final`;}
-    activeAssistantStream.row.dataset.status = 'final';
-    const finalText = String(activeAssistantStream.text || '').trim();
-    if (finalText) {
-      lastCanonicalMessages = [
-        ...lastCanonicalMessages,
-        { id: `stream-final-${Date.now()}`, role: 'assistant', text: finalText, status: 'final' },
-      ];
-      activeAssistantStream = null;
-      renderCanonicalHistory(sessionKey, lastCanonicalMessages);
-      return true;
+  function handleFinal(sessionKey, runId = null) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
+    if (activeAssistantStream && (!runId || activeAssistantStream.runId === runId)) {
+      activeAssistantStream = {
+        ...activeAssistantStream,
+        state: 'finalizing',
+      };
     }
+    const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
+    if (stream?.row) {stream.row.dataset.status = 'finalizing';}
+    if (stream?.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · finalizing`;}
     return true;
+  }
+
+  function snapshotActiveStream() {
+    if (!activeAssistantStream) {return null;}
+    return {
+      runId: activeAssistantStream.runId || null,
+      text: String(activeAssistantStream.text || ''),
+      state: activeAssistantStream.state || null,
+    };
   }
 
   function getMountedSessionKey() {
@@ -211,10 +285,7 @@ export function createMessageShell({ mountEl } = {}) {
       mountedSessionKey,
       pendingMessages,
       lastCanonicalMessages,
-      activeAssistantStream: activeAssistantStream ? {
-        text: activeAssistantStream.text,
-        rowConnected: !!activeAssistantStream.row?.isConnected,
-      } : null,
+      activeAssistantStream,
     };
   }
 
@@ -228,6 +299,7 @@ export function createMessageShell({ mountEl } = {}) {
     handleAck,
     handleDelta,
     handleFinal,
+    snapshotActiveStream,
     getMountedSessionKey,
     getDebugState,
   };
