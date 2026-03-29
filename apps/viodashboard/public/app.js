@@ -3207,9 +3207,6 @@ function reconcileRunStateFromMessages(sessionKey, messages = [], source = 'mess
 
   if (assistantForCurrentRun?.status === 'final') {
     addDebugLine(`Finalized from ${source} · run ${String(currentRunId || '').slice(0, 8) || '-'} `, 'cyan');
-    if (!isLiveTranscriptOwnedByNewFlow(sessionKey)) {
-      clearStreamingMessageEl(currentRunId || null);
-    }
     runState.runId = null;
     runState.streamText = '';
     runState.state = 'final';
