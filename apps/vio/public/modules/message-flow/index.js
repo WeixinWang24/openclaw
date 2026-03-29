@@ -12,6 +12,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     sessionMeta: new Map(),
     sessionLoadingState: new Set(),
     sessionRefreshTimers: new Map(),
+    pendingRefreshPlans: new Map(),
   };
 
   function getSessionMeta(sessionKey) {
@@ -114,13 +115,28 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     const messages = await fetchSessionHistory(sessionKey, { ...options, force: true, reason });
     const meta = getSessionMeta(sessionKey);
     meta.dirty = false;
-    meta.pending = false;
     meta.lastUpdatedAt = Date.now();
     meta.lastReason = reason;
 
+    let reconcileResult = { absorbedIds: [] };
+    if (state.activeSessionKey === sessionKey) {
+      reconcileResult = shell?.reconcileHistory?.(sessionKey, messages) || { absorbedIds: [] };
+    }
+
+    const pendingPlan = state.pendingRefreshPlans.get(sessionKey) || null;
+    if (pendingPlan?.localId) {
+      const absorbed = Array.isArray(reconcileResult?.absorbedIds) && reconcileResult.absorbedIds.includes(pendingPlan.localId);
+      const stillPending = shell?.hasPendingMessage?.(sessionKey, pendingPlan.localId) === true;
+      meta.pending = stillPending && !absorbed;
+      if (absorbed || !stillPending) {
+        state.pendingRefreshPlans.delete(sessionKey);
+      }
+    } else {
+      meta.pending = false;
+    }
+
     if (cacheOnly) {
       if (state.activeSessionKey === sessionKey) {
-        shell?.reconcileHistory?.(sessionKey, messages);
         renderChrome?.(sessionKey, {
           loading: false,
           messages,
@@ -136,7 +152,6 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     }
 
     if (state.activeSessionKey === sessionKey) {
-      shell?.reconcileHistory?.(sessionKey, messages);
       renderChrome?.(sessionKey, {
         loading: false,
         messages,
@@ -161,9 +176,18 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     }
     const existing = state.sessionRefreshTimers.get(sessionKey);
     if (existing) {timers.clearTimeout(existing);}
-    const timer = timers.setTimeout(() => {
+    const timer = timers.setTimeout(async () => {
       state.sessionRefreshTimers.delete(sessionKey);
-      refreshSession(sessionKey, reason, options).catch(() => {});
+      try {
+        const messages = await refreshSession(sessionKey, reason, options);
+        if (typeof options?.afterRefresh === 'function') {
+          options.afterRefresh(messages);
+        }
+      } catch {
+        if (typeof options?.afterError === 'function') {
+          options.afterError();
+        }
+      }
     }, delay);
     state.sessionRefreshTimers.set(sessionKey, timer);
   }
@@ -174,8 +198,20 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     meta.pending = true;
     meta.lastReason = 'send';
     meta.lastUpdatedAt = Date.now();
+    const localId = options?.localId || null;
+    if (localId) {
+      state.pendingRefreshPlans.set(sessionKey, {
+        localId,
+        delays: [250, 900, 2200, 4500],
+        startedAt: Date.now(),
+      });
+    }
     const payload = await api.sendMessage(sessionKey, text, options);
-    scheduleSessionRefresh(sessionKey, 'send', 160, { force: true, cacheOnly: true });
+    const plan = state.pendingRefreshPlans.get(sessionKey);
+    const refreshDelays = Array.isArray(plan?.delays) ? plan.delays : [250, 900, 2200];
+    for (const delay of refreshDelays) {
+      scheduleSessionRefresh(sessionKey, `send-observe-${delay}`, delay, { force: true, cacheOnly: true });
+    }
     return payload;
   }
 

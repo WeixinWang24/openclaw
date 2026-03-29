@@ -128,13 +128,14 @@ export function createMessageShell({ mountEl } = {}) {
   }
 
   function absorbPendingMessages(messages = []) {
-    if (!mountedSessionKey || !Array.isArray(messages) || !pendingMessages.length) {return;}
+    if (!mountedSessionKey || !Array.isArray(messages) || !pendingMessages.length) {return { absorbedIds: [], remaining: pendingMessages };}
     const canonicalUserTexts = new Set(
       messages
         .filter(item => normalizeMessageRole(item) === 'user')
         .map(item => String(item?.text || '')),
     );
     const remaining = [];
+    const absorbedIds = [];
     for (const pending of pendingMessages) {
       if (pending.sessionKey !== mountedSessionKey) {
         remaining.push(pending);
@@ -143,11 +144,13 @@ export function createMessageShell({ mountEl } = {}) {
       if (pending.text && canonicalUserTexts.has(String(pending.text))) {
         const row = findPendingRow(pending.localId);
         row?.remove();
+        absorbedIds.push(pending.localId);
         continue;
       }
       remaining.push(pending);
     }
     pendingMessages = remaining;
+    return { absorbedIds, remaining };
   }
 
   function clearActiveStreamRows() {
@@ -180,38 +183,41 @@ export function createMessageShell({ mountEl } = {}) {
 
   function renderCanonicalHistory(sessionKey, messages = []) {
     const target = ensureMount();
-    if (!target) {return;}
+    if (!target) {return { absorbedIds: [], pendingMessages };}
     const sourceMessages = Array.isArray(messages) ? messages : [];
-    const preservedPending = pendingMessages.filter(item => item.sessionKey === sessionKey);
     mountedSessionKey = sessionKey || null;
     lastCanonicalMessages = sourceMessages;
     target.innerHTML = '';
-    pendingMessages = preservedPending;
     clearActiveStreamRows();
     for (const message of sourceMessages) {
       addCanonicalRow(message);
     }
-    absorbPendingMessages(sourceMessages);
-    for (const pending of pendingMessages) {
-      if (pending.sessionKey === sessionKey) {
-        appendPendingUserMessage(sessionKey, pending.text || '', {
-          localId: pending.localId,
-          state: pending.state || 'pending',
-        });
-        if (pending.state === 'failed') {
-          markPendingFailed(sessionKey, pending.localId);
-        }
+    const absorbResult = absorbPendingMessages(sourceMessages);
+    const remainingPending = pendingMessages.filter(item => item.sessionKey === sessionKey);
+    for (const pending of remainingPending) {
+      const row = createMessageRow('user', pending.text || '', {
+        status: pending.state || 'pending',
+        localId: pending.localId,
+        messageRole: 'user',
+        extraClass: pending.state === 'failed' ? 'failed' : 'pending',
+      });
+      target.appendChild(row);
+      if (pending.state === 'failed') {
+        markPendingFailed(sessionKey, pending.localId);
       }
     }
+    return {
+      absorbedIds: absorbResult?.absorbedIds || [],
+      pendingMessages,
+    };
   }
 
   function reconcileHistory(sessionKey, messages = []) {
-    if (!sessionKey) {return;}
+    if (!sessionKey) {return { absorbedIds: [], pendingMessages };}
     if (mountedSessionKey !== sessionKey) {
       mountedSessionKey = sessionKey;
     }
-    absorbPendingMessages(messages);
-    renderCanonicalHistory(sessionKey, messages);
+    return renderCanonicalHistory(sessionKey, messages);
   }
 
   function mountSession(sessionKey, messages = []) {
@@ -302,5 +308,8 @@ export function createMessageShell({ mountEl } = {}) {
     snapshotActiveStream,
     getMountedSessionKey,
     getDebugState,
+    hasPendingMessage(sessionKey, localId) {
+      return pendingMessages.some(item => item.sessionKey === sessionKey && item.localId === localId);
+    },
   };
 }

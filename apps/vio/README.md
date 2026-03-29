@@ -14,3 +14,10 @@ Vio is the rebuilt successor system seeded from the VioDashboard message-runtime
 - replies
 - camera/gesture/vision
 - routing/telemetry/setup/diagnostics
+
+## Current local runtime status
+- Front-end Phase 1 modules are extracted under `public/modules/`.
+- A minimal Phase 1 server skeleton now exists under `src/server/`.
+- Local smoke harness: `node apps/vio/src/server/smoke.mjs`
+- Local runner seed: `node apps/vio/src/server/runner.mjs`
+- `runner.mjs` is intentionally not wired to a real Gateway client yet; it marks the injection boundary for the future gateway-backed adapter.

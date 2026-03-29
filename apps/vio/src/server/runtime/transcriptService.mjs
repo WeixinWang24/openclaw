@@ -92,10 +92,20 @@ export function createTranscriptService({ rpcClient, eventBus, diagnostics }) {
 
     const job = (async () => {
       const overfetchLimit = Math.min(Math.max(requestedLimit * 2, requestedLimit + 12), 80);
-      const result = await rpcClient.call('sessions.get', {
-        key: sessionKey,
-        limit: overfetchLimit,
-      });
+      let result = null;
+      let sourceMethod = 'chat.history';
+      try {
+        result = await rpcClient.call('chat.history', {
+          sessionKey,
+          limit: overfetchLimit,
+        });
+      } catch {
+        sourceMethod = 'sessions.get';
+        result = await rpcClient.call('sessions.get', {
+          key: sessionKey,
+          limit: overfetchLimit,
+        });
+      }
       const messages = Array.isArray(result?.messages) ? result.messages : [];
       const normalized = messages
         .map((message, index) => normalizeHistoryMessage(message, index, sessionKey))
@@ -114,6 +124,7 @@ export function createTranscriptService({ rpcClient, eventBus, diagnostics }) {
         overfetchLimit,
         sourceCount: messages.length,
         visibleCount: normalized.length,
+        sourceMethod,
         cache: 'miss',
       });
       eventBus?.emit(KERNEL_CHANNELS.TRANSCRIPT, {

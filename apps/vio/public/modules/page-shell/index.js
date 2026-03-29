@@ -136,7 +136,7 @@ export function bindPageShellActions({ refs, flow, shell }) {
     const sessionKey = flow.getActiveSessionKey();
     if (!sessionKey) {return;}
     const localId = shell.send(sessionKey, 'Vio Phase 1 test ping');
-    flow.sendMessage(sessionKey, 'Vio Phase 1 test ping').then(() => {
+    flow.sendMessage(sessionKey, 'Vio Phase 1 test ping', { localId }).then(() => {
       if (refs.sessionStatusEl) {
         refs.sessionStatusEl.textContent = `Sent test ping to ${String(sessionKey)}; refresh scheduled.`;
       }
@@ -170,7 +170,7 @@ export function bindPageShellActions({ refs, flow, shell }) {
     const sessionKey = flow.getActiveSessionKey();
     if (!sessionKey) {return;}
     const localId = shell.send(sessionKey, 'Vio Phase 1 failing ping');
-    flow.sendMessage(sessionKey, 'Vio Phase 1 failing ping', { simulateFailure: true }).then(() => {
+    flow.sendMessage(sessionKey, 'Vio Phase 1 failing ping', { simulateFailure: true, localId }).then(() => {
       if (refs.sessionStatusEl) {
         refs.sessionStatusEl.textContent = `Unexpected success for failing ping in ${String(sessionKey)}.`;
       }
