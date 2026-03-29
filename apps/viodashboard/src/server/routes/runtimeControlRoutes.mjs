@@ -56,6 +56,28 @@ export function handleRuntimeControlRoutes({ req, res, requestUrl, root, launchd
     return true;
   }
 
+  if (requestUrl.pathname === '/api/debug-log' && req.method === 'POST') {
+    readJsonRequest(req)
+      .then(payload => {
+        const text = typeof payload?.text === 'string' ? payload.text : '';
+        const tone = typeof payload?.tone === 'string' ? payload.tone : 'cyan';
+        const ts = typeof payload?.ts === 'string' ? payload.ts : new Date().toISOString();
+        const scope = typeof payload?.scope === 'string' ? payload.scope : 'ui';
+        if (!text.trim()) {
+          sendJson(res, 400, { error: 'text is required' });
+          return;
+        }
+        const dir = path.join(root, 'data', 'debug');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, 'ui-trace.log');
+        const line = `${JSON.stringify({ ts, tone, scope, text })}\n`;
+        fs.appendFileSync(file, line, 'utf8');
+        sendJson(res, 200, { ok: true });
+      })
+      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return true;
+  }
+
   if (requestUrl.pathname === '/api/gateway/restart' && req.method === 'POST') {
     readJsonRequest(req)
       .then(() => {

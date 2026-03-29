@@ -219,6 +219,14 @@ const messageFlowState = {
   historyReqSeq: 0,
 };
 
+const liveMessageFlow = {
+  ownedSessionKey: null,
+  activeRunId: null,
+  activeText: '',
+  active: false,
+  finalizing: false,
+};
+
 const runModeState = {
   mode: 'source',
   switching: false,
@@ -332,12 +340,13 @@ function shouldSuppressDebugLine(text = '') {
 function addDebugLine(text, tone = 'cyan') {
   if (!debugLogEl) {return;}
   if (shouldSuppressDebugLine(text)) {return;}
-  const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const el = document.createElement('div');
-  el.className = `log-line ${tone}`.trim();
-  el.innerHTML = `<span class="log-bracket">[</span><span class="log-time">${stamp}</span><span class="log-bracket">]</span> <span class="log-text">${text.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</span>`;
-  debugLogEl.prepend(el);
-  while (debugLogEl.children.length > 12) {debugLogEl.removeChild(debugLogEl.lastElementChild);}
+  const stampDate = new Date();
+  fetch('/api/debug-log', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ts: stampDate.toISOString(), tone, scope: 'ui', text }),
+    keepalive: true,
+  }).catch(() => {});
 }
 
 function renderSetupBanner() {
@@ -564,6 +573,7 @@ function forceFinalizeFrontState(reason = 'unknown') {
   syncContinueButton();
 }
 
+// eslint-disable-next-line no-unused-vars
 function ignoreAbortedRunEvent(event) {
   if (event?.runId && abortedRunIds.has(event.runId)) {
     addDebugLine(`Ignored post-abort event for run ${String(event.runId).slice(0, 8)}`, 'pink');
@@ -1196,6 +1206,7 @@ function syncTopbarForSession(sessionKey) {
   setRouting(routing, `session=${sessionKey || 'none'} · state=${uiState.state}`);
 }
 
+// eslint-disable-next-line no-unused-vars
 function routingProxyLabel(mode, phase) {
   if (mode === 'error' || phase === 'error') {return 'error';}
   if (phase === 'queued') {return 'queued';}
@@ -2990,11 +3001,16 @@ async function submitChatText(text = '', options = {}) {
   addDebugLine(`submitChatText: len=${outboundText.length} attachments=${attachments.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
   if ((!value && attachments.length === 0) || (!outboundText && attachments.length === 0) || !selectedSessionKey) {return;}
 
+  const pendingLocalId = value ? newChatShell.send(selectedSessionKey, value) : null;
   const sendResult = await sendToSelectedSession(outboundText, {
     userText: value,
     attachments,
+    pendingLocalId,
   });
   if (!sendResult?.ok) {
+    if (pendingLocalId) {
+      newChatShell.markPendingFailed(selectedSessionKey, pendingLocalId);
+    }
     throw new Error(sendResult?.error || 'session send failed');
   }
 }
@@ -3009,7 +3025,7 @@ function clearChat() {
   streamingRunId = null;
 }
 
-async function sendToSelectedSession(outboundText, { userText = '', attachments = [] } = {}) {
+async function sendToSelectedSession(outboundText, { userText = '', attachments = [], pendingLocalId = null } = {}) {
   const targetSessionKey = selectedSessionKey;
   if (!targetSessionKey) {
     return { ok: false, error: 'sessionKey is required' };
@@ -3028,12 +3044,13 @@ async function sendToSelectedSession(outboundText, { userText = '', attachments 
   applyPostSendUiState(targetSessionKey, {
     userText,
     runId: data?.runId || null,
-    optimistic: true,
+    optimistic: false,
     debugLabel: 'Unified session send accepted',
     moodDetail: 'Session message sent; waiting for live session events.',
     routingSummary: 'session live',
     routingDetail: targetSessionKey,
     refreshDelay: 0,
+    pendingLocalId,
   });
   return { ok: true, mode: 'http', sessionKey: targetSessionKey, runId: data?.runId || null };
 }
@@ -3044,6 +3061,7 @@ function applyPostSendUiState(sessionKey, {
   optimistic = false,
   debugLabel = 'send accepted',
   refreshDelay = 2000,
+  pendingLocalId = null,
 } = {}) {
   if (!sessionKey) {return;}
   try {
@@ -3072,6 +3090,9 @@ function applyPostSendUiState(sessionKey, {
       text: userText,
       status: 'final',
     });
+  }
+  if (pendingLocalId) {
+    addDebugLine(`applyPostSendUiState: pending row armed ${String(pendingLocalId)}`, 'cyan');
   }
 
   addDebugLine(`${debugLabel}: ${sessionKey} run=${String(runState.runId || '').slice(0, 8) || '-'} `, 'cyan');
@@ -3162,8 +3183,8 @@ function appendSessionMessage(sessionKey, message) {
   deduped.push(message);
   sessionMessages.set(sessionKey, deduped);
   reconcileRunStateFromMessages(sessionKey, deduped, 'append-session-message');
-  if (selectedSessionKey === sessionKey) {
-    renderSessionMessages(sessionKey, deduped);
+  if (selectedSessionKey === sessionKey && !isLiveTranscriptOwnedByNewFlow(sessionKey)) {
+    renderSessionMessages(sessionKey, deduped, { mode: 'append-session-message' });
   }
 }
 
@@ -3286,13 +3307,40 @@ function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
     selectedSessionKey === sessionKey &&
     options.render !== false &&
     !(runState.state === 'streaming' && hasStreamingRowMounted(sessionKey, runState.runId || null));
-  if (shouldRender) {
-    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+  if (shouldRender && !isLiveTranscriptOwnedByNewFlow(sessionKey) && selectedSessionKey !== sessionKey) {
+    renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || [], { mode: 'projection-view' });
   }
 }
 
 function applyKernelRunViewPacket(msg = {}) {
   handleMessageFlowKernelRun(msg);
+}
+
+function isLiveTranscriptOwnedByNewFlow(sessionKey) {
+  return !!sessionKey && !!liveMessageFlow.active && liveMessageFlow.ownedSessionKey === sessionKey;
+}
+
+function claimLiveTranscript(sessionKey, runId = null) {
+  liveMessageFlow.ownedSessionKey = sessionKey || null;
+  liveMessageFlow.activeRunId = runId || null;
+  liveMessageFlow.active = !!sessionKey;
+  liveMessageFlow.finalizing = false;
+}
+
+function releaseLiveTranscript(sessionKey = null, { force = false } = {}) {
+  if (!force && sessionKey && liveMessageFlow.ownedSessionKey && liveMessageFlow.ownedSessionKey !== sessionKey) {return;}
+  liveMessageFlow.ownedSessionKey = null;
+  liveMessageFlow.activeRunId = null;
+  liveMessageFlow.activeText = '';
+  liveMessageFlow.active = false;
+  liveMessageFlow.finalizing = false;
+}
+
+function markLiveTranscriptFinalizing(sessionKey, runId = null) {
+  if (!sessionKey) {return;}
+  if (liveMessageFlow.ownedSessionKey !== sessionKey) {return;}
+  if (runId && liveMessageFlow.activeRunId && liveMessageFlow.activeRunId !== runId) {return;}
+  liveMessageFlow.finalizing = true;
 }
 
 function hasStreamingRowMounted(sessionKey, runId = null) {
@@ -3315,6 +3363,9 @@ function handleMessageFlowAck(msg = {}) {
   runState.state = 'streaming';
   stopRequestedAt = null;
   if (msg.runId) {registerChatRun(msg.runId);}
+  if (sessionKey) {
+    newChatShell.handleAck(sessionKey, msg.runId || null);
+  }
   syncStopButton();
   syncContinueButton();
   addDebugLine(`Session send acknowledged · session=${sessionKey || 'none'} run=${String(msg.runId || '').slice(0, 8)}`, 'cyan');
@@ -3371,22 +3422,31 @@ function handleMessageFlowKernelRun(msg = {}) {
 
   if (!isSelectedSession) {
     if (isFinal) {
-      scheduleSessionRefresh(sessionKey, 'run-final', 0);
+      scheduleSessionRefresh(sessionKey, 'run-final', 0, { cacheOnly: true });
     }
     return;
   }
 
   if (isDelta) {
-    const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
-    if (!patched) {
-      ensureStreamingMessageEl(runId, runState.streamText || '');
+    if (isSelectedSession) {
+      newChatShell.handleDelta(sessionKey, runId, runState.streamText || '');
+      return;
     }
+    patchLiveAssistantRow({
+      sessionKey,
+      runId,
+      text: runState.streamText || '',
+    });
     return;
   }
 
   if (isFinal) {
-    clearStreamingMessageEl(runId || null);
-    scheduleSessionRefresh(sessionKey, 'run-final', 0);
+    if (isSelectedSession) {
+      newChatShell.handleFinal(sessionKey, runId || null);
+    } else {
+      markLiveTranscriptFinalizing(sessionKey, runId || null);
+    }
+    scheduleSessionRefresh(sessionKey, 'run-final', 0, { cacheOnly: true });
     return;
   }
 
@@ -3402,14 +3462,321 @@ function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
   return true;
 }
 
-function renderSessionMessages(sessionKey, messages = []) {
+function patchLiveAssistantRow({ sessionKey, runId = null, text = '' }) {
+  if (!chatEl || !sessionKey || selectedSessionKey !== sessionKey) {return false;}
+  claimLiveTranscript(sessionKey, runId || null);
+  liveMessageFlow.activeText = text || '';
+  let rowPatched = false;
+  if (runId) {
+    rowPatched = patchStreamingMessageInPlace(sessionKey, runId, text || '');
+  }
+  if (!rowPatched) {
+    ensureStreamingMessageEl(runId || null, text || '');
+    rowPatched = true;
+  }
+  return rowPatched;
+}
+
+function createNewChatShell({ chatEl }) {
+  let mountedSessionKey = null;
+  let pendingMessages = [];
+  let activeAssistantStream = null;
+
+  function reset(sessionKey = null) {
+    mountedSessionKey = sessionKey || null;
+    pendingMessages = [];
+    activeAssistantStream = null;
+    addDebugLine(`newChatShell.reset session=${sessionKey || 'none'}`, 'cyan');
+    if (chatEl) {chatEl.innerHTML = '';}
+  }
+
+  function addCanonicalRow(message = {}) {
+    if (!shouldDisplayChatMessage(message)) {return;}
+    const bubbleRole = roleForChatBubble(message);
+    const extraClass = message?.role === 'assistant' && message?.status === 'streaming' ? 'stream' : '';
+    addMessage(bubbleRole, message.text || '', extraClass, {
+      messageRole: normalizeDashboardMessageRole(message),
+      runId: message.runId || message.id || null,
+      status: message?.status || null,
+    });
+  }
+
+  function findPendingRow(localId) {
+    if (!chatEl || !localId) {return null;}
+    return chatEl.querySelector(`.msg-row.user[data-pending-id="${CSS.escape(String(localId))}"]`);
+  }
+
+  function tracePendingDom(label, localId = null) {
+    if (!chatEl) {return;}
+    const pendingRow = localId ? findPendingRow(localId) : chatEl.querySelector('.msg-row.user[data-pending-id]');
+    const rows = [...chatEl.querySelectorAll('.msg-row')].map((row, index) => {
+      const role = row.classList.contains('user') ? 'user' : row.classList.contains('assistant') ? 'assistant' : row.classList.contains('system') ? 'system' : 'other';
+      const pendingId = row.dataset.pendingId ? ` pending=${row.dataset.pendingId}` : '';
+      const runId = row.dataset.streamRunId ? ` stream=${row.dataset.streamRunId}` : row.dataset.runId ? ` run=${row.dataset.runId}` : '';
+      const status = row.dataset.status ? ` status=${row.dataset.status}` : '';
+      return `${index}:${role}${pendingId}${runId}${status}`;
+    }).join(' | ');
+    addDebugLine(`pendingDom ${label} exists=${pendingRow ? 'yes' : 'no'} childCount=${chatEl.children.length} rows=${rows || '<empty>'}`, pendingRow ? 'cyan' : 'pink');
+  }
+
+  function appendPendingUserMessage(sessionKey, text = '', options = {}) {
+    if (!chatEl || !sessionKey || mountedSessionKey !== sessionKey || !text) {return null;}
+    const localId = options.localId || `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    row.dataset.pendingId = localId;
+    row.dataset.messageRole = 'user';
+    row.dataset.status = 'pending';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar user';
+    const avatarSrc = avatarImageSrc('user');
+    if (avatarSrc) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.alt = 'Xin avatar';
+      img.addEventListener('error', () => {
+        img.remove();
+        avatar.textContent = avatarLabel('user');
+      });
+      img.src = `${avatarSrc}?v=1`;
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = avatarLabel('user');
+    }
+    const bubbleWrap = document.createElement('div');
+    bubbleWrap.className = 'bubble-wrap';
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta user';
+    meta.textContent = `Xin · ${formatStamp()} · sending`;
+    const el = document.createElement('div');
+    el.className = 'msg user pending';
+    el.textContent = text;
+    bubbleWrap.appendChild(meta);
+    bubbleWrap.appendChild(el);
+    row.appendChild(avatar);
+    row.appendChild(bubbleWrap);
+    chatEl.appendChild(row);
+    requestAnimationFrame(() => { chatEl.scrollTop = chatEl.scrollHeight; });
+    if (!pendingMessages.some(item => item.localId === localId)) {
+      pendingMessages.push({ localId, text, sessionKey, state: 'pending' });
+    }
+    addDebugLine(`newChatShell.pending.append session=${sessionKey} localId=${localId} len=${text.length}`, 'cyan');
+    tracePendingDom('after-append', localId);
+    return localId;
+  }
+
+  function markPendingFailed(sessionKey, localId) {
+    if (!sessionKey || mountedSessionKey !== sessionKey || !localId) {return;}
+    addDebugLine(`newChatShell.pending.failed session=${sessionKey} localId=${localId}`, 'pink');
+    const row = findPendingRow(localId);
+    if (!row) {return;}
+    row.dataset.status = 'failed';
+    const meta = row.querySelector('.msg-meta.user');
+    if (meta) {meta.textContent = `Xin · ${formatStamp()} · failed`;}
+    const msg = row.querySelector('.msg.user');
+    if (msg) {msg.classList.remove('pending'); msg.classList.add('failed');}
+    pendingMessages = pendingMessages.map(item => item.localId === localId ? { ...item, state: 'failed' } : item);
+  }
+
+  function absorbPendingMessages(messages = []) {
+    if (!mountedSessionKey || !Array.isArray(messages) || !pendingMessages.length) {return;}
+    const canonicalUserTexts = new Set(messages.filter(item => normalizeDashboardMessageRole(item) === 'user').map(item => String(item?.text || '')));
+    const remaining = [];
+    for (const pending of pendingMessages) {
+      if (pending.sessionKey !== mountedSessionKey) {
+        remaining.push(pending);
+        continue;
+      }
+      if (pending.text && canonicalUserTexts.has(String(pending.text))) {
+        addDebugLine(`newChatShell.pending.absorb session=${mountedSessionKey} localId=${pending.localId}`, 'cyan');
+        const row = findPendingRow(pending.localId);
+        row?.remove();
+        continue;
+      }
+      remaining.push(pending);
+    }
+    pendingMessages = remaining;
+  }
+
+  function getOrCreateActiveStreamRow(sessionKey, runId = null) {
+    if (!chatEl || !sessionKey || mountedSessionKey !== sessionKey) {return null;}
+    const effectiveRunId = runId || activeAssistantStream?.runId || 'active';
+    let row = chatEl.querySelector(`.msg-row.assistant[data-stream-run-id="${CSS.escape(String(effectiveRunId))}"]`);
+    if (row) {
+      const msg = row.querySelector('.msg.assistant');
+      const meta = row.querySelector('.msg-meta.assistant');
+      tracePendingDom('stream-row-reuse');
+      return { row, msg, meta, runId: effectiveRunId };
+    }
+    tracePendingDom('before-stream-row-create');
+    row = document.createElement('div');
+    row.className = 'msg-row assistant';
+    row.dataset.streamRunId = String(effectiveRunId);
+    row.dataset.messageRole = 'stream';
+    row.dataset.status = 'streaming';
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar assistant';
+    const avatarSrc = avatarImageSrc('assistant');
+    if (avatarSrc) {
+      const img = document.createElement('img');
+      img.className = 'avatar-img';
+      img.alt = 'Vio avatar';
+      img.addEventListener('error', () => {
+        img.remove();
+        avatar.textContent = avatarLabel('assistant');
+      });
+      img.src = `${avatarSrc}?v=1`;
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = avatarLabel('assistant');
+    }
+    const bubbleWrap = document.createElement('div');
+    bubbleWrap.className = 'bubble-wrap';
+    const meta = document.createElement('div');
+    meta.className = 'msg-meta assistant';
+    meta.textContent = `Vio · ${formatStamp()} · streaming`;
+    const msg = document.createElement('div');
+    msg.className = 'msg assistant stream';
+    bubbleWrap.appendChild(meta);
+    bubbleWrap.appendChild(msg);
+    row.appendChild(avatar);
+    row.appendChild(bubbleWrap);
+    chatEl.appendChild(row);
+    requestAnimationFrame(() => { chatEl.scrollTop = chatEl.scrollHeight; });
+    tracePendingDom('after-stream-row-create');
+    return { row, msg, meta, runId: effectiveRunId };
+  }
+
+  function handleAck(sessionKey, runId = null) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return;}
+    claimLiveTranscript(sessionKey, runId || null);
+    activeAssistantStream = {
+      runId: runId || activeAssistantStream?.runId || null,
+      text: '',
+      state: 'streaming',
+    };
+    addDebugLine(`newChatShell.handleAck session=${sessionKey} run=${String(runId || '').slice(0, 8) || '-'}`, 'cyan');
+    tracePendingDom('after-ack');
+  }
+
+  function handleDelta(sessionKey, runId = null, text = '') {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return false;}
+    claimLiveTranscript(sessionKey, runId || null);
+    const firstDelta = !activeAssistantStream || activeAssistantStream.state !== 'streaming';
+    const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
+    if (!stream?.msg) {return false;}
+    activeAssistantStream = {
+      runId: stream.runId,
+      text: text || '',
+      state: 'streaming',
+    };
+    liveMessageFlow.activeText = text || '';
+    stream.row.dataset.status = 'streaming';
+    if (stream.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`;}
+    stream.msg.textContent = text || '';
+    requestAnimationFrame(() => { chatEl.scrollTop = chatEl.scrollHeight; });
+    if (firstDelta) {
+      tracePendingDom('after-first-delta');
+    }
+    return true;
+  }
+
+  function handleFinal(sessionKey, runId = null) {
+    if (!sessionKey || mountedSessionKey !== sessionKey) {return;}
+    markLiveTranscriptFinalizing(sessionKey, runId || null);
+    if (activeAssistantStream && (!runId || activeAssistantStream.runId === runId)) {
+      activeAssistantStream = {
+        ...activeAssistantStream,
+        state: 'finalizing',
+      };
+    }
+    const stream = getOrCreateActiveStreamRow(sessionKey, runId || null);
+    if (stream?.row) {stream.row.dataset.status = 'finalizing';}
+    if (stream?.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · finalizing`;}
+  }
+
+  function reconcileHistory(sessionKey, messages = []) {
+    if (!sessionKey) {return;}
+    if (mountedSessionKey !== sessionKey) {
+      mountedSessionKey = sessionKey;
+    }
+    addDebugLine(`newChatShell.reconcileHistory session=${sessionKey} len=${Array.isArray(messages) ? messages.length : -1} streamState=${activeAssistantStream?.state || 'none'}`, 'cyan');
+    absorbPendingMessages(messages);
+    renderCanonicalHistory(sessionKey, messages);
+  }
+
+  function renderCanonicalHistory(sessionKey, messages = []) {
+    if (!chatEl) {return;}
+    const sourceMessages = Array.isArray(messages) ? messages : [];
+    const visibleMessages = sourceMessages;
+    const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
+    const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
+    addDebugLine(`newChatShell.renderCanonicalHistory active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} last=${lastPreview || '<empty>'}`, 'cyan');
+    const preservedPending = pendingMessages.filter(item => item.sessionKey === sessionKey);
+    addDebugLine(`newChatShell.renderCanonicalHistory preservedPending session=${sessionKey} count=${preservedPending.length}`, 'cyan');
+    reset(sessionKey);
+    pendingMessages = preservedPending;
+    releaseLiveTranscript(sessionKey, { force: true });
+    clearStreamingMessageEl();
+    for (const message of visibleMessages) {
+      addCanonicalRow(message);
+    }
+    absorbPendingMessages(visibleMessages);
+    for (const pending of pendingMessages) {
+      if (pending.sessionKey === sessionKey) {
+        appendPendingUserMessage(sessionKey, pending.text || '', { localId: pending.localId });
+        if (pending.state === 'failed') {
+          markPendingFailed(sessionKey, pending.localId);
+        }
+      }
+    }
+  }
+
+  function mountSession(sessionKey, messages = []) {
+    renderCanonicalHistory(sessionKey, messages);
+  }
+
+  function getMountedSessionKey() {
+    return mountedSessionKey;
+  }
+
+  function send(sessionKey, text = '') {
+    if (!sessionKey) {return null;}
+    if (mountedSessionKey !== sessionKey) {
+      mountSession(sessionKey, sessionMessages.get(sessionKey) || []);
+    }
+    return appendPendingUserMessage(sessionKey, text || '');
+  }
+
+  return {
+    mountSession,
+    renderCanonicalHistory,
+    reset,
+    getMountedSessionKey,
+    send,
+    handleAck,
+    handleDelta,
+    handleFinal,
+    reconcileHistory,
+    markPendingFailed,
+  };
+}
+
+const newChatShell = createNewChatShell({ chatEl });
+
+function renderSessionMessages(sessionKey, messages = [], options = {}) {
   if (!chatEl) {return;}
+  const mode = options.mode || 'legacy';
+  if (selectedSessionKey === sessionKey || isLiveTranscriptOwnedByNewFlow(sessionKey)) {
+    addDebugLine(`LEGACY renderSessionMessages blocked mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'pink');
+    return;
+  }
   const sourceMessages = Array.isArray(messages) ? messages : [];
   const visibleMessages = sourceMessages;
   const uiState = deriveSessionUiState(sessionKey);
   const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-  addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'cyan');
+  addDebugLine(`LEGACY renderSessionMessages mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'pink');
   const preservedStreamingText = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.streamText || '') : '';
   const preservedStreamingRunId = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.runId || null) : null;
   clearChat();
@@ -3584,6 +3951,10 @@ function setSessionLoading(sessionKey, loading) {
 
 function renderSessionLoadingPlaceholder(sessionKey) {
   if (!chatEl) {return;}
+  if (newChatShell?.getMountedSessionKey?.() === sessionKey && chatEl.children.length > 0) {
+    addDebugLine(`renderSessionLoadingPlaceholder skipped: mounted transcript already present for ${sessionKey}`, 'cyan');
+    return;
+  }
   chatEl.innerHTML = '';
   const row = document.createElement('div');
   row.className = 'msg-row system';
@@ -3615,8 +3986,7 @@ function renderMessageFlowSession(sessionKey, messages = null, { loading = false
     renderSessionLoadingPlaceholder(sessionKey);
     return;
   }
-  const list = Array.isArray(messages) ? messages : (sessionMessages.get(sessionKey) || []);
-  renderSessionMessages(sessionKey, list);
+  addDebugLine(`renderMessageFlowSession chrome-only active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'cyan');
   syncTopbarForSession(sessionKey);
   syncStopButton();
   syncContinueButton();
@@ -3651,9 +4021,9 @@ async function fetchMessageFlowHistory(sessionKey, { force = false } = {}) {
 
 async function selectMessageFlowSession(sessionKey, { force = false } = {}) {
   if (!sessionKey) {return;}
+  const selectionSeq = ++messageFlowState.selectionSeq;
   selectedSessionKey = sessionKey;
   messageFlowState.activeSessionKey = sessionKey;
-  messageFlowState.selectionSeq += 1;
   sessionSelectionSeq = messageFlowState.selectionSeq;
   renderSessionsList();
   renderMessageFlowSession(sessionKey, null, { loading: true });
@@ -3661,7 +4031,13 @@ async function selectMessageFlowSession(sessionKey, { force = false } = {}) {
     addDebugLine(`Session context refresh failed (${sessionKey}): ${error?.message || error}`, 'pink');
   });
   const messages = await fetchMessageFlowHistory(sessionKey, { force });
-  if (selectedSessionKey !== sessionKey) {return;}
+  addDebugLine(`selectMessageFlowSession history resolved seq=${selectionSeq} current=${messageFlowState.selectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${Array.isArray(messages) ? messages.length : -1}`, 'cyan');
+  if (selectedSessionKey !== sessionKey || selectionSeq !== messageFlowState.selectionSeq) {
+    addDebugLine(`selectMessageFlowSession stale seq=${selectionSeq} current=${messageFlowState.selectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; mount skipped`, 'pink');
+    return;
+  }
+  addDebugLine(`selectMessageFlowSession mountSession seq=${selectionSeq} target=${sessionKey}`, 'cyan');
+  newChatShell.mountSession(sessionKey, messages);
   renderMessageFlowSession(sessionKey, messages, { loading: false });
 }
 
@@ -3761,6 +4137,7 @@ async function refreshSelectedSessionContext(sessionKey) {
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 async function selectDashboardSession(sessionKey, { force = false } = {}) {
   if (!sessionKey) {return;}
   const previousSessionKey = selectedSessionKey;
@@ -3770,7 +4147,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const hasCachedMessages = sessionMessages.has(sessionKey);
   const selectedRun = getSessionRunState(sessionKey);
   const shouldForce = !!force || switchedSession || !!meta.dirty || !!meta.pending || selectedRun.state === 'streaming';
-  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'}`, 'cyan');
+  addDebugLine(`selectDashboardSession enter seq=${selectionSeq} from=${previousSessionKey || 'none'} to=${sessionKey} force=${shouldForce ? 'yes' : 'no'} switched=${switchedSession ? 'yes' : 'no'} cached=${hasCachedMessages ? 'yes' : 'no'} mounted=${newChatShell?.getMountedSessionKey?.() || 'none'}`, 'cyan');
   selectedSessionKey = sessionKey;
   clearChat();
   if (activeFilePathEl) {
@@ -3785,7 +4162,7 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   const shouldLoadNow = !hasCachedMessages || shouldForce;
   if (cachedMessages) {
     setSessionLoading(sessionKey, false);
-    renderSessionMessages(sessionKey, cachedMessages);
+    newChatShell.mountSession(sessionKey, cachedMessages);
   } else if (shouldLoadNow) {
     setSessionLoading(sessionKey, true);
     renderSessionLoadingPlaceholder(sessionKey);
@@ -3801,11 +4178,13 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   if (!hasCachedMessages || shouldForce) {
     loadSessionHistory(sessionKey, { force: shouldForce, selectionSeq })
       .then(messages => {
+        addDebugLine(`selectDashboardSession history resolved seq=${selectionSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} len=${Array.isArray(messages) ? messages.length : -1}`, 'cyan');
         if (selectedSessionKey !== sessionKey || selectionSeq !== sessionSelectionSeq) {
           addDebugLine(`selectDashboardSession stale seq=${selectionSeq} current=${sessionSelectionSeq} active=${selectedSessionKey || 'none'} target=${sessionKey}; render skipped`, 'pink');
           return;
         }
-        renderSessionMessages(sessionKey, messages);
+        addDebugLine(`selectDashboardSession mountSession seq=${selectionSeq} target=${sessionKey}`, 'cyan');
+        newChatShell.mountSession(sessionKey, messages);
         syncStopButton();
         syncContinueButton();
         if (sessionKey === (dashboardSessions.find(item => item.key === sessionKey)?.key || sessionKey)) {
@@ -3823,9 +4202,10 @@ async function selectDashboardSession(sessionKey, { force = false } = {}) {
   }
 }
 
-async function refreshSessionHistory(sessionKey, reason = 'manual') {
+async function refreshSessionHistory(sessionKey, reason = 'manual', options = {}) {
   if (!sessionKey) {return [];} 
   const refreshSeq = messageFlowState.selectionSeq;
+  const cacheOnly = options?.cacheOnly === true;
   const messages = await fetchMessageFlowHistory(sessionKey, { force: true });
   const meta = getSessionMeta(sessionKey);
   meta.dirty = false;
@@ -3839,6 +4219,15 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
     sessionKey === selectedSessionKey &&
     runState?.state === 'streaming' &&
     hasStreamingRowMounted(sessionKey, runState?.runId || null);
+  const liveOwned = isLiveTranscriptOwnedByNewFlow(sessionKey);
+  if (cacheOnly || liveOwned) {
+    if (sessionKey === selectedSessionKey) {
+      addDebugLine(`refreshSessionHistory reconcile selected session=${sessionKey} reason=${reason} len=${messages.length}`, 'cyan');
+      newChatShell.reconcileHistory(sessionKey, messages);
+    }
+    addDebugLine(`refreshSessionHistory cache-only seq=${refreshSeq} active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason} liveOwned=${liveOwned ? 'yes' : 'no'}`, 'cyan');
+    return messages;
+  }
   if (sessionKey === selectedSessionKey && !shouldSuppressStreamingRerender) {
     renderMessageFlowSession(sessionKey, messages, { loading: false });
   } else {
@@ -3847,7 +4236,7 @@ async function refreshSessionHistory(sessionKey, reason = 'manual') {
   return messages;
 }
 
-function scheduleSessionRefresh(sessionKey, reason = 'session-update', delay = 120) {
+function scheduleSessionRefresh(sessionKey, reason = 'session-update', delay = 120, options = {}) {
   if (!sessionKey) {return;}
   const meta = getSessionMeta(sessionKey);
   meta.dirty = true;
@@ -3862,7 +4251,7 @@ function scheduleSessionRefresh(sessionKey, reason = 'session-update', delay = 1
   const timer = setTimeout(() => {
     sessionRefreshTimers.delete(sessionKey);
     addDebugLine(`sessionRefreshTimerFired active=${selectedSessionKey || 'none'} target=${sessionKey} reason=${reason}`, 'cyan');
-    refreshSessionHistory(sessionKey, reason).catch(error => {
+    refreshSessionHistory(sessionKey, reason, options).catch(error => {
       addDebugLine(`Session refresh failed (${sessionKey}, ${reason}): ${error?.message || error}`, 'pink');
     });
   }, delay);
@@ -4076,7 +4465,7 @@ stopBtnEl?.addEventListener('click', () => {
   runState.state = 'aborted';
   addDebugLine(`User stopped run ${String(stoppedRunId).slice(0, 8)}`, 'pink');
   markLatestAssistantReplyAborted(stoppedRunId, sessionKey);
-  scheduleSessionRefresh(sessionKey, 'user-stop', 0);
+  scheduleSessionRefresh(sessionKey, 'user-stop', 0, { cacheOnly: true });
   syncStopButton();
   syncContinueButton();
 });
