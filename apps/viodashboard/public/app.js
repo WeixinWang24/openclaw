@@ -3046,9 +3046,9 @@ async function sendToSelectedSession(outboundText, { userText = '', attachments 
 }
 
 function applyPostSendUiState(sessionKey, {
-  userText: _userText = '',
+  userText = '',
   runId = null,
-  optimistic: _optimistic = false,
+  optimistic = false,
   debugLabel = 'send accepted',
   refreshDelay = 2000,
 } = {}) {
@@ -3071,9 +3071,17 @@ function applyPostSendUiState(sessionKey, {
   runState.runId = runId || runState.runId || null;
   runState.streamText = '';
   runState.state = 'streaming';
+
+  if (optimistic && userText) {
+    appendSessionMessage(sessionKey, {
+      id: `optimistic-${Date.now()}`,
+      role: 'user',
+      text: userText,
+      status: 'final',
+    });
+  }
+
   addDebugLine(`${debugLabel}: ${sessionKey} run=${String(runState.runId || '').slice(0, 8) || '-'} `, 'cyan');
-  setMood('thinking', moodDetail);
-  setRouting(routingSummary, routingDetail || sessionKey);
   scheduleSessionRefresh(sessionKey, 'send-history-reconcile', refreshDelay);
   syncStopButton();
   syncContinueButton();
