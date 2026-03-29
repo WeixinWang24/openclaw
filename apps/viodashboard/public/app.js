@@ -3325,29 +3325,6 @@ function isLiveTranscriptOwnedByNewFlow(sessionKey) {
   return !!sessionKey && !!liveMessageFlow.active && liveMessageFlow.ownedSessionKey === sessionKey;
 }
 
-function claimLiveTranscript(sessionKey, runId = null) {
-  liveMessageFlow.ownedSessionKey = sessionKey || null;
-  liveMessageFlow.activeRunId = runId || null;
-  liveMessageFlow.active = !!sessionKey;
-  liveMessageFlow.finalizing = false;
-}
-
-function releaseLiveTranscript(sessionKey = null, { force = false } = {}) {
-  if (!force && sessionKey && liveMessageFlow.ownedSessionKey && liveMessageFlow.ownedSessionKey !== sessionKey) {return;}
-  liveMessageFlow.ownedSessionKey = null;
-  liveMessageFlow.activeRunId = null;
-  liveMessageFlow.activeText = '';
-  liveMessageFlow.active = false;
-  liveMessageFlow.finalizing = false;
-}
-
-function markLiveTranscriptFinalizing(sessionKey, runId = null) {
-  if (!sessionKey) {return;}
-  if (liveMessageFlow.ownedSessionKey !== sessionKey) {return;}
-  if (runId && liveMessageFlow.activeRunId && liveMessageFlow.activeRunId !== runId) {return;}
-  liveMessageFlow.finalizing = true;
-}
-
 function hasStreamingRowMounted(sessionKey, runId = null) {
   if (!chatEl || selectedSessionKey !== sessionKey) {return false;}
   if (runId) {
