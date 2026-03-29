@@ -3035,13 +3035,6 @@ async function sendToSelectedSession(outboundText, { userText = '', attachments 
     routingDetail: targetSessionKey,
     refreshDelay: 0,
   });
-  if (data?.view) {
-    try {
-      applyProjectionViewToSession(targetSessionKey, data.viewMeta || data.view);
-    } catch (error) {
-      addDebugLine(`sendToSelectedSession: immediate projection apply failed: ${error?.message || error}`, 'pink');
-    }
-  }
   return { ok: true, mode: 'http', sessionKey: targetSessionKey, runId: data?.runId || null };
 }
 
@@ -3310,21 +3303,8 @@ function hasStreamingRowMounted(sessionKey, runId = null) {
   return !!chatEl.querySelector('.msg-row.assistant[data-status="streaming"]');
 }
 
-function applyProjectionTranscriptPacket(msg = {}) {
-  const sessionKey = msg?.sessionKey || null;
-  if (!sessionKey) {return;}
-  const runState = getSessionRunState(sessionKey);
-  const suppressRender =
-    selectedSessionKey === sessionKey &&
-    runState?.state === 'streaming' &&
-    hasStreamingRowMounted(sessionKey, runState?.runId || null);
-  if (suppressRender) {
-    addDebugLine(`projection.transcript deferred during streaming for ${sessionKey}`, 'cyan');
-    return;
-  }
-  if (msg?.viewMeta) {
-    applyProjectionViewToSession(sessionKey, msg.viewMeta, { render: true });
-  }
+function applyProjectionTranscriptPacket(_msg = {}) {
+  // Single-path message flow v1: transcript projection is muted for the main chat pane.
 }
 
 function handleMessageFlowAck(msg = {}) {
@@ -3345,12 +3325,15 @@ function handleMessageFlowSessionUpdated(msg = {}) {
   if (!sessionKey) {return;}
   addDebugLine(`ws session.updated active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} reason=${msg.reason || 'session-updated'}`, 'cyan');
   const runState = getSessionRunState(sessionKey);
-  if (sessionKey === selectedSessionKey && runState?.state === 'streaming') {
+  if (sessionKey === selectedSessionKey) {
+    addDebugLine(`session.updated muted for selected session under single-path flow: ${sessionKey}`, 'cyan');
+    return;
+  }
+  if (runState?.state === 'streaming') {
     addDebugLine(`session.updated deferred during streaming for ${sessionKey}`, 'cyan');
     return;
   }
-  const delay = sessionKey === selectedSessionKey ? 0 : 1200;
-  scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', delay);
+  scheduleSessionRefresh(sessionKey, msg.reason || 'session-updated', 1200);
 }
 
 function handleMessageFlowKernelRun(msg = {}) {
