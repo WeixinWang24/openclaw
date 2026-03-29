@@ -438,16 +438,6 @@ kernelEventBus.subscribe('kernel.run', event => {
     viewMeta: event?.sessionKey ? buildProjectionViewMeta(event.sessionKey) : null,
   });
 });
-kernelEventBus.subscribe('kernel.transcript', event => {
-  if (event?.type === 'transcript.refreshed') {
-    broadcast({
-      type: 'projection.transcript',
-      sessionKey: event.sessionKey,
-      viewMeta: buildProjectionViewMeta(event.sessionKey),
-      source: 'kernel.transcript',
-    });
-  }
-});
 bridge.connect();
 
 const server = http.createServer((req, res) => {

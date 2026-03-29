@@ -3356,9 +3356,6 @@ function hasStreamingRowMounted(sessionKey, runId = null) {
   return !!chatEl.querySelector('.msg-row.assistant[data-status="streaming"]');
 }
 
-function applyProjectionTranscriptPacket(_msg = {}) {
-  // Single-path message flow v1: transcript projection is muted for the main chat pane.
-}
 
 function handleMessageFlowAck(msg = {}) {
   const sessionKey = getActiveViewedSessionKey();
@@ -3769,50 +3766,6 @@ function createNewChatShell({ chatEl }) {
 
 const newChatShell = createNewChatShell({ chatEl });
 
-// Retired legacy renderer kept only as a temporary reference while the active chat UI
-// runs through newChatShell + message-flow reducer paths. Do not route selected-session
-// or live-transcript rendering back through this function.
-// eslint-disable-next-line no-unused-vars
-function renderSessionMessagesRetiredLegacy(sessionKey, messages = [], options = {}) {
-  if (!chatEl) {return;}
-  const mode = options.mode || 'retired-legacy';
-  if (selectedSessionKey === sessionKey || isLiveTranscriptOwnedByNewFlow(sessionKey)) {
-    addDebugLine(`RETIRED renderSessionMessages blocked mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'}`, 'pink');
-    return;
-  }
-  const sourceMessages = Array.isArray(messages) ? messages : [];
-  const visibleMessages = sourceMessages;
-  const uiState = deriveSessionUiState(sessionKey);
-  const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
-  const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
-  addDebugLine(`RETIRED renderSessionMessages mode=${mode} active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'pink');
-  const preservedStreamingText = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.streamText || '') : '';
-  const preservedStreamingRunId = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.runId || null) : null;
-  clearChat();
-  for (const message of visibleMessages) {
-    if (!shouldDisplayChatMessage(message)) {continue;}
-    const bubbleRole = roleForChatBubble(message);
-    const extraClass = message?.role === 'assistant' && message?.status === 'streaming' ? 'stream' : '';
-    addMessage(bubbleRole, message.text || '', extraClass, {
-      messageRole: normalizeDashboardMessageRole(message),
-      runId: message.runId || message.id || null,
-      status: message?.status || null,
-    });
-  }
-  if (uiState.state !== 'streaming') {
-    clearStreamingMessageEl();
-  } else if (preservedStreamingRunId && preservedStreamingText) {
-    ensureStreamingMessageEl(preservedStreamingRunId, preservedStreamingText);
-  }
-  if (activeFilePathEl) {
-    activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
-  }
-  if (sessionKey === getActiveViewedSessionKey()) {
-    syncTopbarForSession(sessionKey);
-  }
-  syncStopButton();
-  syncContinueButton();
-}
 
 function addMessage(role, text, extraClass = '', options = {}) {
   const row = document.createElement('div');
@@ -4392,10 +4345,6 @@ function connect() {
     }
     if (msg.type === 'kernel.run') {
       try {applyKernelRunViewPacket(msg);} catch (error) {addDebugLine(`ws kernel.run apply failed: ${error?.message || error}`, 'pink');}
-      return;
-    }
-    if (msg.type === 'projection.transcript') {
-      try {applyProjectionTranscriptPacket(msg);} catch (error) {addDebugLine(`ws projection.transcript apply failed: ${error?.message || error}`, 'pink');}
       return;
     }
   } catch (error) {
