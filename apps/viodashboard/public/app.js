@@ -3126,12 +3126,29 @@ function shouldDisplayChatMessage(message = {}) {
   if (role === 'tool') {return false;}
   const text = String(message?.text || '').trim();
   if (!text) {return false;}
+
+  if (role === 'system') {
+    const lower = text.toLowerCase();
+    if (
+      lower.includes('exec completed') ||
+      lower.includes('read heartbeat.md if it exists') ||
+      lower.includes('current time:') ||
+      lower.includes('live verify') ||
+      lower.includes('wrapper websocket connected')
+    ) {
+      return false;
+    }
+    return false;
+  }
+
   if (role === 'assistant') {
     const lower = text.toLowerCase();
     if (
       lower.startsWith('wait for it to come back, then test.') ||
       lower.startsWith('now validate by sending a test message through ui') ||
-      lower.startsWith('reload completed, the current batch of rewrite has entered live')
+      lower.startsWith('reload completed, the current batch of rewrite has entered live') ||
+      lower.startsWith('i will now reload the current viodashboard') ||
+      lower.startsWith('i first reload the current viodashboard')
     ) {
       return false;
     }
