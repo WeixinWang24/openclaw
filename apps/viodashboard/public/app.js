@@ -212,6 +212,13 @@ const repliesState = {
   error: '',
 };
 
+const messageFlowState = {
+  activeSessionKey: null,
+  sessions: [],
+  selectionSeq: 0,
+  historyReqSeq: 0,
+};
+
 const runModeState = {
   mode: 'source',
   switching: false,
@@ -3467,7 +3474,7 @@ function renderSessionsList() {
     `;
     item.title = session.key || title;
     item.addEventListener('click', () => {
-      selectDashboardSession(session.key).catch(error => {
+      selectMessageFlowSession(session.key).catch(error => {
         addDebugLine(`Session switch failed: ${error?.message || error}`, 'pink');
       });
     });
@@ -3529,6 +3536,64 @@ function renderSessionLoadingPlaceholder(sessionKey) {
   row.appendChild(avatar);
   row.appendChild(bubbleWrap);
   chatEl.appendChild(row);
+}
+
+function renderMessageFlowSession(sessionKey, messages = null, { loading = false } = {}) {
+  messageFlowState.activeSessionKey = sessionKey || null;
+  if (activeFilePathEl) {
+    activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
+  }
+  if (loading) {
+    renderSessionLoadingPlaceholder(sessionKey);
+    return;
+  }
+  const list = Array.isArray(messages) ? messages : (sessionMessages.get(sessionKey) || []);
+  renderSessionMessages(sessionKey, list);
+  syncTopbarForSession(sessionKey);
+  syncStopButton();
+  syncContinueButton();
+}
+
+async function fetchMessageFlowHistory(sessionKey, { force = false } = {}) {
+  if (!sessionKey) {return [];}
+  const reqSeq = ++messageFlowState.historyReqSeq;
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionKey)}/history?limit=40${force ? '&refresh=true' : ''}`, { cache: 'no-store' });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || 'session history fetch failed');
+  }
+  if (reqSeq !== messageFlowState.historyReqSeq) {
+    return sessionMessages.get(sessionKey) || [];
+  }
+  const messages = Array.isArray(data?.messages)
+    ? data.messages
+      .map(message => ({
+        ...message,
+        role: normalizeDashboardMessageRole(message),
+        runId: message?.runId || message?.id || null,
+        text: typeof message?.text === 'string' ? sanitizeDisplayedChatText(message.text) : '',
+      }))
+      .filter(shouldDisplayChatMessage)
+    : [];
+  sessionMessages.set(sessionKey, mergeOptimisticHistoryContinuity(sessionKey, messages));
+  reconcileRunStateFromMessages(sessionKey, sessionMessages.get(sessionKey) || [], 'message-flow-history');
+  applyProjectionViewToSession(sessionKey, data.viewMeta || data.view, { render: false });
+  return sessionMessages.get(sessionKey) || [];
+}
+
+async function selectMessageFlowSession(sessionKey, { force = false } = {}) {
+  if (!sessionKey) {return;}
+  selectedSessionKey = sessionKey;
+  messageFlowState.activeSessionKey = sessionKey;
+  messageFlowState.selectionSeq += 1;
+  renderSessionsList();
+  renderMessageFlowSession(sessionKey, null, { loading: true });
+  refreshSelectedSessionContext(sessionKey).catch(error => {
+    addDebugLine(`Session context refresh failed (${sessionKey}): ${error?.message || error}`, 'pink');
+  });
+  const messages = await fetchMessageFlowHistory(sessionKey, { force });
+  if (selectedSessionKey !== sessionKey) {return;}
+  renderMessageFlowSession(sessionKey, messages, { loading: false });
 }
 
 function renderSessionIdlePlaceholder(sessionKey) {
@@ -3756,7 +3821,7 @@ function connect() {
         const shouldHydrateDefaultSession = !selectedSessionKey || selectedSessionKey === gatewayMainSessionKey;
         if (shouldHydrateDefaultSession && !sessionMessages.has(gatewayMainSessionKey)) {
           selectedSessionKey = gatewayMainSessionKey;
-          selectDashboardSession(gatewayMainSessionKey, { force: true }).catch(error => {
+          selectMessageFlowSession(gatewayMainSessionKey, { force: true }).catch(error => {
             addDebugLine(`default session hydrate failed: ${error?.message || error}`, 'pink');
           });
         }
@@ -4225,8 +4290,8 @@ ensureTerminalSession().catch(() => {});
 sessionsRefreshBtnEl?.addEventListener('click', () => {
   fetchDashboardSessions()
     .then(() => {
-      if (selectedSessionKey && sessionMessages.has(selectedSessionKey)) {
-        return selectDashboardSession(selectedSessionKey, { force: false });
+      if (selectedSessionKey) {
+        return selectMessageFlowSession(selectedSessionKey, { force: true });
       }
       return null;
     })
@@ -4235,8 +4300,8 @@ sessionsRefreshBtnEl?.addEventListener('click', () => {
 
 fetchDashboardSessions()
   .then(() => {
-    if (selectedSessionKey && sessionMessages.has(selectedSessionKey)) {
-      return selectDashboardSession(selectedSessionKey, { force: false });
+    if (selectedSessionKey) {
+      return selectMessageFlowSession(selectedSessionKey, { force: true });
     }
     renderSessionIdlePlaceholder(getActiveViewedSessionKey());
     addDebugLine(`sessions init loaded list only; deferred history for ${selectedSessionKey || 'none'}`, 'cyan');
