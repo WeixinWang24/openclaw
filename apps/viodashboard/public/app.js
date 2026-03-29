@@ -3443,30 +3443,6 @@ function handleMessageFlowKernelRun(msg = {}) {
   addDebugLine(`handleMessageFlowKernelRun fallback cache-only session=${sessionKey}`, 'cyan');
 }
 
-function patchStreamingMessageInPlace(sessionKey, runId, text = '') {
-  if (!chatEl || selectedSessionKey !== sessionKey || !runId) {return false;}
-  const row = chatEl.querySelector(`.msg-row.assistant[data-run-id="${CSS.escape(String(runId))}"][data-status="streaming"]`);
-  const msgEl = row?.querySelector('.msg.assistant');
-  if (!msgEl) {return false;}
-  msgEl.innerHTML = renderChatMarkdown(text || '');
-  return true;
-}
-
-function patchLiveAssistantRow({ sessionKey, runId = null, text = '' }) {
-  if (!chatEl || !sessionKey || selectedSessionKey !== sessionKey) {return false;}
-  claimLiveTranscript(sessionKey, runId || null);
-  liveMessageFlow.activeText = text || '';
-  let rowPatched = false;
-  if (runId) {
-    rowPatched = patchStreamingMessageInPlace(sessionKey, runId, text || '');
-  }
-  if (!rowPatched) {
-    ensureStreamingMessageEl(runId || null, text || '');
-    rowPatched = true;
-  }
-  return rowPatched;
-}
-
 function createNewChatShell({ chatEl }) {
   let mountedSessionKey = null;
   let pendingMessages = [];
