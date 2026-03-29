@@ -148,8 +148,6 @@ const LAST_ASSISTANT_REPLY_KEY = 'vio-wrapper-last-assistant-reply-v1';
 const LAST_ASSISTANT_REPLY_BY_SESSION_KEY = 'vio-wrapper-last-assistant-reply-by-session-v1';
 
 let ws;
-let streamingEl = null;
-let streamingRunId = null;
 const abortedRunIds = new Set();
 let _stopRequestedAt = null;
 let lastStreamEventAt = 0;
@@ -564,7 +562,6 @@ function forceFinalizeFrontState(reason = 'unknown') {
   const sessionKey = getActiveViewedSessionKey();
   const runState = getSessionRunState(sessionKey);
   addDebugLine(`Force final state cleanup (${reason}) · run ${String(runState?.runId || '').slice(0, 8)}`, 'pink');
-  clearStreamingMessageEl(runState?.runId || null);
   runState.state = 'final';
   runState.runId = null;
   runState.streamText = '';
@@ -3021,8 +3018,6 @@ function getActiveViewedSessionKey() {
 
 function clearChat() {
   if (chatEl) {chatEl.innerHTML = '';}
-  streamingEl = null;
-  streamingRunId = null;
 }
 
 async function sendToSelectedSession(outboundText, { userText = '', attachments = [], pendingLocalId = null } = {}) {
@@ -3071,8 +3066,6 @@ function applyPostSendUiState(sessionKey, {
   } catch (error) {
     addDebugLine(`applyPostSendUiState: composer reset threw ${error?.message || error}`, 'pink');
   }
-  streamingEl = null;
-  streamingRunId = null;
   const meta = getSessionMeta(sessionKey);
   meta.pending = true;
   meta.dirty = true;
@@ -3745,20 +3738,6 @@ function addMessage(role, text, extraClass = '', options = {}) {
   return el;
 }
 
-function clearStreamingMessageEl(runId = null) {
-  const selector = runId
-    ? `.msg-row.assistant[data-message-role="stream"][data-run-id="${CSS.escape(String(runId))}"]`
-    : '.msg-row.assistant[data-message-role="stream"]';
-  const rows = chatEl ? [...chatEl.querySelectorAll(selector)] : [];
-  for (const row of rows) {
-    row.remove();
-  }
-  if (!runId || streamingRunId === runId) {
-    streamingEl = null;
-    streamingRunId = null;
-  }
-}
-
 function sessionDisplayTitle(session = {}) {
   const raw = String(session?.label || session?.key || 'session').trim();
   if (raw === gatewayMainSessionKey) {return 'main';}
@@ -4207,7 +4186,6 @@ function connect() {
       } catch (error) {
         addDebugLine(`ws error setRouting failed: ${error?.message || error}`, 'pink');
       }
-      streamingEl = null;
       syncStopButton();
       syncContinueButton();
       return;
@@ -4333,8 +4311,6 @@ stopBtnEl?.addEventListener('click', () => {
   if (abortedRunIds.size > 200) {abortedRunIds.clear();}
   updateChatRunStatus(runState.runId, 'aborted');
   const stoppedRunId = runState.runId;
-  streamingEl = null;
-  streamingRunId = null;
   runState.runId = null;
   runState.streamText = '';
   runState.state = 'aborted';
