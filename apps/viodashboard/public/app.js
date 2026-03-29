@@ -3279,8 +3279,11 @@ function applyKernelRunViewPacket(msg = {}) {
     if (isSelectedSession && isDelta) {
       const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
       if (!patched) {
-        renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+        ensureStreamingMessageEl(runId, runState.streamText || '');
       }
+    }
+    if (event?.type === 'run.final') {
+      scheduleSessionRefresh(sessionKey, 'run-final', 0);
     }
     return;
   }
@@ -3289,9 +3292,12 @@ function applyKernelRunViewPacket(msg = {}) {
     if (isDelta) {
       const patched = patchStreamingMessageInPlace(sessionKey, runId, runState.streamText);
       if (!patched) {
-        renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
+        ensureStreamingMessageEl(runId, runState.streamText || '');
       }
       return;
+    }
+    if (event?.type === 'run.final') {
+      scheduleSessionRefresh(sessionKey, 'run-final', 0);
     }
     renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
   }
