@@ -263,15 +263,32 @@ async function bootstrap() {
   refs?.simulateStreamBtnEl?.addEventListener('click', () => {
     const sessionKey = flow.getActiveSessionKey();
     if (!sessionKey) {return;}
+    window.__VIO_STREAM_TRACE__ = ['click'];
     shell.handleAck(sessionKey);
-    setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response...'), 80);
-    setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response... still arriving'), 180);
+    window.__VIO_STREAM_TRACE__.push('ack');
+    setTimeout(() => {
+      shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response...');
+      window.__VIO_STREAM_TRACE__.push('delta-1');
+    }, 80);
+    setTimeout(() => {
+      shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response... still arriving');
+      window.__VIO_STREAM_TRACE__.push('delta-2');
+    }, 180);
     setTimeout(() => {
       shell.handleFinal(sessionKey);
+      window.__VIO_STREAM_TRACE__.push('final');
       api.appendAssistantMessage?.(sessionKey, 'Vio Phase 1 streaming response... still arriving');
+      window.__VIO_STREAM_TRACE__.push('append-history');
       window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
     }, 280);
-    setTimeout(() => flow.refreshSession(sessionKey, 'stream-simulated').catch(() => {}), 420);
+    setTimeout(() => {
+      window.__VIO_STREAM_TRACE__.push('refresh-start');
+      flow.refreshSession(sessionKey, 'stream-simulated').then(() => {
+        window.__VIO_STREAM_TRACE__.push('refresh-done');
+      }).catch(() => {
+        window.__VIO_STREAM_TRACE__.push('refresh-failed');
+      });
+    }, 420);
   });
 
   refs?.sendFailBtnEl?.addEventListener('click', () => {
