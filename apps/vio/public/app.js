@@ -21,6 +21,7 @@ function createPageShell(root) {
             <div id="session-status">No session selected.</div>
             <div class="vio-actions">
               <button id="refresh-session-btn" type="button">Refresh session</button>
+              <button id="send-test-btn" type="button">Send test ping</button>
             </div>
             <pre id="session-preview">[]</pre>
           </section>
@@ -33,6 +34,7 @@ function createPageShell(root) {
     sessionStatusEl: document.getElementById('session-status'),
     sessionPreviewEl: document.getElementById('session-preview'),
     refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
+    sendTestBtnEl: document.getElementById('send-test-btn'),
   };
 }
 
@@ -116,11 +118,14 @@ async function bootstrap() {
   flow = createMessageFlow({
     api,
     shell,
-    renderChrome(sessionKey, { loading = false } = {}) {
+    renderChrome(sessionKey, { loading = false, messages = null } = {}) {
       if (!refs?.sessionStatusEl) {return;}
-      refs.sessionStatusEl.textContent = loading
-        ? `Loading session: ${sessionKey}`
-        : `Selected session: ${sessionKey}`;
+      if (loading) {
+        refs.sessionStatusEl.textContent = `Loading session: ${sessionKey}`;
+        return;
+      }
+      const count = Array.isArray(messages) ? messages.length : flow?.getSessionMessages(sessionKey).length;
+      refs.sessionStatusEl.textContent = `Selected session: ${sessionKey} · ${count} messages`;
     },
     renderSessionList(payload) {
       renderSessionListView(flow, refs, payload);
@@ -148,6 +153,20 @@ async function bootstrap() {
     flow.refreshSession(sessionKey, 'manual-refresh').catch(error => {
       if (refs.sessionStatusEl) {
         refs.sessionStatusEl.textContent = `Refresh failed: ${error?.message || error}`;
+      }
+    });
+  });
+
+  refs?.sendTestBtnEl?.addEventListener('click', () => {
+    const sessionKey = flow.getActiveSessionKey();
+    if (!sessionKey) {return;}
+    flow.sendMessage(sessionKey, 'Vio Phase 1 test ping').then(() => {
+      if (refs.sessionStatusEl) {
+        refs.sessionStatusEl.textContent = `Sent test ping to ${String(sessionKey)}; refresh scheduled.`;
+      }
+    }).catch(error => {
+      if (refs.sessionStatusEl) {
+        refs.sessionStatusEl.textContent = `Send failed: ${error?.message || error}`;
       }
     });
   });

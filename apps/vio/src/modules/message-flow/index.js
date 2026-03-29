@@ -89,7 +89,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     }
     setSessionLoading(sessionKey, false);
     shell?.mountSession?.(sessionKey, messages);
-    renderChrome?.(sessionKey, { loading: false });
+    renderChrome?.(sessionKey, { loading: false, messages });
     return messages;
   }
 
@@ -98,7 +98,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     const messages = await fetchSessionHistory(sessionKey, { ...options, force: true, reason });
     if (state.activeSessionKey === sessionKey) {
       shell?.reconcileHistory?.(sessionKey, messages);
-      renderChrome?.(sessionKey, { loading: false });
+      renderChrome?.(sessionKey, { loading: false, messages });
     }
     return messages;
   }
@@ -123,7 +123,9 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
 
   async function sendMessage(sessionKey, text, options = {}) {
     if (!sessionKey || !api?.sendMessage) {return null;}
-    return api.sendMessage(sessionKey, text, options);
+    const payload = await api.sendMessage(sessionKey, text, options);
+    scheduleSessionRefresh(sessionKey, 'send', 160, { force: true });
+    return payload;
   }
 
   function getActiveSessionKey() {
@@ -138,6 +140,10 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     return state.sessionLoadingState.has(sessionKey);
   }
 
+  function getSessionMessages(sessionKey = null) {
+    return state.sessionMessages.get(sessionKey || state.activeSessionKey) || [];
+  }
+
   return {
     fetchSessionList,
     fetchSessionHistory,
@@ -148,6 +154,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     getActiveSessionKey,
     getSessions,
     getSessionMeta,
+    getSessionMessages,
     isSessionLoading,
   };
 }
