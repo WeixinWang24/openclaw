@@ -3430,24 +3430,12 @@ function handleMessageFlowKernelRun(msg = {}) {
   }
 
   if (isDelta) {
-    if (isSelectedSession) {
-      newChatShell.handleDelta(sessionKey, runId, runState.streamText || '');
-      return;
-    }
-    patchLiveAssistantRow({
-      sessionKey,
-      runId,
-      text: runState.streamText || '',
-    });
+    newChatShell.handleDelta(sessionKey, runId, runState.streamText || '');
     return;
   }
 
   if (isFinal) {
-    if (isSelectedSession) {
-      newChatShell.handleFinal(sessionKey, runId || null);
-    } else {
-      markLiveTranscriptFinalizing(sessionKey, runId || null);
-    }
+    newChatShell.handleFinal(sessionKey, runId || null);
     scheduleSessionRefresh(sessionKey, 'run-final', 0, { cacheOnly: true });
     return;
   }
