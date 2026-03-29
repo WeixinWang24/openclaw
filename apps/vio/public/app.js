@@ -84,7 +84,14 @@ function createMockApiClient() {
       { id: 'm3', role: 'assistant', text: 'Alternate mock session.' },
     ]],
   ]);
+  function appendAssistantMessage(sessionKey, text) {
+    const history = mockHistory.get(sessionKey) || [];
+    history.push({ id: `a-${Date.now()}`, role: 'assistant', text: String(text || '') });
+    mockHistory.set(sessionKey, history);
+  }
+
   return {
+    appendAssistantMessage,
     async fetchSessionList() {
       return {
         currentSessionKey: 'vio:mock:main',
@@ -122,7 +129,14 @@ function createApiClient() {
     }
   }
 
+  function appendAssistantMessage(sessionKey, text) {
+    const history = mockHistory.get(sessionKey) || [];
+    history.push({ id: `a-${Date.now()}`, role: 'assistant', text: String(text || '') });
+    mockHistory.set(sessionKey, history);
+  }
+
   return {
+    appendAssistantMessage,
     async fetchSessionList() {
       return withFallback(
         () => readJsonOrThrow('/api/sessions', { cache: 'no-store' }, 'sessions fetch failed'),
@@ -254,6 +268,7 @@ async function bootstrap() {
     setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response... still arriving'), 180);
     setTimeout(() => {
       shell.handleFinal(sessionKey);
+      api.appendAssistantMessage?.(sessionKey, 'Vio Phase 1 streaming response... still arriving');
       window.__VIO_STREAM_DEBUG__ = shell.getDebugState?.() || null;
     }, 280);
     setTimeout(() => flow.refreshSession(sessionKey, 'stream-simulated').catch(() => {}), 420);
