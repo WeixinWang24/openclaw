@@ -120,3 +120,60 @@ button { cursor: pointer; }
   background: rgba(255, 255, 255, 0.02);
   white-space: pre-wrap;
 }
+
+.message-shell-mount {
+  min-height: 420px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.msg-row {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #1d1d33;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.bubble-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.msg-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.msg {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  white-space: pre-wrap;
+}
+
+.msg.user {
+  background: rgba(139, 92, 246, 0.14);
+}
+
+.msg-row.user .avatar {
+  color: #c4b5fd;
+}
+
+.msg-row.assistant .avatar {
+  color: #93c5fd;
+}

@@ -1,4 +1,5 @@
 import { createMessageFlow } from './modules/message-flow/index.js';
+import { createMessageShell } from './modules/message-shell/index.js';
 
 const rootEl = document.getElementById('app');
 
@@ -32,7 +33,7 @@ function createPageShell(root) {
           </section>
           <section class="vio-panel">
             <h3>Flow preview</h3>
-            <pre id="session-preview">[]</pre>
+            <div id="session-preview"></div>
           </section>
         </section>
       </section>
@@ -47,20 +48,14 @@ function createPageShell(root) {
   };
 }
 
-function createShellStub(refs) {
-  return {
-    mountSession(sessionKey, messages = []) {
-      if (refs?.sessionStatusEl) {
-        refs.sessionStatusEl.textContent = `Selected session: ${sessionKey}`;
-      }
-      if (refs?.sessionPreviewEl) {
-        refs.sessionPreviewEl.textContent = JSON.stringify(messages, null, 2);
-      }
-    },
-    reconcileHistory(sessionKey, messages = []) {
-      this.mountSession(sessionKey, messages);
-    },
-  };
+function createShellHost(refs) {
+  if (!refs?.sessionPreviewEl) {return null;}
+  refs.sessionPreviewEl.innerHTML = '';
+  const mountEl = document.createElement('div');
+  mountEl.className = 'message-shell-mount';
+  refs.sessionPreviewEl.replaceWith(mountEl);
+  refs.sessionPreviewEl = mountEl;
+  return mountEl;
 }
 
 async function readJsonOrThrow(url, init = undefined, fallbackError = 'request failed') {
@@ -180,7 +175,8 @@ function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = n
 
 async function bootstrap() {
   const refs = createPageShell(rootEl);
-  const shell = createShellStub(refs);
+  const shellMountEl = createShellHost(refs);
+  const shell = createMessageShell({ mountEl: shellMountEl });
   const api = createApiClient();
   let flow;
   flow = createMessageFlow({
