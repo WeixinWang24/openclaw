@@ -3186,6 +3186,39 @@ function pruneSupersededStreamingMessages(messages = []) {
   });
 }
 
+function mergeOptimisticHistoryContinuity(sessionKey, messages = []) {
+  const merged = Array.isArray(messages) ? [...messages] : [];
+  const runState = getSessionRunState(sessionKey);
+  if (!runState?.runId) {
+    return pruneSupersededStreamingMessages(merged);
+  }
+
+  const existing = sessionMessages.get(sessionKey) || [];
+  const optimisticUsers = existing.filter(item => String(item?.id || '').startsWith('optimistic-'));
+  if (optimisticUsers.length) {
+    const seenOptimisticText = new Set(merged.filter(item => item?.role === 'user').map(item => String(item?.text || '')));
+    for (const optimistic of optimisticUsers) {
+      const optimisticText = String(optimistic?.text || '');
+      if (optimisticText && !seenOptimisticText.has(optimisticText)) {
+        merged.push(optimistic);
+        seenOptimisticText.add(optimisticText);
+      }
+    }
+  }
+
+  const existingAssistantForRun = existing.find(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
+  const historyHasAssistantForRun = merged.some(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
+  const shouldCarryForwardAssistant =
+    existingAssistantForRun &&
+    !historyHasAssistantForRun &&
+    (runState.state === 'streaming' || existingAssistantForRun?.status === 'streaming');
+  if (shouldCarryForwardAssistant) {
+    merged.push(existingAssistantForRun);
+  }
+
+  return pruneSupersededStreamingMessages(merged);
+}
+
 function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
   if (!sessionKey || !view) {return;}
   const runState = getSessionRunState(sessionKey);
@@ -3554,31 +3587,7 @@ async function loadSessionHistory(sessionKey, { force = false, selectionSeq = nu
   }
   sessionHistoryInflight.delete(sessionKey);
   setSessionLoading(sessionKey, false);
-  const runState = getSessionRunState(sessionKey);
-  if (runState?.runId) {
-    const existing = sessionMessages.get(sessionKey) || [];
-    const existingAssistantForRun = existing.find(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
-    const historyHasAssistantForRun = messages.some(item => item?.role === 'assistant' && (item?.runId === runState.runId || item?.id === runState.runId));
-    const optimisticUsers = existing.filter(item => String(item?.id || '').startsWith('optimistic-'));
-    if (optimisticUsers.length) {
-      const seenOptimisticText = new Set(messages.filter(item => item?.role === 'user').map(item => String(item?.text || '')));
-      for (const optimistic of optimisticUsers) {
-        const optimisticText = String(optimistic?.text || '');
-        if (optimisticText && !seenOptimisticText.has(optimisticText)) {
-          messages.push(optimistic);
-          seenOptimisticText.add(optimisticText);
-        }
-      }
-    }
-    const shouldCarryForwardAssistant =
-      existingAssistantForRun &&
-      !historyHasAssistantForRun &&
-      (runState.state === 'streaming' || existingAssistantForRun?.status === 'streaming');
-    if (shouldCarryForwardAssistant) {
-      messages.push(existingAssistantForRun);
-    }
-  }
-  messages = pruneSupersededStreamingMessages(messages);
+  messages = mergeOptimisticHistoryContinuity(sessionKey, messages);
   sessionMessages.set(sessionKey, messages);
   reconcileRunStateFromMessages(sessionKey, messages, 'session-history');
   const uiState = deriveSessionUiState(sessionKey);
