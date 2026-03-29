@@ -3756,29 +3756,6 @@ function clearStreamingMessageEl(runId = null) {
   }
 }
 
-function getStreamingMessageEl(runId = null) {
-  if (streamingEl && streamingEl.isConnected && (!runId || streamingRunId === runId)) {return streamingEl;}
-  if (!runId) {return null;}
-  const row = chatEl?.querySelector(`.msg-row.assistant[data-message-role="stream"][data-run-id="${CSS.escape(String(runId))}"]`);
-  const msgEl = row?.querySelector('.msg.assistant.stream') || row?.querySelector('.msg.assistant');
-  if (msgEl) {
-    streamingEl = msgEl;
-    streamingRunId = runId;
-    return msgEl;
-  }
-  return null;
-}
-
-function ensureStreamingMessageEl(runId = null, text = '') {
-  const existing = getStreamingMessageEl(runId);
-  if (existing) {return existing;}
-  clearStreamingMessageEl(runId || null);
-  const el = addMessage('assistant', text, 'stream', { runId, messageRole: 'stream' });
-  streamingEl = el;
-  streamingRunId = runId || null;
-  return el;
-}
-
 function sessionDisplayTitle(session = {}) {
   const raw = String(session?.label || session?.key || 'session').trim();
   if (raw === gatewayMainSessionKey) {return 'main';}
