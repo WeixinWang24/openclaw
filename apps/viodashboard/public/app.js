@@ -3082,7 +3082,9 @@ function applyPostSendUiState(sessionKey, {
   }
 
   addDebugLine(`${debugLabel}: ${sessionKey} run=${String(runState.runId || '').slice(0, 8) || '-'} `, 'cyan');
-  scheduleSessionRefresh(sessionKey, 'send-history-reconcile', refreshDelay);
+  if (refreshDelay > 0) {
+    scheduleSessionRefresh(sessionKey, 'send-history-reconcile', refreshDelay);
+  }
   syncStopButton();
   syncContinueButton();
 }
@@ -3120,7 +3122,21 @@ function roleForChatBubble(message = {}) {
 }
 
 function shouldDisplayChatMessage(message = {}) {
-  return normalizeDashboardMessageRole(message) !== 'tool';
+  const role = normalizeDashboardMessageRole(message);
+  if (role === 'tool') {return false;}
+  const text = String(message?.text || '').trim();
+  if (!text) {return false;}
+  if (role === 'assistant') {
+    const lower = text.toLowerCase();
+    if (
+      lower.startsWith('wait for it to come back, then test.') ||
+      lower.startsWith('now validate by sending a test message through ui') ||
+      lower.startsWith('reload completed, the current batch of rewrite has entered live')
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function appendSessionMessage(sessionKey, message) {
