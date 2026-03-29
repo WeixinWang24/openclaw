@@ -3272,7 +3272,11 @@ function applyProjectionViewToSession(sessionKey, view = null, options = {}) {
     runState.streamText = '';
   }
 
-  if (selectedSessionKey === sessionKey && options.render !== false) {
+  const shouldRender =
+    selectedSessionKey === sessionKey &&
+    options.render !== false &&
+    !(runState.state === 'streaming' && hasStreamingRowMounted(sessionKey, runState.runId || null));
+  if (shouldRender) {
     renderSessionMessages(sessionKey, sessionMessages.get(sessionKey) || []);
   }
 }
@@ -3397,6 +3401,8 @@ function renderSessionMessages(sessionKey, messages = []) {
   const lastMessage = sourceMessages.length ? sourceMessages[sourceMessages.length - 1] : null;
   const lastPreview = String(lastMessage?.text || '').replace(/\s+/g, ' ').slice(0, 120);
   addDebugLine(`renderSessionMessages active=${selectedSessionKey || 'none'} target=${sessionKey || 'none'} len=${sourceMessages.length} visible=${visibleMessages.length} state=${uiState.state} last=${lastPreview || '<empty>'}`, 'cyan');
+  const preservedStreamingText = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.streamText || '') : '';
+  const preservedStreamingRunId = uiState.state === 'streaming' ? (getSessionRunState(sessionKey)?.runId || null) : null;
   clearChat();
   for (const message of visibleMessages) {
     if (!shouldDisplayChatMessage(message)) {continue;}
@@ -3408,7 +3414,11 @@ function renderSessionMessages(sessionKey, messages = []) {
       status: message?.status || null,
     });
   }
-  clearStreamingMessageEl();
+  if (uiState.state !== 'streaming') {
+    clearStreamingMessageEl();
+  } else if (preservedStreamingRunId && preservedStreamingText) {
+    ensureStreamingMessageEl(preservedStreamingRunId, preservedStreamingText);
+  }
   if (activeFilePathEl) {
     activeFilePathEl.innerHTML = `<span class="semantic-label">session</span> <span class="semantic-value">${sessionKey || 'unknown'}</span>`;
   }
