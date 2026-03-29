@@ -88,6 +88,7 @@ function createMockApiClient() {
     const history = mockHistory.get(sessionKey) || [];
     history.push({ id: `a-${Date.now()}`, role: 'assistant', text: String(text || '') });
     mockHistory.set(sessionKey, history);
+    return history;
   }
 
   return {
@@ -133,6 +134,7 @@ function createApiClient() {
     const history = mockHistory.get(sessionKey) || [];
     history.push({ id: `a-${Date.now()}`, role: 'assistant', text: String(text || '') });
     mockHistory.set(sessionKey, history);
+    return history;
   }
 
   return {
