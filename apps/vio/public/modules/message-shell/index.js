@@ -34,6 +34,7 @@ export function createMessageShell({ mountEl } = {}) {
   let mountedSessionKey = null;
   let pendingMessages = [];
   let lastCanonicalMessages = [];
+  let activeAssistantStream = null;
 
   function ensureMount() {
     return mountEl || null;
@@ -43,6 +44,7 @@ export function createMessageShell({ mountEl } = {}) {
     mountedSessionKey = sessionKey || null;
     pendingMessages = [];
     lastCanonicalMessages = [];
+    activeAssistantStream = null;
     const target = ensureMount();
     if (target) {target.innerHTML = '';}
   }
@@ -67,6 +69,7 @@ export function createMessageShell({ mountEl } = {}) {
     const sourceMessages = Array.isArray(messages) ? messages : [];
     lastCanonicalMessages = sourceMessages;
     absorbPendingMessages(sessionKey, sourceMessages);
+    activeAssistantStream = null;
     for (const message of sourceMessages) {
       const role = message?.role === 'user' ? 'user' : 'assistant';
       target.appendChild(createMessageRow(role, message?.text || '', { status: message?.status || null }));
@@ -107,6 +110,7 @@ export function createMessageShell({ mountEl } = {}) {
     if (!target) {return;}
     const sourceMessages = Array.isArray(lastCanonicalMessages) ? lastCanonicalMessages : [];
     target.innerHTML = '';
+    activeAssistantStream = null;
     for (const message of sourceMessages) {
       const role = message?.role === 'user' ? 'user' : 'assistant';
       target.appendChild(createMessageRow(role, message?.text || '', { status: message?.status || null }));
@@ -116,6 +120,46 @@ export function createMessageShell({ mountEl } = {}) {
         target.appendChild(createMessageRow('user', pending.text || '', { status: pending.state || 'pending' }));
       }
     }
+  }
+
+
+  function getOrCreateActiveStreamRow() {
+    const target = ensureMount();
+    if (!target) {return null;}
+    if (activeAssistantStream?.row?.isConnected) {
+      return activeAssistantStream;
+    }
+    const row = createMessageRow('assistant', '', { status: 'streaming' });
+    row.dataset.stream = 'true';
+    target.appendChild(row);
+    const msg = row.querySelector('.msg.assistant');
+    const meta = row.querySelector('.msg-meta.assistant');
+    activeAssistantStream = { row, msg, meta, text: '' };
+    return activeAssistantStream;
+  }
+
+  function handleAck(sessionKey) {
+    if (mountedSessionKey !== sessionKey) {return false;}
+    const stream = getOrCreateActiveStreamRow();
+    if (stream?.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`; }
+    return !!stream;
+  }
+
+  function handleDelta(sessionKey, text = '') {
+    if (mountedSessionKey !== sessionKey) {return false;}
+    const stream = getOrCreateActiveStreamRow();
+    if (!stream?.msg) {return false;}
+    stream.text = String(text || '');
+    stream.msg.textContent = stream.text;
+    if (stream.meta) {stream.meta.textContent = `Vio · ${formatStamp()} · streaming`; }
+    return true;
+  }
+
+  function handleFinal(sessionKey) {
+    if (mountedSessionKey !== sessionKey || !activeAssistantStream?.row?.isConnected) {return false;}
+    if (activeAssistantStream.meta) {activeAssistantStream.meta.textContent = `Vio · ${formatStamp()} · finalizing`; }
+    activeAssistantStream.row.dataset.status = 'finalizing';
+    return true;
   }
 
   function getMountedSessionKey() {
@@ -128,6 +172,9 @@ export function createMessageShell({ mountEl } = {}) {
     reset,
     send,
     markPendingFailed,
+    handleAck,
+    handleDelta,
+    handleFinal,
     getMountedSessionKey,
   };
 }

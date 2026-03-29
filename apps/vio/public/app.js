@@ -30,6 +30,7 @@ function createPageShell(root) {
               <button id="refresh-session-btn" type="button">Refresh session</button>
               <button id="send-test-btn" type="button">Send test ping</button>
               <button id="send-fail-btn" type="button">Send failing ping</button>
+              <button id="simulate-stream-btn" type="button">Simulate stream</button>
             </div>
           </section>
           <section class="vio-panel">
@@ -47,6 +48,7 @@ function createPageShell(root) {
     refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
     sendTestBtnEl: document.getElementById('send-test-btn'),
     sendFailBtnEl: document.getElementById('send-fail-btn'),
+    simulateStreamBtnEl: document.getElementById('simulate-stream-btn'),
   };
 }
 
@@ -242,6 +244,16 @@ async function bootstrap() {
         refs.sessionStatusEl.textContent = `Send failed: ${error?.message || error}`;
       }
     });
+  });
+
+  refs?.simulateStreamBtnEl?.addEventListener('click', () => {
+    const sessionKey = flow.getActiveSessionKey();
+    if (!sessionKey) {return;}
+    shell.handleAck(sessionKey);
+    setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response...'), 80);
+    setTimeout(() => shell.handleDelta(sessionKey, 'Vio Phase 1 streaming response... still arriving'), 180);
+    setTimeout(() => shell.handleFinal(sessionKey), 280);
+    setTimeout(() => flow.refreshSession(sessionKey, 'stream-simulated').catch(() => {}), 420);
   });
 
   refs?.sendFailBtnEl?.addEventListener('click', () => {
