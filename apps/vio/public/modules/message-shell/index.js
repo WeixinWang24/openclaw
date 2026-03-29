@@ -33,6 +33,7 @@ function createMessageRow(role, text, { status = null } = {}) {
 export function createMessageShell({ mountEl } = {}) {
   let mountedSessionKey = null;
   let pendingMessages = [];
+  let lastCanonicalMessages = [];
 
   function ensureMount() {
     return mountEl || null;
@@ -41,6 +42,7 @@ export function createMessageShell({ mountEl } = {}) {
   function reset(sessionKey = null) {
     mountedSessionKey = sessionKey || null;
     pendingMessages = [];
+    lastCanonicalMessages = [];
     const target = ensureMount();
     if (target) {target.innerHTML = '';}
   }
@@ -63,6 +65,7 @@ export function createMessageShell({ mountEl } = {}) {
     mountedSessionKey = sessionKey || null;
     target.innerHTML = '';
     const sourceMessages = Array.isArray(messages) ? messages : [];
+    lastCanonicalMessages = sourceMessages;
     absorbPendingMessages(sessionKey, sourceMessages);
     for (const message of sourceMessages) {
       const role = message?.role === 'user' ? 'user' : 'assistant';
@@ -100,7 +103,7 @@ export function createMessageShell({ mountEl } = {}) {
   function markPendingFailed(sessionKey, localId) {
     pendingMessages = pendingMessages.map(item => item.localId === localId && item.sessionKey === sessionKey ? { ...item, state: 'failed' } : item);
     if (mountedSessionKey === sessionKey) {
-      renderCanonicalHistory(sessionKey, []);
+      renderCanonicalHistory(sessionKey, lastCanonicalMessages);
     }
   }
 
