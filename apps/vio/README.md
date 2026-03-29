@@ -16,7 +16,9 @@ Vio is the rebuilt successor system seeded from the VioDashboard message-runtime
 - routing/telemetry/setup/diagnostics
 
 ## Current local runtime status
-- Front-end Phase 1 modules are extracted under `public/modules/`.
+- Front-end Phase 1 modules currently live under `public/modules/`.
+- `message-flow`, `message-shell`, and `page-shell` are intentionally kept in `public/modules/` as the current runtime truth for the Phase 1 front-end.
+- Future modules and later feature work should default to `src/` unless they are explicitly part of the existing Phase 1 browser runtime chain.
 - A minimal Phase 1 server skeleton now exists under `src/server/`.
 - Local smoke harness: `node apps/vio/src/server/smoke.mjs`
 - Local runner seed: `node apps/vio/src/server/runner.mjs`

@@ -825,11 +825,13 @@ button.chip:disabled {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
 .workspace-view-header {
   gap: 12px;
+  padding-top: 0;
+  margin-top: -2px;
 }
 
 .workspace-view-tabs {
@@ -839,12 +841,36 @@ button.chip:disabled {
   flex: 0 0 auto;
 }
 
+.workspace-view-tabs-inline {
+  min-width: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
 .workspace-view-stack {
   min-height: 0;
   min-width: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+}
+
+.vio-unified-workspace-page {
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
+.vio-unified-workspace-card {
+  min-height: 180px;
+  height: 100%;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 14px;
+  background: rgba(255,255,255,.02);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: -8px;
 }
 
 .workspace-view-pane {
@@ -2901,14 +2927,15 @@ body.animations-off *::after {
   min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
 }
 
 .sessions-list {
   min-height: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   display: flex;
   align-items: center;
   align-content: center;
@@ -2981,6 +3008,54 @@ body.animations-off *::after {
 
 .session-item-meta {
   display: none;
+}
+
+.session-acp-menu {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.session-acp-trigger {
+  gap: 6px;
+}
+
+.session-acp-caret {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.session-acp-dropdown {
+  position: fixed;
+  min-width: 240px;
+  max-width: 320px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,255,198,.14);
+  background: rgba(10,16,32,.98);
+  box-shadow: 0 12px 32px rgba(0,0,0,.35), 0 0 18px rgba(0,255,198,.08);
+  z-index: 2000;
+}
+
+.session-acp-option {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.05);
+  background: rgba(255,255,255,.03);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.session-acp-option[data-selected='true'] {
+  border-color: rgba(0,255,198,.24);
+  background: linear-gradient(180deg, rgba(0,255,198,.06), rgba(122,0,255,.06));
 }
 
 .explorer-pane.file-browser-panel {

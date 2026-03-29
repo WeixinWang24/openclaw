@@ -120,6 +120,14 @@ dist/protocol.schema.json
 apps/viodashboard/data/
 apps/viodashboard/public/avatars/
 
+# Local Finder metadata inside Vio app workspace
+apps/vio/.DS_Store
+apps/vio/public/.DS_Store
+apps/vio/public/modules/.DS_Store
+apps/vio/src/.DS_Store
+apps/vio/src/modules/.DS_Store
+apps/vio/src/server/.DS_Store
+
 # Eclipse
 **/.project
 **/.classpath

@@ -39,6 +39,12 @@ export function createPageShell(root) {
           <div class="section-header interaction-header">
             <h2 class="section-title">INTERACTION</h2>
             <div class="interaction-header-right">
+              <div class="workspace-view-tabs workspace-view-tabs-inline" role="tablist" aria-label="Unified workspace views">
+                <button type="button" class="console-tab is-active" role="tab" aria-selected="true">Cloud</button>
+                <button type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
+                <button type="button" class="console-tab" role="tab" aria-selected="false">Terminal</button>
+                <button type="button" class="console-tab" role="tab" aria-selected="false">Code</button>
+              </div>
               <div id="sessions-list" class="sessions-list sessions-list-inline"></div>
               <button id="refresh-session-btn" type="button" class="chip state-idle">refresh</button>
             </div>
@@ -46,41 +52,16 @@ export function createPageShell(root) {
 
           <div class="workspace-split" id="workspaceSplit">
             <section class="editor-stack" id="editorStack">
-              <section class="file-editor-pane">
+              <section class="file-editor-pane vio-unified-workspace-page">
                 <div class="pane-header workspace-view-header">
-                  <div class="workspace-view-tabs" role="tablist" aria-label="Workspace views">
-                    <button type="button" class="console-tab is-active" role="tab" aria-selected="true">Code</button>
-                    <button type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
-                  </div>
-                  <div class="pane-actions">
-                    <div class="event-sub"><span class="semantic-value">Old workspace shell restored. Rewiring in progress.</span></div>
-                  </div>
+                  <div class="pane-actions"></div>
                 </div>
                 <div class="workspace-view-stack">
                   <div class="workspace-view-pane is-active">
-                    <div class="vio-placeholder-pane vio-workspace-placeholder">
-                      <div class="vio-placeholder-title">Workspace restored</div>
-                      <div class="vio-placeholder-body">Using the old VioDashboard layout shell so we can reconnect the backend cleanly.</div>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div class="resizer horizontal" data-resize="editor-terminal" title="拖动调整代码区/终端高度"></div>
-
-              <section class="terminal-panel terminal-panel-embedded console-tabs-panel">
-                <div class="console-tabs-header">
-                  <div class="console-tabs">
-                    <button type="button" class="console-tab is-active">Terminal</button>
-                    <button type="button" class="console-tab">Claude</button>
-                  </div>
-                </div>
-                <div class="console-pane-stack">
-                  <div class="console-pane is-active">
-                    <div class="vio-placeholder-pane">
-                      <div class="vio-placeholder-title">Console shell restored</div>
-                      <div class="vio-placeholder-body">Runtime tools will be rewired after chat/session flow is stable again.</div>
-                    </div>
+                    <section class="vio-unified-workspace-card">
+                      <div class="vio-placeholder-title">Cloud</div>
+                      <div class="vio-placeholder-body">Cloud panel is the default active section in the unified workspace page.</div>
+                    </section>
                   </div>
                 </div>
               </section>
@@ -194,7 +175,16 @@ export function renderBootError(root, error) {
 export function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = null, sessionMeta = null, sessionLoadingState = null } = {}) {
   if (!refs?.sessionsListEl) {return;}
   refs.sessionsListEl.innerHTML = '';
+
+  const primarySessions = [];
+  const acpSessions = [];
   for (const session of sessions) {
+    const rawKey = String(session?.key || '');
+    if (rawKey.includes(':acp:')) {acpSessions.push(session);}
+    else {primarySessions.push(session);}
+  }
+
+  for (const session of primarySessions) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'session-item';
@@ -205,7 +195,6 @@ export function renderSessionListView(flow, refs, { sessions = [], activeSession
     const label = session.label || session.displayName || session.key || 'session';
     let badge = '';
     if (rawKey === 'agent:main:main' || rawKey.endsWith(':main')) {badge = 'main';}
-    else if (rawKey.includes(':acp:')) {badge = 'acp';}
     else if (rawKey.includes(':subagent:')) {badge = 'sub';}
     const state = loading ? 'loading' : meta?.pending ? 'pending' : meta?.dirty ? 'dirty' : '';
     button.innerHTML = `${badge ? `<span class="session-item-badge">${badge}</span>` : ''}<span class="session-item-title">${label}</span>${state ? `<span class="session-item-state">${state}</span>` : ''}`;
@@ -214,6 +203,76 @@ export function renderSessionListView(flow, refs, { sessions = [], activeSession
       flow.selectSession(session.key).catch(() => {});
     });
     refs.sessionsListEl.appendChild(button);
+  }
+
+  if (acpSessions.length > 0) {
+    const wrap = document.createElement('div');
+    wrap.className = 'session-acp-menu';
+
+    const activeAcpSession = acpSessions.find(session => session.key === activeSessionKey) || null;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'session-item session-acp-trigger';
+    trigger.dataset.selected = activeAcpSession ? 'true' : 'false';
+    trigger.innerHTML = `<span class="session-item-badge">acp</span><span class="session-item-title">▾</span>`;
+    wrap.appendChild(trigger);
+    refs.sessionsListEl.appendChild(wrap);
+
+    let menu = null;
+
+    function closeMenu() {
+      if (menu) {
+        menu.remove();
+        menu = null;
+      }
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function openMenu() {
+      closeMenu();
+      menu = document.createElement('div');
+      menu.className = 'session-acp-dropdown';
+      const rect = trigger.getBoundingClientRect();
+      menu.style.top = `${rect.bottom + 8}px`;
+      menu.style.left = `${Math.max(12, rect.right - 240)}px`;
+
+      for (const session of acpSessions) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'session-acp-option';
+        item.dataset.selected = session.key === activeSessionKey ? 'true' : 'false';
+        const rawLabel = session.label || session.displayName || session.key || 'acp session';
+        item.textContent = rawLabel.length > 40 ? `${rawLabel.slice(0, 37)}…` : rawLabel;
+        item.title = rawLabel;
+        item.addEventListener('click', () => {
+          closeMenu();
+          flow.selectSession(session.key).catch(() => {});
+        });
+        menu.appendChild(item);
+      }
+
+      document.body.appendChild(menu);
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (menu) {closeMenu();}
+      else {openMenu();}
+    });
+
+    document.addEventListener('click', event => {
+      if (!wrap.contains(event.target) && !menu?.contains(event.target)) {
+        closeMenu();
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (menu) {
+        closeMenu();
+      }
+    });
   }
 }
 
