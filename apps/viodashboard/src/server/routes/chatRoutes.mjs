@@ -1,51 +1,38 @@
 import { readJsonRequest, sendJson } from '../httpUtils.mjs';
 
+function buildHistoryViewMeta(view) {
+  const runs = view && typeof view.runs === 'object' && view.runs
+    ? Object.values(view.runs)
+    : [];
+  const activeRun = [...runs].toReversed().find(run => run && (run.status === 'started' || run.status === 'streaming')) || null;
+  return {
+    updatedAt: view?.updatedAt || null,
+    activeRunId: activeRun?.runId || null,
+    activeRunStatus: activeRun?.status || null,
+    runs,
+  };
+}
+
 export function handleChatRoutes({ req, res, requestUrl, chatRuntime, transcriptService, chatProjection }) {
   const historyMatch = requestUrl.pathname.match(/^\/api\/sessions\/([^/]+)\/history$/);
   if (historyMatch && req.method === 'GET') {
     const sessionKey = decodeURIComponent(historyMatch[1]);
     const limit = Number(requestUrl.searchParams.get('limit') || 40) || 40;
     const refresh = String(requestUrl.searchParams.get('refresh') || '').toLowerCase() === 'true';
-    const view = chatProjection.getSessionView(sessionKey);
-    const projectedMessages = Array.isArray(view?.messages)
-      ? view.messages
-        .filter(item => item?.role === 'user' || item?.role === 'assistant' || item?.role === 'system')
-        .map(item => ({
-          id: item.id,
-          role: item.role,
-          text: item.text,
-          createdAt: item.createdAt || null,
-        }))
-        .slice(-limit)
-      : [];
-    const cachedMessages = typeof transcriptService.getCachedHistory === 'function'
-      ? transcriptService.getCachedHistory(sessionKey, limit)
-      : [];
-    const immediateMessages = Array.isArray(cachedMessages) && cachedMessages.length ? cachedMessages : projectedMessages;
-
-    if (!refresh && immediateMessages.length) {
-      sendJson(res, 200, {
-        ok: true,
-        sessionKey,
-        messages: immediateMessages,
-        view,
-        source: cachedMessages.length ? 'cache' : 'projection',
-        deferred: true,
-      });
-      transcriptService.fetchHistory(sessionKey, { limit })
-        .catch(() => {});
-      return true;
-    }
 
     transcriptService.fetchHistory(sessionKey, { limit, force: refresh })
-      .then(messages => sendJson(res, 200, {
-        ok: true,
-        sessionKey,
-        messages,
-        view: chatProjection.getSessionView(sessionKey),
-        source: 'history',
-        deferred: false,
-      }))
+      .then(messages => {
+        const view = chatProjection.getSessionView(sessionKey);
+        sendJson(res, 200, {
+          ok: true,
+          sessionKey,
+          messages,
+          view,
+          viewMeta: buildHistoryViewMeta(view),
+          source: refresh ? 'history-refresh' : 'history',
+          deferred: false,
+        });
+      })
       .catch(error => sendJson(res, 500, { ok: false, error: error?.message || String(error) }));
     return true;
   }
