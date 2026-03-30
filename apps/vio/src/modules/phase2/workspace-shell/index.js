@@ -17,6 +17,14 @@ export function createWorkspaceShellRefs() {
     markdownSplitShellEl: document.getElementById('markdownSplitShell'),
     markdownSplitResizerEl: document.getElementById('markdownSplitResizer'),
     workspaceCodeActionsEl: document.getElementById('workspaceCodeActions'),
+    claudeCodePanelEl: document.getElementById('claudeCodePanel'),
+    claudeCodeStatusEl: document.getElementById('claudeCodeStatus'),
+    claudeCodeOutputEl: document.getElementById('claudeCodeOutput'),
+    claudeCodeInputEl: document.getElementById('claudeCodeInput'),
+    claudeCodeStartBtnEl: document.getElementById('claudeCodeStartBtn'),
+    claudeCodeStopBtnEl: document.getElementById('claudeCodeStopBtn'),
+    claudeCodeRestartBtnEl: document.getElementById('claudeCodeRestartBtn'),
+    claudeCodeSendBtnEl: document.getElementById('claudeCodeSendBtn'),
   };
 }
 
@@ -107,6 +115,21 @@ export function renderWorkspaceShell() {
                     <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
                   </div>
                 </div>
+
+                <section id="claudeCodePanel" class="card section claude-code-panel">
+                  <div class="section-header">
+                    <h3 class="section-title">Claude Code</h3>
+                    <div id="claudeCodeStatus" class="event-sub"><span class="semantic-value">idle</span></div>
+                  </div>
+                  <pre id="claudeCodeOutput" class="claude-code-output"></pre>
+                  <textarea id="claudeCodeInput" class="file-editor claude-code-input" spellcheck="false" placeholder="Send input to Claude Code"></textarea>
+                  <div class="pane-actions">
+                    <button id="claudeCodeStartBtn" type="button" class="chip state-idle">start</button>
+                    <button id="claudeCodeStopBtn" type="button" class="chip state-idle">stop</button>
+                    <button id="claudeCodeRestartBtn" type="button" class="chip state-idle">restart</button>
+                    <button id="claudeCodeSendBtn" type="button" class="chip state-idle">send</button>
+                  </div>
+                </section>
               </section>
             </section>
 

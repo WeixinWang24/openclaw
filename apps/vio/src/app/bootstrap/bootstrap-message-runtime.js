@@ -4,6 +4,7 @@ import { bindComposerFlowActions, createMessageFlow } from '../../modules/phase1
 import { normalizeFlowMessages } from '../../modules/phase1/message-flow/normalize.js';
 import { createMessageShell, renderSessionListView, renderSessionStatus } from '../../modules/phase1/message-shell/index.js';
 import { bindPageComposerActions, createMessageRuntimeRefs, createShellHost } from '../../modules/phase1/page-shell/index.js';
+import { createClaudeCodeController } from '../../modules/phase2/claude-code/index.js';
 
 export function syncContinueButtonState(refs, flow) {
   if (refs?.continueBtnEl) {
@@ -25,6 +26,7 @@ export function bootstrapMessageRuntime(refs) {
   const shell = createMessageShell({ mountEl: shellMountEl, debug, historyWindow: 7 });
   const api = createApiClient();
   let flow;
+  let claudeCode;
   flow = createMessageFlow({
     api,
     shell,
@@ -35,6 +37,11 @@ export function bootstrapMessageRuntime(refs) {
       renderSessionListView(flow, runtimeRefs, payload);
       syncContinueButtonState(runtimeRefs, flow);
       syncHistoryWindowState(runtimeRefs, flow, shell);
+      const activeSessionKey = flow.getActiveSessionKey();
+      if (activeSessionKey && claudeCode) {
+        claudeCode.setSessionKey(activeSessionKey);
+        void claudeCode.refreshState(activeSessionKey);
+      }
     },
     onSessionSelected() {
       renderSessionListView(flow, runtimeRefs, {
@@ -43,10 +50,20 @@ export function bootstrapMessageRuntime(refs) {
       });
       syncContinueButtonState(runtimeRefs, flow);
       syncHistoryWindowState(runtimeRefs, flow, shell);
+      const activeSessionKey = flow.getActiveSessionKey();
+      if (activeSessionKey && claudeCode) {
+        claudeCode.setSessionKey(activeSessionKey);
+        void claudeCode.refreshState(activeSessionKey);
+      }
     },
     normalizeMessages: normalizeFlowMessages,
     debug,
   });
+
+  claudeCode = createClaudeCodeController(runtimeRefs, {
+    getActiveSessionKey: () => flow.getActiveSessionKey(),
+  });
+  claudeCode.bind();
 
   const shellActions = bindPageComposerActions({ refs: runtimeRefs });
   bindComposerFlowActions({
@@ -71,6 +88,7 @@ export function bootstrapMessageRuntime(refs) {
       flow,
       shell,
       debug,
+      claudeCode,
     };
   }
 

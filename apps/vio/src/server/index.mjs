@@ -3,11 +3,18 @@ import { execFile } from 'node:child_process';
 import { createLiveGatewayEventBridge } from './gateway/liveGatewayEventBridge.mjs';
 import { createChatProjection } from './projection/chatProjection.mjs';
 import { handleChatRoutes } from './routes/chatRoutes.mjs';
+import { handleClaudeCodeRoutes } from './routes/claudeCodeRoutes.mjs';
 import { handleDebugRoutes } from './routes/debugRoutes.mjs';
 import { handleFileRoutes } from './routes/fileRoutes.mjs';
 import { handleSessionRoutes } from './routes/sessionRoutes.mjs';
 import { listProjectFiles, readProjectFile, safeProjectPath, writeProjectFile } from './filesystem.mjs';
 import { createChatRuntime } from './runtime/chatRuntime.mjs';
+import {
+  getClaudeCodeState,
+  sendClaudeCodeInput,
+  startClaudeCodeSession,
+  stopClaudeCodeSession,
+} from './runtime/claudeCodeRuntime.mjs';
 import { createGatewayRpcClient } from './runtime/gatewayRpcClient.mjs';
 import { createKernelEventBus, KERNEL_CHANNELS } from './runtime/kernelEventBus.mjs';
 import { createMessageDebugSink } from './runtime/messageDebugSink.mjs';
@@ -80,6 +87,15 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
 
     if (handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRegistry, defaultSessionKey, eventBridge })) {return;}
     if (handleChatRoutes({ req, res, requestUrl, chatRuntime, transcriptService, chatProjection })) {return;}
+    if (handleClaudeCodeRoutes({
+      req,
+      res,
+      requestUrl,
+      getClaudeCodeState,
+      startClaudeCodeSession,
+      sendClaudeCodeInput,
+      stopClaudeCodeSession,
+    })) {return;}
     if (handleDebugRoutes({ req, res, requestUrl, messageDebugSink })) {return;}
     if (handleFileRoutes({
       req,
