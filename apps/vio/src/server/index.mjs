@@ -25,6 +25,7 @@ import { createRuntimeDiagnostics } from './runtime/runtimeDiagnostics.mjs';
 import { createSessionRegistry } from './runtime/sessionRegistry.mjs';
 import { createTranscriptService } from './runtime/transcriptService.mjs';
 import { servePublicFile } from './static.mjs';
+import { createBodySidecarBridge } from '../modules/phase2/body-sidecar-bridge/index.js';
 
 export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSessionKey = null, stateRef = { connected: false }, root = new URL('../..', import.meta.url).pathname } = {}) {
   const diagnostics = createRuntimeDiagnostics();
@@ -51,6 +52,7 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
     defaultSessionKeyResolver: () => defaultSessionKey,
   });
   const chatProjection = createChatProjection({ eventBus });
+  const bodySidecarBridge = createBodySidecarBridge({ eventBus, logger: console });
   const eventBridge = createLiveGatewayEventBridge({
     onEvent: evt => {
       rpcClient.emitRawEvent(evt);
@@ -63,6 +65,12 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
 
   const server = http.createServer((req, res) => {
     const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+
+    if (requestUrl.pathname === '/api/body-sidecar-bridge' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, bridge: bodySidecarBridge.getDebugState() }));
+      return;
+    }
 
     if (requestUrl.pathname === '/api/events') {
       res.writeHead(200, {
@@ -152,6 +160,11 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
     chatRuntime,
     chatProjection,
     listen(port = 8792, host = '127.0.0.1', callback = null) {
+      try {
+        bodySidecarBridge.start();
+      } catch (error) {
+        diagnostics.recordError(error);
+      }
       eventBridge.start();
       if (defaultSessionKey) {
         eventBridge.subscribeSession(defaultSessionKey).catch(error => diagnostics.recordError(error));
@@ -159,6 +172,7 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
       return server.listen(port, host, callback);
     },
     close(callback = null) {
+      bodySidecarBridge.stop();
       eventBridge.stop();
       return server.close(callback);
     },
