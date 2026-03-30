@@ -365,7 +365,12 @@ export function startClaudeCodeSession({ sessionKey = CLAUDE_SESSION_ID, cwdRel 
   const existing = rehydrateSession(cwdRel) || sessions.get(key);
   if (existing) {
     enrichSessionState(existing);
-    if (existing.running || existing.output || existing.childPid) {
+    const shouldReuseExisting = !!(
+      existing.running
+      || (existing.childPid && isPidAlive(existing.childPid))
+      || (existing.bridgePid && isPidAlive(existing.bridgePid))
+    );
+    if (shouldReuseExisting) {
       sessions.set(key, existing);
       return buildResponse(existing, key, cwdRel);
     }
