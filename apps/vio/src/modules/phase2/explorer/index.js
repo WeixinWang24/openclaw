@@ -1,11 +1,11 @@
-export function createExplorerModuleSeed() {
+export function createExplorerModuleSpec() {
   return {
     id: 'explorer',
-    status: 'seed',
+    status: 'active',
     owns: [
-      'left-side Explorer shell',
+      'workspace explorer surface',
       'tree/data loading boundary',
-      'explorer-to-workspace selection bridge',
+      'explorer-to-codeview selection bridge',
     ],
   };
 }

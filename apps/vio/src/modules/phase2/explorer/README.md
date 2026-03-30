@@ -1,11 +1,11 @@
 # explorer
 
-Phase 2 home for the Vio Explorer migration.
+Explorer module for the Vio workspace surface.
 
 ## Intended scope
-- left-side Explorer shell
+- workspace explorer surface
 - tree/data loading boundary
-- explorer-to-workspace selection bridge
+- explorer-to-codeview selection bridge
 
 ## Note
 Explorer owns workspace navigation and selection intent, not file-content or editor-state behavior.

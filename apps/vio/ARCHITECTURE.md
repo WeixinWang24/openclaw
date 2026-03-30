@@ -15,14 +15,15 @@ The current Vio front-end should be read as three interacting layers:
 
 This remains the most important architectural core inherited from the original narrow Phase 1.
 
-### 2. Workspace shell / migrated old-layout surfaces
-- broader page shell
-- explorer shell
-- code-reader / file-editing surface
+### 2. Workspace surface composition
+- page-level layout composition
+- workspace shell
+- explorer surface
+- codeview / file-editing surface
 - layout-resize behavior
-- other workspace-support surfaces that are now being migrated from the old VioDashboard layout
+- other workspace-support surfaces carried forward from the old VioDashboard layout
 
-These surfaces are no longer well-described as merely excluded or accidental residue. They are now part of the broader front-end migration stage.
+These surfaces are no longer well-described as merely excluded or accidental residue. They are now part of the active workspace-facing front-end composition.
 
 ### 3. App composition / bootstrap layer
 - app startup ordering
@@ -106,4 +107,4 @@ The main question is no longer:
 - can Vio prove the narrow message-runtime seed?
 
 The main question is now:
-- can Vio continue broader migration without letting front-end source-of-truth and composition boundaries become muddy again?
+- can Vio continue broader workspace-surface consolidation without letting front-end source-of-truth and composition boundaries become muddy again?

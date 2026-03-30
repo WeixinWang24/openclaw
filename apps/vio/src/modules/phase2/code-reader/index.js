@@ -1,10 +1,10 @@
-export function createCodeReaderModuleSeed() {
+export function createCodeReaderModuleSpec() {
   return {
     id: 'code-reader',
-    status: 'seed',
+    status: 'active',
     owns: [
       'current-file content loading',
-      'current-file display boundary',
+      'codeview display boundary',
       'editor-state and dirty-state semantics',
       'save and undo behavior for the current file',
     ],

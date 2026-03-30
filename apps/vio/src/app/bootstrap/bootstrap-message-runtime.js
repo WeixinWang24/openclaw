@@ -3,7 +3,7 @@ import { createMessageDebugClient } from '../../modules/runtime-support/message-
 import { bindComposerFlowActions, createMessageFlow } from '../../modules/phase1/message-flow/index.js';
 import { normalizeFlowMessages } from '../../modules/phase1/message-flow/normalize.js';
 import { createMessageShell, renderSessionListView, renderSessionStatus } from '../../modules/phase1/message-shell/index.js';
-import { bindPageShellActions, createMessageRuntimeRefs, createShellHost } from '../../modules/phase1/page-shell/index.js';
+import { bindPageComposerActions, createMessageRuntimeRefs, createShellHost } from '../../modules/phase1/page-shell/index.js';
 
 export function syncContinueButtonState(refs, flow) {
   if (refs?.continueBtnEl) {
@@ -18,8 +18,8 @@ export function syncHistoryWindowState(refs, flow, shell) {
   }
 }
 
-export function bootstrapMessageRuntime(_refs) {
-  const runtimeRefs = createMessageRuntimeRefs();
+export function bootstrapMessageRuntime(refs) {
+  const runtimeRefs = refs || createMessageRuntimeRefs();
   const shellMountEl = createShellHost(runtimeRefs);
   const debug = createMessageDebugClient({ enabled: true, profile: 'manual' });
   const shell = createMessageShell({ mountEl: shellMountEl, debug, historyWindow: 7 });
@@ -48,7 +48,7 @@ export function bootstrapMessageRuntime(_refs) {
     debug,
   });
 
-  const shellActions = bindPageShellActions({ refs: runtimeRefs });
+  const shellActions = bindPageComposerActions({ refs: runtimeRefs });
   bindComposerFlowActions({
     refs: runtimeRefs,
     flow,
@@ -82,8 +82,7 @@ export function bootstrapMessageRuntime(_refs) {
 }
 
 export async function bootstrapInitialSessionSelection(refs, flow) {
-  void refs;
-  const runtimeRefs = createMessageRuntimeRefs();
+  const runtimeRefs = refs || createMessageRuntimeRefs();
   const sessionsData = await flow.fetchSessionList();
   renderSessionListView(flow, runtimeRefs, {
     sessions: flow.getSessions(),

@@ -1,10 +1,10 @@
 # code-reader
 
-Phase 2 home for the Vio CodeReader migration.
+CodeView / CodeReader module for the Vio workspace surface.
 
 ## Intended scope
 - current-file content loading
-- current-file display boundary
+- codeview display boundary
 - editor-state and dirty-state semantics
 - save and undo behavior for the current file
 

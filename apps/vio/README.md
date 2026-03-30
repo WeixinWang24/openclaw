@@ -6,7 +6,7 @@ Vio is the rebuilt successor system seeded from the VioDashboard message-runtime
 The originally defined narrow Phase 1 was:
 - Message Flow
 - MessageShell
-- minimal Page Shell
+- minimal Page Composer
 
 That original narrow Phase 1 is now considered complete.
 
@@ -18,7 +18,7 @@ The project has now moved into a broader front-end migration stage that includes
 - migration of the old VioDashboard layout shell
 - migration of selected related workspace-support functionality
 
-This means the current front-end should not be described as only the original minimal page shell anymore.
+This means the current front-end should not be described as only the original minimal page composer anymore.
 
 ## Current local runtime status
 - Human-edited front-end source-of-truth has now moved substantially into `src/`.
@@ -31,7 +31,7 @@ This means the current front-end should not be described as only the original mi
 - Current browser-runnable JS is published into `public/runtime/src/`.
 - `public/app.js` is now a thin browser entry that loads from the published runtime tree.
 - `public/modules/` has now been removed from the active runtime path and retired as the browser module tree.
-- The current front-end runtime includes not only message runtime modules, but also migrated workspace/layout support such as explorer, code-reader, and layout-resize behavior.
+- The current front-end runtime includes not only message runtime modules, but also active workspace-surface modules such as explorer, codeview/code-reader, and layout-resize behavior.
 - Front-end source-of-truth consolidation is therefore no longer only a plan; the main JS migration into `src/` has already happened, the first publish/runtime step has been validated in a real browser smoke, and the old `public/modules/` bridge layer has been retired.
 - A minimal Phase 1 server runtime exists under `src/server/`.
 - Local smoke harness: `node apps/vio/src/server/smoke.mjs`
@@ -114,6 +114,6 @@ Write / sync paths:
 Pending cleanup rule:
 - terminal run states (`final`, `error`, `aborted`) are allowed to settle lingering pending message rendering for that session after refresh reconciliation.
 
-Guideline for future Phase 2+ modules:
+Guideline for future workspace-facing modules:
 - use MessageFlow as the session-aware run-state owner
-- do not store independent streaming truth in Explorer / CodeReader / shell-local UI modules unless that state is explicitly derived from MessageFlow
+- do not store independent streaming truth in Explorer / CodeReader / page/workspace UI modules unless that state is explicitly derived from MessageFlow
