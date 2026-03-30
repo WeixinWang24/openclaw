@@ -746,7 +746,10 @@
     "tui:dev": "OPENCLAW_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui.js build",
     "ui:dev": "node scripts/ui.js dev",
-    "ui:install": "node scripts/ui.js install"
+    "ui:install": "node scripts/ui.js install",
+    "vio:dev-check": "bash apps/vio/scripts/dev-check.sh",
+    "vio:dev-refresh": "bash apps/vio/scripts/dev-refresh.sh",
+    "vio:format-check": "bash apps/vio/scripts/format-check.sh"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "0.16.1",

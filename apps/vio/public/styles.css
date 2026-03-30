@@ -974,6 +974,48 @@ button.chip:disabled {
 .chat-shell {
   position: relative;
   min-height: 0;
+}
+
+.slash-command-banner {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  z-index: 4;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(111, 231, 210, 0.10);
+  background: rgba(20, 30, 44, 0.32);
+  color: rgba(220, 248, 255, 0.70);
+  font-size: 15px;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(111, 231, 210, 0.02),
+    0 0 14px rgba(111, 231, 210, 0.08),
+    0 0 24px rgba(122, 0, 255, 0.06);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: streamPulse 3.2s cubic-bezier(0.22, 0.9, 0.3, 1) infinite;
+}
+
+.slash-command-banner[data-tone="error"] {
+  border-color: rgba(255, 141, 141, 0.12);
+  color: rgba(255, 212, 212, 0.78);
+  background: rgba(44, 24, 28, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(255, 141, 141, 0.02),
+    0 0 14px rgba(255, 141, 141, 0.08),
+    0 0 24px rgba(255, 46, 136, 0.05);
+}
+
+.slash-command-banner[hidden] {
+  display: none;
+}
+
+.chat-pane {
+  position: relative;
+  min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -983,10 +1025,13 @@ button.chip:disabled {
 .chat-continue-slot {
   min-height: 0;
   height: var(--chat-gap-space);
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  place-content: center;
   gap: 10px;
+  text-align: center;
 }
 
 .chat-stop-btn {

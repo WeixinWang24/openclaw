@@ -1,3 +1,43 @@
+export function createMessageRuntimeRefs() {
+  return {
+    sessionsListEl: document.getElementById('sessions-list'),
+    sessionStatusChipEl: document.getElementById('session-status-chip'),
+    slashCommandBannerEl: document.getElementById('slash-command-banner'),
+    sessionPreviewEl: document.getElementById('session-preview'),
+    refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
+    runtimeSessionSummaryEl: document.getElementById('runtime-session-summary'),
+    runtimeRunSummaryEl: document.getElementById('runtime-run-summary'),
+    composerFormEl: document.getElementById('composer-form'),
+    composerInputEl: document.getElementById('composer-input'),
+    composerSendBtnEl: document.getElementById('composer-send-btn'),
+    composerStatusEl: document.getElementById('composer-status'),
+  };
+}
+
+export function createWorkspaceShellRefs() {
+  return {
+    openDirBtnEl: document.getElementById('openDirBtn'),
+    fileBackBtnEl: document.getElementById('fileBackBtn'),
+    fileForwardBtnEl: document.getElementById('fileForwardBtn'),
+    fileRefreshBtnEl: document.getElementById('fileRefreshBtn'),
+    fileBrowserRootEl: document.getElementById('fileBrowserRoot'),
+    fileTreeEl: document.getElementById('fileTree'),
+    activeFilePathEl: document.getElementById('activeFilePath'),
+    fileUndoBtnEl: document.getElementById('fileUndoBtn'),
+    fileSaveBtnEl: document.getElementById('fileSaveBtn'),
+    fileModeBadgeEl: document.getElementById('fileModeBadge'),
+    fileEditorEl: document.getElementById('fileEditor'),
+    workspaceCodeActionsEl: document.getElementById('workspaceCodeActions'),
+  };
+}
+
+export function createPageShellRefs() {
+  return {
+    ...createMessageRuntimeRefs(),
+    ...createWorkspaceShellRefs(),
+  };
+}
+
 export function createPageShell(root) {
   if (!root) {return null;}
   root.innerHTML = `
@@ -84,6 +124,7 @@ export function createPageShell(root) {
               <div class="chat-stack">
                 <div class="chat-shell">
                   <div id="session-preview" class="chat"></div>
+                  <div id="slash-command-banner" class="slash-command-banner" hidden></div>
                 </div>
                 <div class="chat-continue-slot">
                   <button type="button" class="chat-stop-btn" hidden>Stop</button>
@@ -137,30 +178,7 @@ export function createPageShell(root) {
     </div>
   `;
 
-  return {
-    sessionsListEl: document.getElementById('sessions-list'),
-    sessionStatusChipEl: document.getElementById('session-status-chip'),
-    sessionPreviewEl: document.getElementById('session-preview'),
-    refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
-    runtimeSessionSummaryEl: document.getElementById('runtime-session-summary'),
-    runtimeRunSummaryEl: document.getElementById('runtime-run-summary'),
-    composerFormEl: document.getElementById('composer-form'),
-    composerInputEl: document.getElementById('composer-input'),
-    composerSendBtnEl: document.getElementById('composer-send-btn'),
-    composerStatusEl: document.getElementById('composer-status'),
-    openDirBtnEl: document.getElementById('openDirBtn'),
-    fileBackBtnEl: document.getElementById('fileBackBtn'),
-    fileForwardBtnEl: document.getElementById('fileForwardBtn'),
-    fileRefreshBtnEl: document.getElementById('fileRefreshBtn'),
-    fileBrowserRootEl: document.getElementById('fileBrowserRoot'),
-    fileTreeEl: document.getElementById('fileTree'),
-    activeFilePathEl: document.getElementById('activeFilePath'),
-    fileUndoBtnEl: document.getElementById('fileUndoBtn'),
-    fileSaveBtnEl: document.getElementById('fileSaveBtn'),
-    fileModeBadgeEl: document.getElementById('fileModeBadge'),
-    fileEditorEl: document.getElementById('fileEditor'),
-    workspaceCodeActionsEl: document.getElementById('workspaceCodeActions'),
-  };
+  return createPageShellRefs();
 }
 
 export function createShellHost(refs) {
@@ -325,7 +343,42 @@ export function renderSessionStatus(refs, flow, sessionKey, { loading = false, m
   }
 }
 
-export function bindPageShellActions({ refs, flow, shell }) {
+export function bindPageShellActions({ refs, flow, shell, debug = null }) {
+  let slashBannerTimer = null;
+
+  function emitDebug(event, payload = {}) {
+    void debug?.emit?.({
+      area: 'page-shell',
+      event,
+      activeSessionKey: flow?.getActiveSessionKey?.() || null,
+      mountedSessionKey: shell?.getMountedSessionKey?.() || null,
+      payload,
+    });
+  }
+
+  function isSlashCommandText(text = '') {
+    return /^\s*\/[A-Za-z0-9_-]+(?:\s|$)/.test(String(text || ''));
+  }
+
+  function showSlashBanner(text, options = {}) {
+    const bannerEl = refs?.slashCommandBannerEl;
+    if (!bannerEl || !text) {return;}
+    if (slashBannerTimer) {
+      window.clearTimeout(slashBannerTimer);
+      slashBannerTimer = null;
+    }
+    bannerEl.hidden = false;
+    bannerEl.dataset.tone = options?.tone || 'info';
+    bannerEl.textContent = text;
+    const ttlMs = Number.isFinite(options?.ttlMs) ? options.ttlMs : 6200;
+    slashBannerTimer = window.setTimeout(() => {
+      bannerEl.hidden = true;
+      bannerEl.textContent = '';
+      bannerEl.dataset.tone = 'info';
+      slashBannerTimer = null;
+    }, ttlMs);
+  }
+
   refs?.refreshSessionBtnEl?.addEventListener('click', () => {
     const sessionKey = flow.getActiveSessionKey();
     if (!sessionKey) {return;}
@@ -339,21 +392,60 @@ export function bindPageShellActions({ refs, flow, shell }) {
     const sendBtnEl = refs?.composerSendBtnEl;
     const statusEl = refs?.composerStatusEl;
     const text = String(inputEl?.value || '').trim();
+    emitDebug('ui.send.submit', {
+      sessionKey,
+      textLength: text.length,
+      hasText: !!text,
+    });
     if (!sessionKey || !text) {return;}
 
-    const localId = shell?.send?.(sessionKey, text) || null;
+    const isSlashCommand = isSlashCommandText(text);
+    const localId = isSlashCommand ? null : (shell?.send?.(sessionKey, text) || null);
+    emitDebug('ui.send.local-id-created', {
+      sessionKey,
+      localId,
+      textLength: text.length,
+      isSlashCommand,
+    });
     if (inputEl) {inputEl.value = '';}
     if (sendBtnEl) {sendBtnEl.disabled = true;}
-    if (statusEl) {statusEl.textContent = 'Sending…';}
+    if (statusEl) {statusEl.textContent = isSlashCommand ? 'Running command…' : 'Sending…';}
+    if (isSlashCommand) {
+      showSlashBanner(`Running ${text}…`, { ttlMs: 6200, tone: 'info' });
+      emitDebug('ui.send.slash-banner-shown', {
+        sessionKey,
+        text,
+      });
+    }
 
     try {
+      emitDebug('ui.send.flow-dispatch', {
+        sessionKey,
+        localId,
+        isSlashCommand,
+      });
       await flow?.sendMessage?.(sessionKey, text, { localId });
-      if (statusEl) {statusEl.textContent = 'Streaming…';}
+      emitDebug('ui.send.flow-dispatch-done', {
+        sessionKey,
+        localId,
+        isSlashCommand,
+      });
+      if (statusEl) {statusEl.textContent = isSlashCommand ? 'Command sent.' : 'Streaming…';}
       window.setTimeout(() => {
         if (statusEl) {statusEl.textContent = 'Enter newline · Shift+Enter send';}
-      }, 900);
+      }, isSlashCommand ? 700 : 900);
     } catch (error) {
-      shell?.markPendingFailed?.(sessionKey, localId);
+      emitDebug('ui.send.flow-dispatch-failed', {
+        sessionKey,
+        localId,
+        isSlashCommand,
+        error: String(error?.message || error),
+      });
+      if (!isSlashCommand) {
+        shell?.markPendingFailed?.(sessionKey, localId);
+      } else {
+        showSlashBanner(`Command failed: ${text}`, { ttlMs: 6800, tone: 'error' });
+      }
       if (statusEl) {statusEl.textContent = `Send failed: ${String(error?.message || error)}`;}
     } finally {
       if (sendBtnEl) {sendBtnEl.disabled = false;}
