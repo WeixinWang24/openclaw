@@ -43,6 +43,7 @@ This means the current front-end should not be described as only the original mi
 - Fast refresh workflow: `pnpm vio:dev-refresh`
 - Direct refresh script: `bash apps/vio/scripts/dev-refresh.sh`
 - launchd service: `com.vio.phase1` on port `8792`
+- launchd helper: `bash apps/vio/scripts/dev-launchd.sh status|start|stop|restart|logs`
 - `runner.mjs` now calls the live local OpenClaw Gateway through `gateway/liveGatewayClient.mjs`.
 - The live gateway client reads connection details from `~/.openclaw/openclaw.json` and connects to the local Gateway via `GatewayClient` from the repo dist runtime.
 - A live event bridge also exists under `src/server/gateway/liveGatewayEventBridge.mjs` and can subscribe to `sessions.messages.subscribe` for session event flow.
