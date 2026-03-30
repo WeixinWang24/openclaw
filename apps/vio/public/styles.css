@@ -1041,6 +1041,19 @@ button.chip:disabled {
   height: 10px;
 }
 
+.code-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d7f5ff;
+  font: 16px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.tok-comment { color: #7fc8e8; }
+.tok-string { color: #ffe66d; }
+.tok-keyword { color: #ff8ed8; }
+.tok-number { color: #8fffe0; }
+
 .file-editor::selection {
   background: rgba(127,223,255,.22);
 }

@@ -8,6 +8,7 @@ async function readJsonOrThrow(url, init = undefined, fallbackError = 'request f
 export function createCodeReaderController(refs, options = {}) {
   const state = {
     currentFilePath: '',
+    currentFileAbsolutePath: '',
     currentFileOriginal: '',
     currentFileDirty: false,
     currentFileLoading: false,
@@ -24,7 +25,11 @@ export function createCodeReaderController(refs, options = {}) {
   }
 
   function detectMode(filePath = '') {
-    return /\.md$/i.test(String(filePath || '')) ? 'markdown' : 'plain';
+    const value = String(filePath || '');
+    if (/\.md$/i.test(value)) {return 'markdown';}
+    if (/\.(js|mjs|cjs|ts|tsx|jsx)$/i.test(value)) {return 'javascript';}
+    if (/\.py$/i.test(value)) {return 'python';}
+    return 'plain';
   }
 
   function escapeHtml(text = '') {
@@ -41,9 +46,18 @@ export function createCodeReaderController(refs, options = {}) {
       if (/^##\s+/.test(line)) {return `<h2>${escapeHtml(line.replace(/^##\s+/, ''))}</h2>`;}
       if (/^#\s+/.test(line)) {return `<h1>${escapeHtml(line.replace(/^#\s+/, ''))}</h1>`;}
       if (/^-\s+/.test(line)) {return `<li>${escapeHtml(line.replace(/^-\s+/, ''))}</li>`;}
-      if (!line.trim()) {return '<div class="md-spacer"></div>';}
+      if (!line.trim()) {return '<div class="md-spacer"></div>';} 
       return `<p>${escapeHtml(line)}</p>`;
     }).join('');
+  }
+
+  function renderHighlightedCode(text = '', mode = 'plain') {
+    const escaped = escapeHtml(text)
+      .replace(/(\/\/[^\n]*|#[^\n]*)/g, '<span class="tok-comment">$1</span>')
+      .replace(/(&quot;[^&]*&quot;|'[^']*')/g, '<span class="tok-string">$1</span>')
+      .replace(/\b(function|return|const|let|var|if|else|for|while|class|import|export|from|async|await|def|lambda|True|False|None|try|except)\b/g, '<span class="tok-keyword">$1</span>')
+      .replace(/\b([0-9]+)\b/g, '<span class="tok-number">$1</span>');
+    return `<pre class="code-preview ${mode}"><code>${escaped}</code></pre>`;
   }
 
   function syncViewerMode() {
@@ -58,6 +72,13 @@ export function createCodeReaderController(refs, options = {}) {
       previewEl.hidden = false;
       resizerEl.hidden = false;
       previewEl.innerHTML = renderMarkdown(refs?.fileEditorEl?.value || '');
+      return;
+    }
+
+    if ((mode === 'javascript' || mode === 'python') && state.currentFilePath) {
+      previewEl.hidden = false;
+      resizerEl.hidden = true;
+      previewEl.innerHTML = renderHighlightedCode(refs?.fileEditorEl?.value || '', mode);
       return;
     }
 
@@ -87,7 +108,7 @@ export function createCodeReaderController(refs, options = {}) {
     }
     if (state.currentFilePath) {
       const dirtyTag = state.currentFileDirty ? ' *' : '';
-      emitStatus(`${state.currentFilePath}${dirtyTag}`, { semanticLabel: 'file' });
+      emitStatus(`${state.currentFileAbsolutePath || state.currentFilePath}${dirtyTag}`, { semanticLabel: 'file' });
     }
     syncViewerMode();
   }
@@ -113,6 +134,7 @@ export function createCodeReaderController(refs, options = {}) {
     syncChrome();
     try {
       const data = await readJsonOrThrow(`/api/file?path=${encodeURIComponent(relPath)}`, undefined, 'file load failed');
+      state.currentFileAbsolutePath = typeof data.absolutePath === 'string' ? data.absolutePath : relPath;
       state.currentFileOriginal = typeof data.content === 'string' ? data.content : '';
       refs.fileEditorEl.value = state.currentFileOriginal;
       state.currentFileLoading = false;

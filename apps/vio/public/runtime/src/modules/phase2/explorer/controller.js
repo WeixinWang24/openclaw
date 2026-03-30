@@ -36,6 +36,10 @@ export function createExplorerController(refs, options = {}) {
     if (refs?.fileBrowserRootEl) {refs.fileBrowserRootEl.textContent = state.currentDir;}
   }
 
+  function setDirectorySelection(dirPath = '') {
+    state.selectedEntryPath = dirPath || '';
+  }
+
   function renderTree(entries = []) {
     if (!refs?.fileTreeEl) {return;}
     refs.fileTreeEl.innerHTML = '';
@@ -48,6 +52,7 @@ export function createExplorerController(refs, options = {}) {
       if (entry.type === 'file') {
         item.addEventListener('click', async () => {
           if (!canNavigateAway()) {return;}
+          emitStatus(`file ${entry.path}`, { semanticLabel: 'file' });
           state.selectedEntryPath = entry.path;
           renderTree(state.entries);
           const accepted = await callbacks.onFileSelected?.(entry.path);
@@ -57,7 +62,10 @@ export function createExplorerController(refs, options = {}) {
           }
         });
       } else {
-        item.addEventListener('click', () => openDirectory(entry.path));
+        item.addEventListener('click', () => {
+          emitStatus(`dir ${entry.path}`, { semanticLabel: 'dir' });
+          openDirectory(entry.path);
+        });
       }
       refs.fileTreeEl.appendChild(item);
     }
@@ -70,9 +78,11 @@ export function createExplorerController(refs, options = {}) {
       const data = await readJsonOrThrow(`/api/files?dir=${encodeURIComponent(dir)}`, undefined, 'file list failed');
       state.currentDir = data.currentDir || '.';
       state.entries = Array.isArray(data.entries) ? data.entries : [];
+      setDirectorySelection(state.currentDir);
       setDirLabel();
       renderTree(state.entries);
       syncNavButtons();
+      emitStatus(`dir ${state.currentDir}`, { semanticLabel: 'dir' });
     } catch (error) {
       refs.fileTreeEl.innerHTML = `<div class="event-sub"><span class="semantic-value">${error.message || error}</span></div>`;
     }
@@ -80,8 +90,8 @@ export function createExplorerController(refs, options = {}) {
 
   function openDirectory(dirPath) {
     if (!canNavigateAway()) {return;}
-    state.selectedEntryPath = dirPath;
     if (state.currentDir && state.currentDir !== dirPath) {state.lastVisitedDirs.push(state.currentDir);}
+    setDirectorySelection(dirPath);
     void loadFileTree(dirPath);
   }
 
