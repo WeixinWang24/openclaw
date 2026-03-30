@@ -29,7 +29,8 @@ This means the current front-end should not be described as only the original mi
   - `src/modules/workspace-support/`
 - A first formal publish/runtime path now exists.
 - Current browser-runnable JS is published into `public/runtime/src/`.
-- `public/app.js` is now a thin browser entry that loads from the published runtime tree.
+- `src/app.js` is the browser-entry source-of-truth.
+- `publish-runtime.mjs` now republishes that entry into `public/app.js` and rewrites its import path for the browser runtime tree.
 - `public/modules/` has now been removed from the active runtime path and retired as the browser module tree.
 - The current front-end runtime includes not only message runtime modules, but also active workspace-surface modules such as explorer, codeview/code-reader, and layout-resize behavior.
 - Front-end source-of-truth consolidation is therefore no longer only a plan; the main JS migration into `src/` has already happened, the first publish/runtime step has been validated in a real browser smoke, and the old `public/modules/` bridge layer has been retired.
@@ -55,6 +56,19 @@ The main engineering focus is now:
 2. continue broader old-layout migration deliberately
 3. refine the source -> publish -> runtime workflow now that the transition has landed
 4. keep runtime entry and publish scope clean as more modules arrive
+
+## Current stable baseline (2026-03 Claude PTY recovery work)
+Right now the most reliable browser surface is the **minimal Claude PTY recovery shell**.
+
+That baseline currently provides:
+- a minimal browser page served from `src/app.js` -> published to `public/app.js`
+- automatic Claude PTY start/attach on page load
+- auto-recovery when page attach finds a `running` session whose PTY stream is blank
+- clean restart behavior when the last Claude PTY session had already terminated
+
+Practical implication:
+- if richer old-shell UI work is unstable, prefer keeping this minimal Claude PTY shell healthy first
+- treat it as the known-good operational baseline before reintroducing more complex dashboard/layout layers
 
 ## Publish / launch workflow
 Current recommended workflow:
@@ -83,8 +97,17 @@ This will:
 ### Manual path
 ```bash
 node apps/vio/scripts/publish-runtime.mjs
+bash apps/vio/scripts/dev-launchd.sh restart
 node apps/vio/scripts/smoke-browser.mjs
 ```
+
+### Quick troubleshooting
+```bash
+bash apps/vio/scripts/dev-launchd.sh status
+bash apps/vio/scripts/dev-launchd.sh logs
+```
+
+If the page opens but Claude PTY is blank on first attach, the current minimal shell is expected to auto-recover it. If service state itself looks bad, restart launchd first before debugging front-end behavior.
 
 Current publish scope:
 - `src/app/`
