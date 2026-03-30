@@ -55,12 +55,10 @@ export function enableLayoutResize({ root = document.documentElement } = {}) {
       event.preventDefault();
       element.setPointerCapture?.(event.pointerId);
 
-      // Snapshot start values so delta is always relative to drag start
       const startX = event.clientX;
       const startY = event.clientY;
       const snapshot = { ...state };
 
-      // Prevent text selection and iframe capture during drag
       document.body.style.userSelect = 'none';
       document.body.style.cursor = element.style.cursor || (element.classList.contains('vertical') ? 'col-resize' : 'row-resize');
 

@@ -230,7 +230,7 @@ export function createMessageShell({ mountEl } = {}) {
   function appendPendingUserMessage(sessionKey, text = '', options = {}) {
     const target = ensureMount();
     if (!target || !sessionKey || mountedSessionKey !== sessionKey || !text) {return null;}
-    const localId = options.localId || `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const localId = options?.localId || `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (!pendingMessages.some(item => item.localId === localId)) {
       pendingMessages.push({ localId, text, sessionKey, state: options.state || 'pending' });
     }
