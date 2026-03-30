@@ -1,4 +1,5 @@
 import { createApiClient } from '../../modules/runtime-support/api-client.js';
+import { createMessageDebugClient } from '../../modules/runtime-support/message-debug-client.js';
 import { createMessageFlow } from '../../modules/phase1/message-flow/index.js';
 import { normalizeFlowMessages } from '../../modules/phase1/message-flow/normalize.js';
 import { createMessageShell } from '../../modules/phase1/message-shell/index.js';
@@ -6,7 +7,8 @@ import { bindPageShellActions, createShellHost, renderSessionListView, renderSes
 
 export function bootstrapMessageRuntime(refs) {
   const shellMountEl = createShellHost(refs);
-  const shell = createMessageShell({ mountEl: shellMountEl });
+  const debug = createMessageDebugClient({ enabled: true, profile: 'manual' });
+  const shell = createMessageShell({ mountEl: shellMountEl, debug });
   const api = createApiClient();
   let flow;
   flow = createMessageFlow({
@@ -25,6 +27,7 @@ export function bootstrapMessageRuntime(refs) {
       });
     },
     normalizeMessages: normalizeFlowMessages,
+    debug,
   });
 
   bindPageShellActions({ refs, flow, shell });
