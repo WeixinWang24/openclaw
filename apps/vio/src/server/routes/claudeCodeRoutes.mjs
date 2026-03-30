@@ -1,12 +1,21 @@
 import { readJsonRequest, sendJson } from '../httpUtils.mjs';
 
-function matchClaudeCodeSessionRoute(pathname = '') {
-  const match = pathname.match(/^\/api\/sessions\/([^/]+)\/claude-code(?:\/(start|input|stop))?$/);
-  if (!match) {return null;}
-  return {
-    sessionKey: decodeURIComponent(match[1] || ''),
-    action: match[2] || 'state',
-  };
+function matchClaudeCodeRoute(pathname = '') {
+  const globalMatch = pathname.match(/^\/api\/claude(?:\/(state|start|input|stop|restart|resize|stream))?$/);
+  if (globalMatch) {
+    return {
+      sessionKey: 'claude-default',
+      action: globalMatch[1] || 'state',
+    };
+  }
+  const sessionMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/claude-code(?:\/(start|input|stop|restart|resize))?$/);
+  if (sessionMatch) {
+    return {
+      sessionKey: 'claude-default',
+      action: sessionMatch[2] || 'state',
+    };
+  }
+  return null;
 }
 
 export function handleClaudeCodeRoutes({
@@ -17,8 +26,11 @@ export function handleClaudeCodeRoutes({
   startClaudeCodeSession,
   sendClaudeCodeInput,
   stopClaudeCodeSession,
+  restartClaudeCodeSession,
+  resizeClaudeCodeSession,
+  readClaudeCodeStream,
 }) {
-  const matched = matchClaudeCodeSessionRoute(requestUrl.pathname);
+  const matched = matchClaudeCodeRoute(requestUrl.pathname);
   if (!matched) {return false;}
 
   const { sessionKey, action } = matched;
@@ -28,6 +40,20 @@ export function handleClaudeCodeRoutes({
       sendJson(res, 200, getClaudeCodeState({
         sessionKey,
         cwdRel: requestUrl.searchParams.get('cwd') || '.',
+      }));
+    } catch (error) {
+      sendJson(res, 400, { error: error?.message || String(error) });
+    }
+    return true;
+  }
+
+  if (action === 'stream' && req.method === 'GET') {
+    try {
+      sendJson(res, 200, readClaudeCodeStream({
+        sessionKey,
+        cwdRel: requestUrl.searchParams.get('cwd') || '.',
+        offset: Number(requestUrl.searchParams.get('offset') || 0),
+        maxBytes: Number(requestUrl.searchParams.get('maxBytes') || 16384),
       }));
     } catch (error) {
       sendJson(res, 400, { error: error?.message || String(error) });
@@ -65,6 +91,32 @@ export function handleClaudeCodeRoutes({
     readJsonRequest(req)
       .then(() => {
         sendJson(res, 200, stopClaudeCodeSession({ sessionKey }));
+      })
+      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (action === 'restart' && req.method === 'POST') {
+    readJsonRequest(req)
+      .then(async payload => {
+        const result = await restartClaudeCodeSession({
+          sessionKey,
+          cwdRel: typeof payload?.cwd === 'string' && payload.cwd ? payload.cwd : '.',
+        });
+        sendJson(res, 200, result);
+      })
+      .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
+    return true;
+  }
+
+  if (action === 'resize' && req.method === 'POST') {
+    readJsonRequest(req)
+      .then(payload => {
+        sendJson(res, 200, resizeClaudeCodeSession({
+          sessionKey,
+          cols: payload?.cols,
+          rows: payload?.rows,
+        }));
       })
       .catch(error => sendJson(res, 400, { error: error?.message || String(error) }));
     return true;

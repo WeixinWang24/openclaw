@@ -1,9 +1,9 @@
-const STORAGE_KEY = 'vio.phase1.layout.v3';
+const STORAGE_KEY = 'vio.phase1.layout.v7';
 
 const DEFAULTS = {
   sidebarW: 280,
   rightbarW: 360,
-  workspaceSplit: 0.5,
+  workspaceSplit: 0.42,
 };
 
 function clamp(value, min, max) {

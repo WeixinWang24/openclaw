@@ -161,12 +161,22 @@ def main() -> int:
             ready, _, _ = select.select(read_fds, [], [], 0.1)
 
             if master_fd in ready:
-                try:
-                    data = os.read(master_fd, 4096)
-                except OSError:
-                    data = b''
-                if data:
-                    state.append_log(data.decode('utf-8', errors='replace'))
+                chunks = []
+                while True:
+                    try:
+                        data = os.read(master_fd, 16384)
+                    except BlockingIOError:
+                        break
+                    except OSError:
+                        data = b''
+                    if not data:
+                        break
+                    chunks.append(data)
+                    more_ready, _, _ = select.select([master_fd], [], [], 0)
+                    if master_fd not in more_ready:
+                        break
+                if chunks:
+                    state.append_log(b''.join(chunks).decode('utf-8', errors='replace'))
                 else:
                     state.child_exited = True
                     break

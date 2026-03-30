@@ -50,10 +50,13 @@ function main() {
   const publicAppEntry = path.join(runtimeRoot, '..', 'app.js');
   if (fs.existsSync(srcAppEntry)) {
     let appEntry = fs.readFileSync(srcAppEntry, 'utf8');
-    appEntry = appEntry.replace(
-      "from './modules/phase2/claude-code/controller.js'",
-      "from './runtime/src/modules/phase2/claude-code/controller.js'",
-    );
+    appEntry = appEntry
+      .replaceAll("from './app/", "from './runtime/src/app/")
+      .replaceAll('from "./app/', 'from "./runtime/src/app/')
+      .replaceAll("from './modules/", "from './runtime/src/modules/")
+      .replaceAll('from "./modules/', 'from "./runtime/src/modules/')
+      .replaceAll("from './shared/", "from './runtime/src/shared/")
+      .replaceAll('from "./shared/', 'from "./runtime/src/shared/');
     fs.writeFileSync(publicAppEntry, appEntry, 'utf8');
   }
 

@@ -4,6 +4,7 @@ set -euo pipefail
 LABEL="com.vio.phase1"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 PORT="8792"
+USER_DOMAIN="gui/$(id -u)"
 
 usage() {
   cat <<EOF
@@ -48,7 +49,7 @@ ensure_plist() {
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>
-      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+      <string>/Users/visen24/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
       <key>NODE_ENV</key>
       <string>production</string>
     </dict>
@@ -70,9 +71,41 @@ except Exception as e:
 PY
 }
 
+wait_http_up() {
+  python3 - <<'PY'
+import time, urllib.request, sys
+for _ in range(20):
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:8792/', timeout=1.5) as r:
+            print(f'HTTP 127.0.0.1:8792 -> {r.status}')
+            raise SystemExit(0)
+    except Exception:
+        time.sleep(0.4)
+print('HTTP 127.0.0.1:8792 -> DOWN')
+raise SystemExit(1)
+PY
+}
+
+kill_port_owner() {
+  python3 - <<'PY'
+import os, signal, subprocess
+out = subprocess.check_output(['ps','-axo','pid=,command='], text=True)
+for line in out.splitlines():
+    s = line.strip()
+    if 'apps/vio/src/server/runner.mjs' not in s:
+        continue
+    pid = int(s.split(None, 1)[0])
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f'Terminated stale runner pid={pid}')
+    except ProcessLookupError:
+        pass
+PY
+}
+
 show_status() {
   echo "== launchctl =="
-  launchctl print "gui/$(id -u)/${LABEL}" 2>/dev/null | sed -n '1,60p' || echo "Service not loaded"
+  launchctl print "${USER_DOMAIN}/${LABEL}" 2>/dev/null | sed -n '1,60p' || echo "Service not loaded"
   echo
   echo "== http probe =="
   probe_http
@@ -80,15 +113,18 @@ show_status() {
 
 start_service() {
   ensure_plist
-  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || true
-  launchctl enable "gui/$(id -u)/${LABEL}" 2>/dev/null || true
-  launchctl kickstart -k "gui/$(id -u)/${LABEL}"
-  sleep 1
+  kill_port_owner || true
+  launchctl bootout "$USER_DOMAIN/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "$USER_DOMAIN" "$PLIST"
+  launchctl enable "$USER_DOMAIN/$LABEL" 2>/dev/null || true
+  launchctl kickstart -k "$USER_DOMAIN/$LABEL"
+  wait_http_up
   show_status
 }
 
 stop_service() {
-  launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+  launchctl bootout "$USER_DOMAIN/$LABEL" 2>/dev/null || true
+  kill_port_owner || true
   echo "Stopped ${LABEL}"
 }
 

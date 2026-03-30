@@ -150,11 +150,15 @@ function enrichSessionState(session) {
   const statusSaysExited = ['terminated', 'exited', 'failed'].includes(statusValue);
   const bridgeAlive = isPidAlive(session.bridgePid);
   const childAlive = isPidAlive(session.childPid);
+  const hasOutput = !!String(session.output || '').trim();
+  const bridgeOnlyZombie = bridgeAlive && !childAlive && !hasOutput;
 
   session.started = !!(session.bridgePid || session.childPid || session.output);
-  session.running = statusSaysRunning || bridgeAlive || childAlive;
-  session.exited = !session.running && statusSaysExited;
-  if (!session.running && !statusSaysExited && session.started) {
+  session.running = bridgeOnlyZombie ? false : (childAlive || (statusSaysRunning && childAlive) || (bridgeAlive && childAlive));
+  session.exited = !session.running && (statusSaysExited || bridgeOnlyZombie);
+  if (bridgeOnlyZombie) {
+    session.status = 'terminated';
+  } else if (!session.running && !statusSaysExited && session.started) {
     session.status = 'exited';
     session.exited = true;
   }
@@ -365,10 +369,12 @@ export function startClaudeCodeSession({ sessionKey = CLAUDE_SESSION_ID, cwdRel 
   const existing = rehydrateSession(cwdRel) || sessions.get(key);
   if (existing) {
     enrichSessionState(existing);
+    const childAlive = !!(existing.childPid && isPidAlive(existing.childPid));
+    const bridgeAlive = !!(existing.bridgePid && isPidAlive(existing.bridgePid));
     const shouldReuseExisting = !!(
-      existing.running
-      || (existing.childPid && isPidAlive(existing.childPid))
-      || (existing.bridgePid && isPidAlive(existing.bridgePid))
+      childAlive
+      || (existing.running && childAlive)
+      || (bridgeAlive && childAlive)
     );
     if (shouldReuseExisting) {
       sessions.set(key, existing);
