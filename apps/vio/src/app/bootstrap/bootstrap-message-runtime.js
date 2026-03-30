@@ -4,6 +4,7 @@ import { bindComposerFlowActions, createMessageFlow } from '../../modules/phase1
 import { normalizeFlowMessages } from '../../modules/phase1/message-flow/normalize.js';
 import { createMessageShell, renderSessionListView, renderSessionStatus } from '../../modules/phase1/message-shell/index.js';
 import { bindPageComposerActions, createMessageRuntimeRefs, createShellHost } from '../../modules/phase1/page-shell/index.js';
+import { createWorkspaceShellRefs } from '../../modules/phase2/workspace-shell/index.js';
 import { createClaudeCodeController } from '../../modules/phase2/claude-code/index.js';
 
 export function syncContinueButtonState(refs, flow) {
@@ -20,8 +21,10 @@ export function syncHistoryWindowState(refs, flow, shell) {
 }
 
 export function bootstrapMessageRuntime(refs) {
-  const runtimeRefs = refs || createMessageRuntimeRefs();
-  const shellMountEl = createShellHost(runtimeRefs);
+  const messageRefs = refs || createMessageRuntimeRefs();
+  const workspaceRefs = createWorkspaceShellRefs();
+  const runtimeRefs = { ...workspaceRefs, ...messageRefs };
+  const shellMountEl = createShellHost(messageRefs);
   const debug = createMessageDebugClient({ enabled: true, profile: 'manual' });
   const shell = createMessageShell({ mountEl: shellMountEl, debug, historyWindow: 7 });
   const api = createApiClient();
@@ -37,10 +40,8 @@ export function bootstrapMessageRuntime(refs) {
       renderSessionListView(flow, runtimeRefs, payload);
       syncContinueButtonState(runtimeRefs, flow);
       syncHistoryWindowState(runtimeRefs, flow, shell);
-      const activeSessionKey = flow.getActiveSessionKey();
-      if (activeSessionKey && claudeCode) {
-        claudeCode.setSessionKey(activeSessionKey);
-        void claudeCode.refreshState(activeSessionKey);
+      if (claudeCode) {
+        void claudeCode.refreshState();
       }
     },
     onSessionSelected() {
@@ -50,19 +51,15 @@ export function bootstrapMessageRuntime(refs) {
       });
       syncContinueButtonState(runtimeRefs, flow);
       syncHistoryWindowState(runtimeRefs, flow, shell);
-      const activeSessionKey = flow.getActiveSessionKey();
-      if (activeSessionKey && claudeCode) {
-        claudeCode.setSessionKey(activeSessionKey);
-        void claudeCode.refreshState(activeSessionKey);
+      if (claudeCode) {
+        void claudeCode.refreshState();
       }
     },
     normalizeMessages: normalizeFlowMessages,
     debug,
   });
 
-  claudeCode = createClaudeCodeController(runtimeRefs, {
-    getActiveSessionKey: () => flow.getActiveSessionKey(),
-  });
+  claudeCode = createClaudeCodeController(runtimeRefs);
   claudeCode.bind();
 
   const shellActions = bindPageComposerActions({ refs: runtimeRefs });
