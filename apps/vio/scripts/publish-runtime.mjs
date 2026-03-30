@@ -8,6 +8,7 @@ const srcRoot = path.join(appRoot, 'src');
 const runtimeRoot = path.join(appRoot, 'public', 'runtime');
 
 const runtimeJsRoot = path.join(runtimeRoot, 'src');
+const PUBLISH_DIRS = ['app', 'modules', 'shared'];
 
 function rmIfExists(target) {
   fs.rmSync(target, { recursive: true, force: true });
@@ -39,8 +40,13 @@ function copyTree(srcDir, destDir) {
 function main() {
   rmIfExists(runtimeJsRoot);
   mkdirp(runtimeJsRoot);
-  copyTree(srcRoot, runtimeJsRoot);
+  for (const dirName of PUBLISH_DIRS) {
+    const srcDir = path.join(srcRoot, dirName);
+    if (!fs.existsSync(srcDir)) {continue;}
+    copyTree(srcDir, path.join(runtimeJsRoot, dirName));
+  }
   console.log(`Published Vio runtime JS -> ${path.relative(appRoot, runtimeJsRoot)}`);
+  console.log(`Published trees -> ${PUBLISH_DIRS.join(', ')}`);
   console.log('Browser runtime entry -> public/app.js');
   console.log('Source of truth -> src/');
 }

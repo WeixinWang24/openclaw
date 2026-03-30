@@ -160,7 +160,7 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
   return row;
 }
 
-const MAX_VISIBLE_HISTORY = 3;
+const DEFAULT_VISIBLE_HISTORY = 7;
 
 function shouldDisplayMessage(message = {}) {
   const role = normalizeMessageRole(message);
@@ -175,12 +175,22 @@ function normalizeComparableUserText(text = '') {
     .trim();
 }
 
-export function createMessageShell({ mountEl } = {}) {
+export function createMessageShell({ mountEl, debug = null, historyWindow = DEFAULT_VISIBLE_HISTORY } = {}) {
   let mountedSessionKey = null;
+  let visibleHistoryWindow = Number.isFinite(historyWindow) ? historyWindow : DEFAULT_VISIBLE_HISTORY;
   let pendingMessages = [];
   let lastCanonicalMessages = [];
   let activeAssistantStream = null;
   let runtimeRunHint = null;
+
+  function emitDebug(event, payload = {}) {
+    void debug?.emit?.({
+      area: 'message-shell',
+      event,
+      mountedSessionKey,
+      payload,
+    });
+  }
 
   function ensureMount() {
     return mountEl || null;
@@ -241,6 +251,12 @@ export function createMessageShell({ mountEl } = {}) {
       extraClass: options.state === 'failed' ? 'failed' : 'pending',
     });
     target.appendChild(row);
+    emitDebug('pending.append', {
+      sessionKey,
+      localId,
+      textLength: String(text || '').length,
+      state: options.state || 'pending',
+    });
     scrollToBottom();
     return localId;
   }
@@ -293,6 +309,10 @@ export function createMessageShell({ mountEl } = {}) {
         const row = findPendingRow(pending.localId);
         row?.remove();
         absorbedIds.push(pending.localId);
+        emitDebug('pending.absorb', {
+          sessionKey: mountedSessionKey,
+          localId: pending.localId,
+        });
         continue;
       }
       remaining.push(pending);
@@ -342,8 +362,13 @@ export function createMessageShell({ mountEl } = {}) {
     const target = ensureMount();
     if (!target) {return { absorbedIds: [], pendingMessages };}
     const sourceMessages = Array.isArray(messages) ? messages : [];
-    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-MAX_VISIBLE_HISTORY);
+    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-visibleHistoryWindow);
     mountedSessionKey = sessionKey || null;
+    emitDebug('mount.render-history', {
+      sessionKey,
+      messageCount: sourceMessages.length,
+      visibleCount: visibleMessages.length,
+    });
     lastCanonicalMessages = sourceMessages;
     if (activeAssistantStream) {
       const hasMatchingAssistant = sourceMessages.some(message => {
@@ -363,6 +388,13 @@ export function createMessageShell({ mountEl } = {}) {
     }
     const absorbResult = absorbPendingMessages(sourceMessages);
     const remainingPending = pendingMessages.filter(item => item.sessionKey === sessionKey);
+    if (remainingPending.length) {
+      emitDebug('pending.preserved', {
+        sessionKey,
+        count: remainingPending.length,
+        localIds: remainingPending.map(item => item.localId),
+      });
+    }
     for (const pending of remainingPending) {
       const row = createMessageRow('user', pending.text || '', {
         status: pending.state || 'pending',
@@ -384,10 +416,18 @@ export function createMessageShell({ mountEl } = {}) {
 
   function reconcileHistory(sessionKey, messages = []) {
     if (!sessionKey) {return { absorbedIds: [], pendingMessages };}
+    emitDebug('reconcile.start', {
+      sessionKey,
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+    });
     if (mountedSessionKey !== sessionKey) {
       mountedSessionKey = sessionKey;
     }
     if (activeAssistantStream?.state === 'streaming' && hasStreamingRowMounted(sessionKey, activeAssistantStream?.runId || null)) {
+      emitDebug('reconcile.skip', {
+        sessionKey,
+        why: 'active-streaming-row-mounted',
+      });
       return { absorbedIds: [], pendingMessages };
     }
     if (!activeAssistantStream) {
@@ -396,6 +436,10 @@ export function createMessageShell({ mountEl } = {}) {
       const sourceMessages = Array.isArray(messages) ? messages : [];
       const canonicalHasMatchingAssistant = sourceMessages.some(message => normalizeMessageRole(message) === 'assistant');
       if (hasCommittedFinalRow && !canonicalHasMatchingAssistant) {
+        emitDebug('reconcile.skip', {
+          sessionKey,
+          why: 'final-row-without-canonical-assistant',
+        });
         return { absorbedIds: [], pendingMessages };
       }
     }
@@ -537,6 +581,20 @@ export function createMessageShell({ mountEl } = {}) {
     return !!target.querySelector('.msg-row.assistant[data-status="streaming"]');
   }
 
+  function setHistoryWindow(nextWindow) {
+    const parsed = Number(nextWindow);
+    if (!Number.isFinite(parsed) || parsed < 1) {return visibleHistoryWindow;}
+    visibleHistoryWindow = parsed;
+    if (mountedSessionKey) {
+      renderCanonicalHistory(mountedSessionKey, lastCanonicalMessages);
+    }
+    return visibleHistoryWindow;
+  }
+
+  function getHistoryWindow() {
+    return visibleHistoryWindow;
+  }
+
   function getMountedSessionKey() {
     return mountedSessionKey;
   }
@@ -564,6 +622,8 @@ export function createMessageShell({ mountEl } = {}) {
     snapshotActiveStream,
     setRuntimeRunHint,
     clearRuntimeRunHint,
+    setHistoryWindow,
+    getHistoryWindow,
     getMountedSessionKey,
     getDebugState,
     hasStreamingRowMounted,
@@ -572,3 +632,6 @@ export function createMessageShell({ mountEl } = {}) {
     },
   };
 }
+
+export { renderSessionListView } from './session-list-view.js';
+export { renderSessionStatus } from './session-status-view.js';

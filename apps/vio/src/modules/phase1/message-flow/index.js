@@ -15,6 +15,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     pendingRefreshPlans: new Map(),
     sessionViews: new Map(),
     sessionViewMeta: new Map(),
+    historyWindow: 7,
   };
 
   function emitDebug(event, payload = {}) {
@@ -382,6 +383,17 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     return true;
   }
 
+  function setHistoryWindow(nextWindow) {
+    const parsed = Number(nextWindow);
+    if (!Number.isFinite(parsed) || parsed < 1) {return state.historyWindow;}
+    state.historyWindow = parsed;
+    return state.historyWindow;
+  }
+
+  function getHistoryWindow() {
+    return state.historyWindow;
+  }
+
   function getActiveSessionKey() {
     return state.activeSessionKey;
   }
@@ -406,6 +418,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     scheduleSessionRefresh,
     sendMessage,
     simulateStream,
+    setHistoryWindow,
+    getHistoryWindow,
     getActiveSessionKey,
     getSessions,
     getSessionMeta,
@@ -419,3 +433,5 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     },
   };
 }
+
+export { bindComposerFlowActions } from './composer-actions.js';

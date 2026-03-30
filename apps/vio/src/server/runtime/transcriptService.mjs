@@ -18,7 +18,7 @@ function sanitizeTranscriptText(text = '') {
 function collapseContinuePromptForDisplay(text = '', role = '') {
   const source = String(text || '').trim();
   if (role !== 'user') {return source;}
-  if (source.startsWith('继续上一条 assistant 回复里最后明确提出的事情。')) {
+  if (source.startsWith('继续刚才最后明确提出的事情，不要重开话题。')) {
     return '继续';
   }
   return source;

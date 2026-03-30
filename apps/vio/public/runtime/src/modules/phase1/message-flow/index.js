@@ -2,7 +2,7 @@ function defaultNormalizeMessages(messages = []) {
   return Array.isArray(messages) ? messages : [];
 }
 
-export function createMessageFlow({ api, shell, renderChrome, renderSessionList, onSessionSelected, normalizeMessages = defaultNormalizeMessages, timers = globalThis } = {}) {
+export function createMessageFlow({ api, shell, renderChrome, renderSessionList, onSessionSelected, normalizeMessages = defaultNormalizeMessages, timers = globalThis, debug = null } = {}) {
   const state = {
     activeSessionKey: null,
     historyRequestSeq: 0,
@@ -15,7 +15,17 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     pendingRefreshPlans: new Map(),
     sessionViews: new Map(),
     sessionViewMeta: new Map(),
+    historyWindow: 7,
   };
+
+  function emitDebug(event, payload = {}) {
+    void debug?.emit?.({
+      area: 'message-flow',
+      event,
+      activeSessionKey: state.activeSessionKey,
+      payload,
+    });
+  }
 
   function getSessionMeta(sessionKey) {
     if (!sessionKey) {
@@ -66,8 +76,20 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
   async function fetchSessionHistory(sessionKey, options = {}) {
     if (!sessionKey || !api?.fetchSessionHistory) {return [];} 
     const requestSeq = ++state.historyRequestSeq;
+    emitDebug('history.fetch.start', {
+      sessionKey,
+      requestSeq,
+      reason: options?.reason || null,
+      force: options?.force === true,
+      cacheOnly: options?.cacheOnly === true,
+    });
     const data = await api.fetchSessionHistory(sessionKey, options);
     if (requestSeq !== state.historyRequestSeq) {
+      emitDebug('history.fetch.discarded', {
+        sessionKey,
+        requestSeq,
+        currentHistoryRequestSeq: state.historyRequestSeq,
+      });
       return state.sessionMessages.get(sessionKey) || [];
     }
     const messages = normalizeMessages(Array.isArray(data?.messages) ? data.messages : data);
@@ -79,6 +101,12 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     meta.pending = false;
     meta.lastUpdatedAt = Date.now();
     meta.lastReason = options?.reason || null;
+    emitDebug('history.fetch.resolved', {
+      sessionKey,
+      requestSeq,
+      messageCount: messages.length,
+      reason: options?.reason || null,
+    });
     return state.sessionMessages.get(sessionKey) || [];
   }
 
@@ -86,6 +114,11 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     if (!sessionKey) {return [];} 
     const selectionSeq = ++state.selectionSeq;
     state.activeSessionKey = sessionKey;
+    emitDebug('session.select.start', {
+      sessionKey,
+      selectionSeq,
+      reason: options?.reason || null,
+    });
     onSessionSelected?.(sessionKey);
     updateSessionListView();
     setSessionLoading(sessionKey, true);
@@ -97,6 +130,12 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     });
     const messages = await fetchSessionHistory(sessionKey, options);
     if (selectionSeq !== state.selectionSeq || state.activeSessionKey !== sessionKey) {
+      emitDebug('session.select.stale', {
+        sessionKey,
+        selectionSeq,
+        currentSelectionSeq: state.selectionSeq,
+        activeSessionKey: state.activeSessionKey,
+      });
       return state.sessionMessages.get(sessionKey) || [];
     }
     setSessionLoading(sessionKey, false);
@@ -111,6 +150,11 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       view: state.sessionViews.get(sessionKey) || null,
       viewMeta: state.sessionViewMeta.get(sessionKey) || null,
     });
+    emitDebug('session.select.done', {
+      sessionKey,
+      selectionSeq,
+      messageCount: messages.length,
+    });
     return messages;
   }
 
@@ -118,6 +162,12 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     if (!sessionKey) {return [];} 
     const refreshSeq = state.selectionSeq;
     const cacheOnly = options?.cacheOnly === true;
+    emitDebug('refresh.start', {
+      sessionKey,
+      refreshSeq,
+      reason,
+      cacheOnly,
+    });
     const messages = await fetchSessionHistory(sessionKey, { ...options, force: true, reason });
     const meta = getSessionMeta(sessionKey);
     meta.dirty = false;
@@ -150,6 +200,13 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       shell?.hasStreamingRowMounted?.(sessionKey, activeRunId || null) === true;
 
     if (cacheOnly && shouldSuppressStreamingRerender) {
+      emitDebug('refresh.skip-render', {
+        sessionKey,
+        refreshSeq,
+        reason,
+        cacheOnly,
+        why: 'streaming-row-owned',
+      });
       return messages;
     }
 
@@ -168,6 +225,14 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
           viewMeta: state.sessionViewMeta.get(sessionKey) || null,
         });
       }
+      emitDebug('refresh.done', {
+        sessionKey,
+        refreshSeq,
+        reason,
+        cacheOnly: true,
+        messageCount: messages.length,
+        pending: meta.pending === true,
+      });
       return messages;
     }
 
@@ -184,11 +249,25 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
         viewMeta: state.sessionViewMeta.get(sessionKey) || null,
       });
     }
+    emitDebug('refresh.done', {
+      sessionKey,
+      refreshSeq,
+      reason,
+      cacheOnly: false,
+      messageCount: messages.length,
+      pending: meta.pending === true,
+    });
     return messages;
   }
 
   function scheduleSessionRefresh(sessionKey, reason = 'session-update', delay = 120, options = {}) {
     if (!sessionKey) {return;}
+    emitDebug('refresh.scheduled', {
+      sessionKey,
+      reason,
+      delay,
+      cacheOnly: options?.cacheOnly === true,
+    });
     const meta = getSessionMeta(sessionKey);
     meta.dirty = true;
     meta.lastReason = reason;
@@ -217,6 +296,11 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
   async function sendMessage(sessionKey, text, options = {}) {
     if (!sessionKey || !api?.sendMessage) {return null;}
     const meta = getSessionMeta(sessionKey);
+    emitDebug('send.start', {
+      sessionKey,
+      textLength: String(text || '').length,
+      hasLocalId: !!options?.localId,
+    });
     meta.pending = true;
     meta.lastReason = 'send';
     meta.lastUpdatedAt = Date.now();
@@ -227,13 +311,27 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
         delays: [250, 900, 2200, 4500],
         startedAt: Date.now(),
       });
+      emitDebug('pending.plan.created', {
+        sessionKey,
+        localId,
+        delays: [250, 900, 2200, 4500],
+      });
     }
     const payload = await api.sendMessage(sessionKey, text, options);
+    emitDebug('send.accepted', {
+      sessionKey,
+      localId,
+    });
     const plan = state.pendingRefreshPlans.get(sessionKey);
     const refreshDelays = Array.isArray(plan?.delays) ? plan.delays : [250, 900, 2200];
     for (const delay of refreshDelays) {
       scheduleSessionRefresh(sessionKey, `send-observe-${delay}`, delay, { force: true, cacheOnly: true });
     }
+    emitDebug('send.observe-armed', {
+      sessionKey,
+      localId,
+      delays: refreshDelays,
+    });
     return payload;
   }
 
@@ -285,6 +383,17 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     return true;
   }
 
+  function setHistoryWindow(nextWindow) {
+    const parsed = Number(nextWindow);
+    if (!Number.isFinite(parsed) || parsed < 1) {return state.historyWindow;}
+    state.historyWindow = parsed;
+    return state.historyWindow;
+  }
+
+  function getHistoryWindow() {
+    return state.historyWindow;
+  }
+
   function getActiveSessionKey() {
     return state.activeSessionKey;
   }
@@ -309,6 +418,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     scheduleSessionRefresh,
     sendMessage,
     simulateStream,
+    setHistoryWindow,
+    getHistoryWindow,
     getActiveSessionKey,
     getSessions,
     getSessionMeta,
@@ -322,3 +433,5 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     },
   };
 }
+
+export { bindComposerFlowActions } from './composer-actions.js';

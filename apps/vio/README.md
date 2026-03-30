@@ -38,7 +38,10 @@ This means the current front-end should not be described as only the original mi
 - Local runner: `node apps/vio/src/server/runner.mjs`
 - Runtime publish step: `node apps/vio/scripts/publish-runtime.mjs`
 - Browser-path smoke: `node apps/vio/scripts/smoke-browser.mjs`
-- Fast refresh workflow: `bash apps/vio/scripts/dev-refresh.sh`
+- Fast local dev check: `pnpm vio:dev-check`
+- Scoped format check: `pnpm vio:format-check`
+- Fast refresh workflow: `pnpm vio:dev-refresh`
+- Direct refresh script: `bash apps/vio/scripts/dev-refresh.sh`
 - launchd service: `com.vio.phase1` on port `8792`
 - `runner.mjs` now calls the live local OpenClaw Gateway through `gateway/liveGatewayClient.mjs`.
 - The live gateway client reads connection details from `~/.openclaw/openclaw.json` and connects to the local Gateway via `GatewayClient` from the repo dist runtime.
@@ -49,24 +52,43 @@ This means the current front-end should not be described as only the original mi
 The main engineering focus is now:
 1. keep the live gateway-backed runtime path healthy
 2. continue broader old-layout migration deliberately
-3. consolidate front-end source-of-truth from `public/` toward clearer `src/` ownership
-4. keep reducing composition sprawl in `public/app.js`
+3. refine the source -> publish -> runtime workflow now that the transition has landed
+4. keep runtime entry and publish scope clean as more modules arrive
 
-## Recent front-end consolidation step
-Front-end consolidation has now crossed beyond the first bootstrap cleanup step.
+## Publish / launch workflow
+Current recommended workflow:
 
-What has already landed:
-- `public/app.js` has been reduced into a thinner composition entry
-- startup responsibilities are split into:
-  - `bootstrap-message-runtime.js`
-  - `bootstrap-workspace-shell.js`
-  - `bootstrap-event-stream.js`
-- the main front-end JS source has now been migrated into `src/`
-- a first publish/runtime step now copies front-end source into `public/runtime/src/`
-- `public/app.js` now loads the published runtime path
-- real browser smoke has verified that the published runtime path can initialize Vio successfully
+### Fast local check
+```bash
+pnpm vio:dev-check
+```
 
-What still remains:
-- deciding whether `public/runtime/` stays as the long-term runtime output home
-- retiring `public/modules/` bridge usage cleanly
-- repository cleanup for stale or superseded bridge-era leftovers
+This will:
+1. run scoped format check for `apps/vio`
+2. publish front-end runtime output
+3. run browser-path smoke
+
+### Fast refresh
+```bash
+pnpm vio:dev-refresh
+```
+
+This will:
+1. publish front-end runtime output
+2. kickstart launchd service `com.vio.phase1`
+3. wait for port `8792`
+4. run browser-path smoke
+
+### Manual path
+```bash
+node apps/vio/scripts/publish-runtime.mjs
+node apps/vio/scripts/smoke-browser.mjs
+```
+
+Current publish scope:
+- `src/app/`
+- `src/modules/`
+- `src/shared/`
+
+Current runtime output:
+- `public/runtime/src/`

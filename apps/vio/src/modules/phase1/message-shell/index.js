@@ -160,7 +160,7 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
   return row;
 }
 
-const MAX_VISIBLE_HISTORY = 3;
+const DEFAULT_VISIBLE_HISTORY = 7;
 
 function shouldDisplayMessage(message = {}) {
   const role = normalizeMessageRole(message);
@@ -175,8 +175,9 @@ function normalizeComparableUserText(text = '') {
     .trim();
 }
 
-export function createMessageShell({ mountEl, debug = null } = {}) {
+export function createMessageShell({ mountEl, debug = null, historyWindow = DEFAULT_VISIBLE_HISTORY } = {}) {
   let mountedSessionKey = null;
+  let visibleHistoryWindow = Number.isFinite(historyWindow) ? historyWindow : DEFAULT_VISIBLE_HISTORY;
   let pendingMessages = [];
   let lastCanonicalMessages = [];
   let activeAssistantStream = null;
@@ -361,7 +362,7 @@ export function createMessageShell({ mountEl, debug = null } = {}) {
     const target = ensureMount();
     if (!target) {return { absorbedIds: [], pendingMessages };}
     const sourceMessages = Array.isArray(messages) ? messages : [];
-    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-MAX_VISIBLE_HISTORY);
+    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-visibleHistoryWindow);
     mountedSessionKey = sessionKey || null;
     emitDebug('mount.render-history', {
       sessionKey,
@@ -580,6 +581,20 @@ export function createMessageShell({ mountEl, debug = null } = {}) {
     return !!target.querySelector('.msg-row.assistant[data-status="streaming"]');
   }
 
+  function setHistoryWindow(nextWindow) {
+    const parsed = Number(nextWindow);
+    if (!Number.isFinite(parsed) || parsed < 1) {return visibleHistoryWindow;}
+    visibleHistoryWindow = parsed;
+    if (mountedSessionKey) {
+      renderCanonicalHistory(mountedSessionKey, lastCanonicalMessages);
+    }
+    return visibleHistoryWindow;
+  }
+
+  function getHistoryWindow() {
+    return visibleHistoryWindow;
+  }
+
   function getMountedSessionKey() {
     return mountedSessionKey;
   }
@@ -607,6 +622,8 @@ export function createMessageShell({ mountEl, debug = null } = {}) {
     snapshotActiveStream,
     setRuntimeRunHint,
     clearRuntimeRunHint,
+    setHistoryWindow,
+    getHistoryWindow,
     getMountedSessionKey,
     getDebugState,
     hasStreamingRowMounted,
@@ -615,3 +632,6 @@ export function createMessageShell({ mountEl, debug = null } = {}) {
     },
   };
 }
+
+export { renderSessionListView } from './session-list-view.js';
+export { renderSessionStatus } from './session-status-view.js';

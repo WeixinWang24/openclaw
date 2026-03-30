@@ -5,12 +5,14 @@ export function createMessageRuntimeRefs() {
     slashCommandBannerEl: document.getElementById('slash-command-banner'),
     sessionPreviewEl: document.getElementById('session-preview'),
     refreshSessionBtnEl: document.getElementById('refresh-session-btn'),
+    historyWindowEl: document.getElementById('history-window-select'),
     runtimeSessionSummaryEl: document.getElementById('runtime-session-summary'),
     runtimeRunSummaryEl: document.getElementById('runtime-run-summary'),
     composerFormEl: document.getElementById('composer-form'),
     composerInputEl: document.getElementById('composer-input'),
     composerSendBtnEl: document.getElementById('composer-send-btn'),
     composerStatusEl: document.getElementById('composer-status'),
+    continueBtnEl: document.querySelector('.chat-continue-fab'),
   };
 }
 
@@ -31,7 +33,7 @@ export function createWorkspaceShellRefs() {
   };
 }
 
-export function createPageShellRefs() {
+function createPageShellRefs() {
   return {
     ...createMessageRuntimeRefs(),
     ...createWorkspaceShellRefs(),
@@ -82,7 +84,17 @@ export function createPageShell(root) {
       <main class="main panel-shell">
         <section class="card section workspace-panel">
           <div class="section-header interaction-header">
-            <h2 class="section-title">INTERACTION</h2>
+            <div class="interaction-header-top">
+              <h2 class="section-title">INTERACTION</h2>
+              <label class="chip state-idle history-window-chip" for="history-window-select">
+                <span>history</span>
+                <select id="history-window-select" class="history-window-select">
+                  <option value="3">3</option>
+                  <option value="7" selected>7</option>
+                  <option value="15">15</option>
+                </select>
+              </label>
+            </div>
             <div class="interaction-header-right">
               <div class="workspace-view-tabs workspace-view-tabs-inline" role="tablist" aria-label="Unified workspace views">
                 <button type="button" class="console-tab is-active" role="tab" aria-selected="true">Cloud</button>
@@ -213,152 +225,16 @@ export function renderBootError(root, error) {
   root.innerHTML = `<div class="dashboard ide-layout"><header class="topbar card cyan"><div class="topbar-main"><div class="brand"><div class="brand-mark">V</div><div class="brand-text"><h1>Vio</h1><p>Bootstrap failed: ${String(error?.message || error)}</p></div></div></div></header></div>`;
 }
 
-export function renderSessionListView(flow, refs, { sessions = [], activeSessionKey = null, sessionMeta = null, sessionLoadingState = null } = {}) {
-  if (!refs?.sessionsListEl) {return;}
-  refs.sessionsListEl.innerHTML = '';
-
-  const primarySessions = [];
-  const acpSessions = [];
-  for (const session of sessions) {
-    const rawKey = String(session?.key || '');
-    if (rawKey.includes(':acp:')) {acpSessions.push(session);}
-    else {primarySessions.push(session);}
-  }
-
-  for (const session of primarySessions) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'session-item';
-    button.dataset.selected = session.key === activeSessionKey ? 'true' : 'false';
-    const meta = sessionMeta?.get?.(session.key) || null;
-    const loading = !!sessionLoadingState?.has?.(session.key);
-    const rawKey = String(session.key || '');
-    const label = session.label || session.displayName || session.key || 'session';
-    let badge = '';
-    if (rawKey === 'agent:main:main' || rawKey.endsWith(':main')) {badge = 'main';}
-    else if (rawKey.includes(':subagent:')) {badge = 'sub';}
-    const state = loading ? 'loading' : meta?.pending ? 'pending' : meta?.dirty ? 'dirty' : '';
-    button.innerHTML = `${badge ? `<span class="session-item-badge">${badge}</span>` : ''}<span class="session-item-title">${label}</span>${state ? `<span class="session-item-state">${state}</span>` : ''}`;
-    button.title = rawKey || label;
-    button.addEventListener('click', () => {
-      flow.selectSession(session.key).catch(() => {});
-    });
-    refs.sessionsListEl.appendChild(button);
-  }
-
-  if (acpSessions.length > 0) {
-    const wrap = document.createElement('div');
-    wrap.className = 'session-acp-menu';
-
-    const activeAcpSession = acpSessions.find(session => session.key === activeSessionKey) || null;
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'session-item session-acp-trigger';
-    trigger.dataset.selected = activeAcpSession ? 'true' : 'false';
-    trigger.innerHTML = `<span class="session-item-badge">acp</span><span class="session-item-title">▾</span>`;
-    wrap.appendChild(trigger);
-    refs.sessionsListEl.appendChild(wrap);
-
-    let menu = null;
-
-    function closeMenu() {
-      if (menu) {
-        menu.remove();
-        menu = null;
-      }
-      trigger.setAttribute('aria-expanded', 'false');
-    }
-
-    function openMenu() {
-      closeMenu();
-      menu = document.createElement('div');
-      menu.className = 'session-acp-dropdown';
-      const rect = trigger.getBoundingClientRect();
-      menu.style.top = `${rect.bottom + 8}px`;
-      menu.style.left = `${Math.max(12, rect.right - 240)}px`;
-
-      for (const session of acpSessions) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'session-acp-option';
-        item.dataset.selected = session.key === activeSessionKey ? 'true' : 'false';
-        const rawLabel = session.label || session.displayName || session.key || 'acp session';
-        item.textContent = rawLabel.length > 40 ? `${rawLabel.slice(0, 37)}…` : rawLabel;
-        item.title = rawLabel;
-        item.addEventListener('click', () => {
-          closeMenu();
-          flow.selectSession(session.key).catch(() => {});
-        });
-        menu.appendChild(item);
-      }
-
-      document.body.appendChild(menu);
-      trigger.setAttribute('aria-expanded', 'true');
-    }
-
-    trigger.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (menu) {closeMenu();}
-      else {openMenu();}
-    });
-
-    document.addEventListener('click', event => {
-      if (!wrap.contains(event.target) && !menu?.contains(event.target)) {
-        closeMenu();
-      }
-    });
-
-    window.addEventListener('resize', () => {
-      if (menu) {
-        closeMenu();
-      }
-    });
-  }
-}
-
-export function renderSessionStatus(refs, flow, sessionKey, { loading = false, messages = null, reconciled = false, meta = null, view = null, viewMeta = null } = {}) {
-  if (loading) {
-    if (refs?.sessionStatusChipEl) {refs.sessionStatusChipEl.textContent = 'runtime: loading';}
-    return;
-  }
-  const count = Array.isArray(messages) ? messages.length : flow?.getSessionMessages(sessionKey).length;
-  const activeRunId = viewMeta?.activeRunId || null;
-  const activeRunStatus = viewMeta?.activeRunStatus || null;
-  const runCount = Array.isArray(viewMeta?.runs) ? viewMeta.runs.length : (view?.runs && typeof view.runs === 'object' ? Object.keys(view.runs).length : 0);
-  if (refs?.sessionStatusChipEl) {
-    refs.sessionStatusChipEl.textContent = activeRunId ? `runtime: ${String(activeRunStatus || 'active')}` : 'runtime: idle';
-  }
-  if (refs?.runtimeSessionSummaryEl) {
-    const mode = reconciled ? 'reconciled' : 'ready';
-    const pendingTag = meta?.pending ? ' · pending' : '';
-    refs.runtimeSessionSummaryEl.textContent = `Session ${sessionKey} · ${count} visible messages · mode ${mode}${pendingTag}`;
-  }
-  if (refs?.runtimeRunSummaryEl) {
-    refs.runtimeRunSummaryEl.textContent = activeRunId
-      ? `Active run ${String(activeRunId)} · status ${String(activeRunStatus || 'active')}`
-      : runCount > 0
-        ? `Known runs in projection: ${runCount}`
-        : 'No active run.';
-  }
-}
-
-export function bindPageShellActions({ refs, flow, shell, debug = null }) {
+export function bindPageShellActions({ refs, onSlashBanner = null }) {
   let slashBannerTimer = null;
 
-  function emitDebug(event, payload = {}) {
-    void debug?.emit?.({
-      area: 'page-shell',
-      event,
-      activeSessionKey: flow?.getActiveSessionKey?.() || null,
-      mountedSessionKey: shell?.getMountedSessionKey?.() || null,
-      payload,
-    });
-  }
-
-  function isSlashCommandText(text = '') {
-    return /^\s*\/[A-Za-z0-9_-]+(?:\s|$)/.test(String(text || ''));
-  }
+  refs?.composerInputEl?.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') {return;}
+    if (event.shiftKey) {
+      event.preventDefault();
+      refs?.composerFormEl?.requestSubmit?.();
+    }
+  });
 
   function showSlashBanner(text, options = {}) {
     const bannerEl = refs?.slashCommandBannerEl;
@@ -370,7 +246,7 @@ export function bindPageShellActions({ refs, flow, shell, debug = null }) {
     bannerEl.hidden = false;
     bannerEl.dataset.tone = options?.tone || 'info';
     bannerEl.textContent = text;
-    const ttlMs = Number.isFinite(options?.ttlMs) ? options.ttlMs : 6200;
+    const ttlMs = Number.isFinite(options?.ttlMs) ? options?.ttlMs : 6200;
     slashBannerTimer = window.setTimeout(() => {
       bannerEl.hidden = true;
       bannerEl.textContent = '';
@@ -379,84 +255,15 @@ export function bindPageShellActions({ refs, flow, shell, debug = null }) {
     }, ttlMs);
   }
 
-  refs?.refreshSessionBtnEl?.addEventListener('click', () => {
-    const sessionKey = flow.getActiveSessionKey();
-    if (!sessionKey) {return;}
-    flow.refreshSession(sessionKey, 'manual-refresh').catch(() => {});
-  });
+  if (typeof onSlashBanner === 'function') {
+    return {
+      showSlashBanner,
+      emitSlashBanner: onSlashBanner,
+    };
+  }
 
-  refs?.composerFormEl?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const sessionKey = flow?.getActiveSessionKey?.();
-    const inputEl = refs?.composerInputEl;
-    const sendBtnEl = refs?.composerSendBtnEl;
-    const statusEl = refs?.composerStatusEl;
-    const text = String(inputEl?.value || '').trim();
-    emitDebug('ui.send.submit', {
-      sessionKey,
-      textLength: text.length,
-      hasText: !!text,
-    });
-    if (!sessionKey || !text) {return;}
-
-    const isSlashCommand = isSlashCommandText(text);
-    const localId = isSlashCommand ? null : (shell?.send?.(sessionKey, text) || null);
-    emitDebug('ui.send.local-id-created', {
-      sessionKey,
-      localId,
-      textLength: text.length,
-      isSlashCommand,
-    });
-    if (inputEl) {inputEl.value = '';}
-    if (sendBtnEl) {sendBtnEl.disabled = true;}
-    if (statusEl) {statusEl.textContent = isSlashCommand ? 'Running command…' : 'Sending…';}
-    if (isSlashCommand) {
-      showSlashBanner(`Running ${text}…`, { ttlMs: 6200, tone: 'info' });
-      emitDebug('ui.send.slash-banner-shown', {
-        sessionKey,
-        text,
-      });
-    }
-
-    try {
-      emitDebug('ui.send.flow-dispatch', {
-        sessionKey,
-        localId,
-        isSlashCommand,
-      });
-      await flow?.sendMessage?.(sessionKey, text, { localId });
-      emitDebug('ui.send.flow-dispatch-done', {
-        sessionKey,
-        localId,
-        isSlashCommand,
-      });
-      if (statusEl) {statusEl.textContent = isSlashCommand ? 'Command sent.' : 'Streaming…';}
-      window.setTimeout(() => {
-        if (statusEl) {statusEl.textContent = 'Enter newline · Shift+Enter send';}
-      }, isSlashCommand ? 700 : 900);
-    } catch (error) {
-      emitDebug('ui.send.flow-dispatch-failed', {
-        sessionKey,
-        localId,
-        isSlashCommand,
-        error: String(error?.message || error),
-      });
-      if (!isSlashCommand) {
-        shell?.markPendingFailed?.(sessionKey, localId);
-      } else {
-        showSlashBanner(`Command failed: ${text}`, { ttlMs: 6800, tone: 'error' });
-      }
-      if (statusEl) {statusEl.textContent = `Send failed: ${String(error?.message || error)}`;}
-    } finally {
-      if (sendBtnEl) {sendBtnEl.disabled = false;}
-    }
-  });
-
-  refs?.composerInputEl?.addEventListener('keydown', event => {
-    if (event.key !== 'Enter') {return;}
-    if (event.shiftKey) {
-      event.preventDefault();
-      refs?.composerFormEl?.requestSubmit?.();
-    }
-  });
+  return {
+    showSlashBanner,
+    emitSlashBanner: showSlashBanner,
+  };
 }

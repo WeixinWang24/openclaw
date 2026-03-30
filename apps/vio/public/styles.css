@@ -256,7 +256,7 @@ body::before {
 .chip {
   padding: 6px 10px;
   border-radius: 999px;
-  font-size: 15px;
+  font-size: 12px;
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--text-section);
@@ -2968,13 +2968,44 @@ body.animations-off *::after {
   align-items: stretch;
 }
 
+.interaction-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .interaction-header-right {
   min-width: 0;
   width: 100%;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+.history-window-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.history-window-select {
+  appearance: auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  outline: none;
+  padding: 0;
+  min-width: 2.4ch;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
 }
 
 .sessions-list {
