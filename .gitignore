@@ -120,6 +120,10 @@ dist/protocol.schema.json
 apps/viodashboard/data/
 apps/viodashboard/public/avatars/
 
+# Vio local PTY/runtime state (never commit)
+.vio/
+apps/vio/.vio/
+
 # Local Finder metadata inside Vio app workspace
 apps/vio/.DS_Store
 apps/vio/public/.DS_Store
