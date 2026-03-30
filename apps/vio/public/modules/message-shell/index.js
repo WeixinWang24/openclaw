@@ -160,8 +160,6 @@ function createMessageRow(role, text, { status = null, localId = null, runId = n
   return row;
 }
 
-const MAX_VISIBLE_HISTORY = 3;
-
 function shouldDisplayMessage(message = {}) {
   const role = normalizeMessageRole(message);
   return role === 'user' || role === 'assistant';
@@ -324,7 +322,7 @@ export function createMessageShell({ mountEl } = {}) {
     const target = ensureMount();
     if (!target) {return { absorbedIds: [], pendingMessages };}
     const sourceMessages = Array.isArray(messages) ? messages : [];
-    const visibleMessages = sourceMessages.filter(shouldDisplayMessage).slice(-MAX_VISIBLE_HISTORY);
+    const visibleMessages = sourceMessages.filter(shouldDisplayMessage);
     mountedSessionKey = sessionKey || null;
     lastCanonicalMessages = sourceMessages;
     if (activeAssistantStream) {
