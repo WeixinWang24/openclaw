@@ -159,6 +159,7 @@ export function createPageShell(root) {
     fileSaveBtnEl: document.getElementById('fileSaveBtn'),
     fileModeBadgeEl: document.getElementById('fileModeBadge'),
     fileEditorEl: document.getElementById('fileEditor'),
+    workspaceCodeActionsEl: document.getElementById('workspaceCodeActions'),
   };
 }
 
