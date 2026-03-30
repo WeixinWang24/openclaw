@@ -2872,7 +2872,8 @@ async function submitChatText(text = '', options = {}) {
   addDebugLine(`submitChatText: len=${outboundText.length} attachments=${attachments.length} ws=${wsState} session=${selectedSessionKey || 'none'}`, ws && ws.readyState === WebSocket.OPEN ? 'cyan' : 'pink');
   if ((!value && attachments.length === 0) || (!outboundText && attachments.length === 0) || !selectedSessionKey) {return;}
 
-  const pendingLocalId = value ? messageShell.send(selectedSessionKey, value) : null;
+  const isSlashCommand = value.startsWith('/');
+  const pendingLocalId = (!isSlashCommand && value) ? messageShell.send(selectedSessionKey, value) : null;
   const sendResult = await sendToSelectedSession(outboundText, {
     userText: value,
     attachments,

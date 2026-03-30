@@ -1,5 +1,8 @@
 # VioDashboard
 
+> Legacy/reference codebase. The standalone VioDashboard runtime on port 8791 has been decommissioned.
+> Active browser-facing Vio development/runtime now lives in `apps/vio` on port 8792 via `com.vio.phase1`.
+
 Beginner-first local dashboard for an OpenClaw source checkout.
 
 This README is written for the exact situation below:
@@ -9,12 +12,16 @@ This README is written for the exact situation below:
 - you also want to run **VioDashboard** from this repo
 - you want one document that tells you what to do, in order
 
-If everything is healthy, you should end with:
+Historical healthy state for the legacy standalone dashboard was:
 
 - OpenClaw Gateway running locally at `ws://127.0.0.1:19011`
 - OpenClaw Control UI reachable at `http://127.0.0.1:19011/`
 - VioDashboard reachable at `http://127.0.0.1:8791/`
 - VioDashboard `/setup.html` showing green or at least clearly telling you what is still missing
+
+Current active target for browser-facing Vio work is:
+
+- Vio Phase 1 reachable at `http://127.0.0.1:8792/`
 
 ---
 
