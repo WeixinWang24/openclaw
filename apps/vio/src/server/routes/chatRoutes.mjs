@@ -4,7 +4,7 @@ function buildHistoryViewMeta(view) {
   const runs = view && typeof view.runs === 'object' && view.runs
     ? Object.values(view.runs)
     : [];
-  const activeRun = [...runs].toReversed().find(run => run && (run.status === 'started' || run.status === 'streaming')) || null;
+  const activeRun = [...runs].toReversed().find(run => run && (run.status === 'started' || run.status === 'acknowledged' || run.status === 'streaming')) || null;
   return {
     updatedAt: view?.updatedAt || null,
     activeRunId: activeRun?.runId || null,

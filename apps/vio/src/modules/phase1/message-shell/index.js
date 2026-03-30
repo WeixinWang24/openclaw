@@ -321,6 +321,24 @@ export function createMessageShell({ mountEl, debug = null, historyWindow = DEFA
     return { absorbedIds, remaining };
   }
 
+  function clearPendingMessages(sessionKey = null) {
+    const targetSessionKey = sessionKey || mountedSessionKey;
+    if (!targetSessionKey) {return false;}
+    const removed = pendingMessages.filter(item => item.sessionKey === targetSessionKey);
+    pendingMessages = pendingMessages.filter(item => item.sessionKey !== targetSessionKey);
+    if (mountedSessionKey === targetSessionKey) {
+      for (const pending of removed) {
+        findPendingRow(pending.localId)?.remove();
+      }
+    }
+    emitDebug('pending.clear', {
+      sessionKey: targetSessionKey,
+      count: removed.length,
+      localIds: removed.map(item => item.localId),
+    });
+    return removed.length > 0;
+  }
+
   function clearActiveStreamRows() {
     const target = ensureMount();
     if (!target) {return;}
@@ -541,7 +559,7 @@ export function createMessageShell({ mountEl, debug = null, historyWindow = DEFA
     if (!target) {return false;}
     clearRuntimeHintRows();
     if (!status) {return false;}
-    const normalizedStatus = String(status).toLowerCase();
+    const normalizedStatus = String(status || '').toLowerCase();
     if (!['started', 'acknowledged', 'streaming', 'finalizing', 'final'].includes(normalizedStatus)) {
       return false;
     }
@@ -616,6 +634,7 @@ export function createMessageShell({ mountEl, debug = null, historyWindow = DEFA
     reset,
     send,
     markPendingFailed,
+    clearPendingMessages,
     handleAck,
     handleDelta,
     handleFinal,

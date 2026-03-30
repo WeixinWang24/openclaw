@@ -4,8 +4,9 @@ export function renderSessionStatus(refs, flow, sessionKey, { loading = false, m
     return;
   }
   const count = Array.isArray(messages) ? messages.length : flow?.getSessionMessages(sessionKey).length;
-  const activeRunId = viewMeta?.activeRunId || null;
-  const activeRunStatus = viewMeta?.activeRunStatus || null;
+  const runState = flow?.getSessionRunState?.(sessionKey) || null;
+  const activeRunId = runState?.runId || viewMeta?.activeRunId || null;
+  const activeRunStatus = runState?.status && runState.status !== 'idle' ? runState.status : (viewMeta?.activeRunStatus || null);
   const runCount = Array.isArray(viewMeta?.runs) ? viewMeta.runs.length : (view?.runs && typeof view.runs === 'object' ? Object.keys(view.runs).length : 0);
   if (refs?.sessionStatusChipEl) {
     refs.sessionStatusChipEl.textContent = activeRunId ? `runtime: ${String(activeRunStatus || 'active')}` : 'runtime: idle';

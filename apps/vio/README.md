@@ -92,3 +92,28 @@ Current publish scope:
 
 Current runtime output:
 - `public/runtime/src/`
+
+## Session-aware run lifecycle contract
+Phase 1 now treats session run status as flow-owned runtime truth, not shell-local transient UI state.
+
+If later modules need to know whether a session is currently active / thinking / streaming / terminal, they should read that state from MessageFlow rather than infer it from chat DOM or MessageShell internals.
+
+Current intended read path:
+- `flow.getSessionRunState(sessionKey)`
+
+Current lifecycle shape:
+- `runId`
+- `status` (`idle | started | acknowledged | streaming | final | error | aborted`)
+- `updatedAt`
+- `source`
+
+Write / sync paths:
+- realtime kernel events -> `flow.applyRunEvent(event)`
+- history / projection refresh -> `flow.syncSessionRunStateFromView(sessionKey, view, viewMeta)`
+
+Pending cleanup rule:
+- terminal run states (`final`, `error`, `aborted`) are allowed to settle lingering pending message rendering for that session after refresh reconciliation.
+
+Guideline for future Phase 2+ modules:
+- use MessageFlow as the session-aware run-state owner
+- do not store independent streaming truth in Explorer / CodeReader / shell-local UI modules unless that state is explicitly derived from MessageFlow

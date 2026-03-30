@@ -2,6 +2,18 @@ function defaultNormalizeMessages(messages = []) {
   return Array.isArray(messages) ? messages : [];
 }
 
+function normalizeRunStatus(status = '') {
+  const value = String(status || '').toLowerCase();
+  if (['idle', 'started', 'acknowledged', 'streaming', 'final', 'error', 'aborted'].includes(value)) {
+    return value;
+  }
+  return 'idle';
+}
+
+function isTerminalRunStatus(status = '') {
+  return ['final', 'error', 'aborted'].includes(normalizeRunStatus(status));
+}
+
 export function createMessageFlow({ api, shell, renderChrome, renderSessionList, onSessionSelected, normalizeMessages = defaultNormalizeMessages, timers = globalThis, debug = null } = {}) {
   const state = {
     activeSessionKey: null,
@@ -15,6 +27,8 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     pendingRefreshPlans: new Map(),
     sessionViews: new Map(),
     sessionViewMeta: new Map(),
+    sessionRunState: new Map(),
+    sessionPendingSettleTimers: new Map(),
     historyWindow: 7,
   };
 
@@ -48,13 +62,145 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     else {state.sessionLoadingState.delete(sessionKey);}
   }
 
+  function getDefaultRunState() {
+    return { runId: null, status: 'idle', updatedAt: 0, source: null };
+  }
+
+  function getSessionRunState(sessionKey = null) {
+    const key = sessionKey || state.activeSessionKey;
+    if (!key) {return getDefaultRunState();}
+    return state.sessionRunState.get(key) || getDefaultRunState();
+  }
+
+  function setSessionRunState(sessionKey, next = {}) {
+    if (!sessionKey) {return getDefaultRunState();}
+    const prev = state.sessionRunState.get(sessionKey) || getDefaultRunState();
+    const normalized = {
+      runId: next.runId ?? prev.runId ?? null,
+      status: normalizeRunStatus(next.status ?? prev.status ?? 'idle'),
+      updatedAt: Number.isFinite(next.updatedAt) ? next.updatedAt : Date.now(),
+      source: next.source ?? prev.source ?? null,
+    };
+    if (normalized.status === 'idle') {
+      normalized.runId = null;
+    }
+    state.sessionRunState.set(sessionKey, normalized);
+    updateSessionListView();
+    return normalized;
+  }
+
   function updateSessionListView() {
     renderSessionList?.({
       sessions: state.sessions,
       activeSessionKey: state.activeSessionKey,
       sessionMeta: state.sessionMeta,
       sessionLoadingState: state.sessionLoadingState,
+      sessionRunState: state.sessionRunState,
     });
+  }
+
+  function syncSessionRunStateFromView(sessionKey, view = null, viewMeta = null) {
+    void view;
+    if (!sessionKey) {return getDefaultRunState();}
+    const activeRunId = viewMeta?.activeRunId || null;
+    const activeRunStatus = normalizeRunStatus(viewMeta?.activeRunStatus || 'idle');
+    if (!activeRunId || activeRunStatus === 'idle') {
+      return setSessionRunState(sessionKey, {
+        runId: null,
+        status: 'idle',
+        updatedAt: Date.now(),
+        source: 'history-view',
+      });
+    }
+    return setSessionRunState(sessionKey, {
+      runId: activeRunId,
+      status: activeRunStatus,
+      updatedAt: Date.now(),
+      source: 'history-view',
+    });
+  }
+
+  function clearScheduledSettlement(sessionKey) {
+    const timer = state.sessionPendingSettleTimers.get(sessionKey);
+    if (timer) {
+      timers.clearTimeout(timer);
+      state.sessionPendingSettleTimers.delete(sessionKey);
+    }
+  }
+
+  function settlePendingAfterTerminalRefresh(sessionKey, reason = 'run-terminal') {
+    if (!sessionKey) {return;}
+    const meta = getSessionMeta(sessionKey);
+    meta.pending = false;
+    state.pendingRefreshPlans.delete(sessionKey);
+    shell?.clearPendingMessages?.(sessionKey);
+    emitDebug('pending.settled', { sessionKey, reason });
+    updateSessionListView();
+    if (state.activeSessionKey === sessionKey) {
+      renderChrome?.(sessionKey, {
+        loading: false,
+        messages: state.sessionMessages.get(sessionKey) || [],
+        reason,
+        activeSessionKey: state.activeSessionKey,
+        meta,
+        isActive: true,
+        view: state.sessionViews.get(sessionKey) || null,
+        viewMeta: state.sessionViewMeta.get(sessionKey) || null,
+      });
+    }
+  }
+
+  function scheduleSessionPendingSettlement(sessionKey, reason = 'run-terminal', delay = 180) {
+    if (!sessionKey) {return;}
+    clearScheduledSettlement(sessionKey);
+    const timer = timers.setTimeout(async () => {
+      state.sessionPendingSettleTimers.delete(sessionKey);
+      try {
+        await refreshSession(sessionKey, reason, { force: true, cacheOnly: true, settlePendingOnTerminal: true });
+      } catch {
+        settlePendingAfterTerminalRefresh(sessionKey, `${reason}:fallback`);
+      }
+    }, delay);
+    state.sessionPendingSettleTimers.set(sessionKey, timer);
+    emitDebug('pending.settlement.scheduled', { sessionKey, reason, delay });
+  }
+
+  function applyRunEvent(event = {}) {
+    const sessionKey = event?.sessionKey || null;
+    const runId = event?.runId || null;
+    if (!sessionKey) {return getDefaultRunState();}
+    const type = String(event?.type || '').toLowerCase();
+    let nextStatus = null;
+    if (type === 'run.started') {nextStatus = 'started';}
+    else if (type === 'run.acknowledged') {nextStatus = 'acknowledged';}
+    else if (type === 'run.delta') {nextStatus = 'streaming';}
+    else if (type === 'run.final') {nextStatus = 'final';}
+    else if (type === 'run.error') {nextStatus = 'error';}
+    else if (type === 'run.aborted') {nextStatus = 'aborted';}
+    if (!nextStatus) {return getSessionRunState(sessionKey);}
+    const runState = setSessionRunState(sessionKey, {
+      runId,
+      status: nextStatus,
+      updatedAt: Number(event?.ts) || Date.now(),
+      source: 'event',
+    });
+    emitDebug('run-state.updated', { sessionKey, runId, status: runState.status, source: 'event' });
+    if (isTerminalRunStatus(runState.status)) {
+      scheduleSessionPendingSettlement(sessionKey, type);
+    }
+    if (state.activeSessionKey === sessionKey) {
+      renderChrome?.(sessionKey, {
+        loading: false,
+        messages: state.sessionMessages.get(sessionKey) || [],
+        reason: type,
+        activeSessionKey: state.activeSessionKey,
+        meta: getSessionMeta(sessionKey),
+        isActive: true,
+        view: state.sessionViews.get(sessionKey) || null,
+        viewMeta: state.sessionViewMeta.get(sessionKey) || null,
+      });
+    }
+    return runState;
   }
 
   async function fetchSessionList() {
@@ -96,6 +242,7 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     state.sessionMessages.set(sessionKey, messages);
     state.sessionViews.set(sessionKey, data?.view || null);
     state.sessionViewMeta.set(sessionKey, data?.viewMeta || null);
+    syncSessionRunStateFromView(sessionKey, data?.view || null, data?.viewMeta || null);
     const meta = getSessionMeta(sessionKey);
     meta.dirty = false;
     meta.pending = false;
@@ -189,6 +336,11 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
       }
     } else {
       meta.pending = false;
+    }
+
+    const runState = getSessionRunState(sessionKey);
+    if (isTerminalRunStatus(runState.status) && options?.settlePendingOnTerminal === true) {
+      settlePendingAfterTerminalRefresh(sessionKey, reason);
     }
 
     const viewMeta = state.sessionViewMeta.get(sessionKey) || null;
@@ -346,21 +498,25 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     const finalDelay = Number.isFinite(options.finalDelayMs) ? options.finalDelayMs : 280;
     const refreshDelay = Number.isFinite(options.refreshDelayMs) ? options.refreshDelayMs : 420;
 
+    applyRunEvent({ type: 'run.acknowledged', sessionKey, runId: null, ts: Date.now() });
     shell?.handleAck?.(sessionKey);
     trace?.push('ack');
 
     timers.setTimeout(() => {
+      applyRunEvent({ type: 'run.delta', sessionKey, runId: null, accumulatedText: delta1, ts: Date.now() });
       shell?.handleDelta?.(sessionKey, delta1);
       trace?.push('delta-1');
     }, ackDelay + delta1Delay);
 
     timers.setTimeout(() => {
+      applyRunEvent({ type: 'run.delta', sessionKey, runId: null, accumulatedText: `${delta1}${delta2}`, ts: Date.now() });
       shell?.handleDelta?.(sessionKey, `${delta1}${delta2}`);
       trace?.push('delta-2');
     }, ackDelay + delta2Delay);
 
     timers.setTimeout(() => {
       try {
+        applyRunEvent({ type: 'run.final', sessionKey, runId: null, ts: Date.now() });
         shell?.handleFinal?.(sessionKey);
         trace?.push('final');
         const streamSnapshot = shell?.snapshotActiveStream?.() || null;
@@ -424,6 +580,9 @@ export function createMessageFlow({ api, shell, renderChrome, renderSessionList,
     getSessions,
     getSessionMeta,
     getSessionMessages,
+    getSessionRunState,
+    applyRunEvent,
+    syncSessionRunStateFromView,
     isSessionLoading,
     getSessionView(sessionKey = null) {
       return state.sessionViews.get(sessionKey || state.activeSessionKey) || null;
