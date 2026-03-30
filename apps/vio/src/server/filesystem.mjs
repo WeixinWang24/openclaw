@@ -54,7 +54,7 @@ export function readProjectFile(relPath) {
   const stat = fs.statSync(abs);
   if (!stat.isFile()) {throw new Error('not a file');}
   const content = fs.readFileSync(abs, 'utf8');
-  return { path: relPath, content };
+  return { path: relPath, absolutePath: abs, content };
 }
 
 export function writeProjectFile(relPath, content) {

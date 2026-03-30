@@ -13,6 +13,9 @@ export function createWorkspaceShellRefs() {
     fileSaveBtnEl: document.getElementById('fileSaveBtn'),
     fileModeBadgeEl: document.getElementById('fileModeBadge'),
     fileEditorEl: document.getElementById('fileEditor'),
+    fileMarkdownPreviewEl: document.getElementById('fileMarkdownPreview'),
+    markdownSplitShellEl: document.getElementById('markdownSplitShell'),
+    markdownSplitResizerEl: document.getElementById('markdownSplitResizer'),
     workspaceCodeActionsEl: document.getElementById('workspaceCodeActions'),
   };
 }
@@ -66,7 +69,7 @@ export function renderWorkspaceShell() {
             </div>
             <div class="interaction-header-right">
               <div class="workspace-view-tabs workspace-view-tabs-inline" role="tablist" aria-label="Unified workspace views">
-                <button type="button" class="console-tab is-active" role="tab" aria-selected="true">Cloud</button>
+                <button type="button" class="console-tab is-active" role="tab" aria-selected="true">VIEWER</button>
                 <button type="button" class="console-tab" role="tab" aria-selected="false">Replies</button>
                 <button type="button" class="console-tab" role="tab" aria-selected="false">Terminal</button>
                 <button type="button" class="console-tab" role="tab" aria-selected="false">Code</button>
@@ -79,21 +82,29 @@ export function renderWorkspaceShell() {
           <div class="workspace-split" id="workspaceSplit">
             <section class="editor-stack" id="editorStack">
               <section class="file-editor-pane vio-unified-workspace-page">
-                <div class="pane-header workspace-view-header">
-                  <div class="pane-actions">
-                    <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
-                    <div class="workspace-code-actions" id="workspaceCodeActions">
-                      <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
-                      <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
-                      <div id="fileModeBadge" class="chip state-idle">plain</div>
+                <div class="workspace-view-stack">
+                  <div class="workspace-view-pane is-active">
+                    <div class="editor-shell markdown-split-shell" id="markdownSplitShell" data-mode="plain">
+                      <div id="fileMarkdownPreview" class="file-markdown-preview" hidden></div>
+                      <div class="markdown-split-resizer" id="markdownSplitResizer" title="拖动调整预览/源码比例" hidden></div>
+                      <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
                     </div>
                   </div>
                 </div>
-                <div class="workspace-view-stack">
-                  <div class="workspace-view-pane is-active">
-                    <div class="editor-shell">
-                      <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
+                <div class="pane-header workspace-view-header workspace-view-toolbar-bottom">
+                  <div class="viewer-toolbar-shell" id="workspaceCodeActions">
+                    <div class="viewer-toolbar-left">
+                      <div id="fileModeBadge" class="chip state-idle">plain</div>
                     </div>
+                    <div class="viewer-toolbar-right">
+                      <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
+                      <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="pane-header workspace-view-header workspace-view-footer">
+                  <div class="pane-actions">
+                    <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
                   </div>
                 </div>
               </section>

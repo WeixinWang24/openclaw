@@ -824,7 +824,7 @@ button.chip:disabled {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 8px;
 }
 
@@ -919,6 +919,66 @@ button.chip:disabled {
   overflow: hidden;
 }
 
+.markdown-split-shell {
+  display: grid;
+  grid-template-rows: minmax(140px, auto) 10px minmax(180px, 1fr);
+}
+
+.markdown-split-shell[data-mode="plain"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.markdown-split-shell[data-mode="plain"] .markdown-split-resizer,
+.markdown-split-shell[data-mode="plain"] .file-markdown-preview {
+  display: none;
+}
+
+.markdown-split-resizer {
+  height: 10px;
+  cursor: row-resize;
+  background: linear-gradient(180deg, rgba(0,255,198,.08), rgba(122,0,255,.08));
+  border-top: 1px solid rgba(199,139,255,.10);
+  border-bottom: 1px solid rgba(199,139,255,.10);
+}
+
+.workspace-view-toolbar-bottom {
+  padding-top: 6px;
+  padding-bottom: 2px;
+}
+
+.workspace-view-footer {
+  padding-top: 8px;
+  margin-top: 0;
+  border-top: 1px solid rgba(199,139,255,.10);
+}
+
+.viewer-toolbar-shell {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.viewer-toolbar-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.viewer-toolbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#fileModeBadge {
+  flex: 0 0 auto;
+}
+
 .file-highlight,
 .file-editor {
   width: 100%;
@@ -947,8 +1007,38 @@ button.chip:disabled {
   resize: none;
   border: none;
   background: transparent;
-  color: transparent;
+  color: #d7f5ff;
   caret-color: #d7f5ff;
+}
+
+.file-markdown-preview {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 16px;
+  box-sizing: border-box;
+  color: #d7f5ff;
+  font: 16px/1.7 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  border-bottom: 1px solid rgba(199,139,255,.12);
+  background: rgba(255,255,255,.02);
+}
+
+.file-markdown-preview h1,
+.file-markdown-preview h2,
+.file-markdown-preview h3 {
+  margin: 0 0 12px;
+  color: #f4fbff;
+}
+
+.file-markdown-preview p,
+.file-markdown-preview li {
+  margin: 0 0 10px;
+}
+
+.file-markdown-preview .md-spacer {
+  height: 10px;
 }
 
 .file-editor::selection {

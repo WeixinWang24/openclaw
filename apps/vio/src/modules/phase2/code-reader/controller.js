@@ -27,6 +27,45 @@ export function createCodeReaderController(refs, options = {}) {
     return /\.md$/i.test(String(filePath || '')) ? 'markdown' : 'plain';
   }
 
+  function escapeHtml(text = '') {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function renderMarkdown(text = '') {
+    const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+    return lines.map(line => {
+      if (/^###\s+/.test(line)) {return `<h3>${escapeHtml(line.replace(/^###\s+/, ''))}</h3>`;}
+      if (/^##\s+/.test(line)) {return `<h2>${escapeHtml(line.replace(/^##\s+/, ''))}</h2>`;}
+      if (/^#\s+/.test(line)) {return `<h1>${escapeHtml(line.replace(/^#\s+/, ''))}</h1>`;}
+      if (/^-\s+/.test(line)) {return `<li>${escapeHtml(line.replace(/^-\s+/, ''))}</li>`;}
+      if (!line.trim()) {return '<div class="md-spacer"></div>';}
+      return `<p>${escapeHtml(line)}</p>`;
+    }).join('');
+  }
+
+  function syncViewerMode() {
+    const mode = detectMode(state.currentFilePath);
+    const shellEl = refs?.markdownSplitShellEl;
+    const previewEl = refs?.fileMarkdownPreviewEl;
+    const resizerEl = refs?.markdownSplitResizerEl;
+    if (!shellEl || !previewEl || !resizerEl) {return;}
+
+    shellEl.dataset.mode = mode;
+    if (mode === 'markdown' && state.currentFilePath) {
+      previewEl.hidden = false;
+      resizerEl.hidden = false;
+      previewEl.innerHTML = renderMarkdown(refs?.fileEditorEl?.value || '');
+      return;
+    }
+
+    previewEl.hidden = true;
+    resizerEl.hidden = true;
+    previewEl.innerHTML = '';
+  }
+
   function syncChrome() {
     if (refs?.fileModeBadgeEl) {
       const mode = detectMode(state.currentFilePath);
@@ -50,6 +89,7 @@ export function createCodeReaderController(refs, options = {}) {
       const dirtyTag = state.currentFileDirty ? ' *' : '';
       emitStatus(`${state.currentFilePath}${dirtyTag}`, { semanticLabel: 'file' });
     }
+    syncViewerMode();
   }
 
   function markDirty(isDirty) {
@@ -107,6 +147,39 @@ export function createCodeReaderController(refs, options = {}) {
     markDirty(false);
   }
 
+  function bindMarkdownSplitResizer() {
+    const shellEl = refs?.markdownSplitShellEl;
+    const resizerEl = refs?.markdownSplitResizerEl;
+    if (!shellEl || !resizerEl || shellEl.dataset.resizerBound === 'true') {return;}
+    shellEl.dataset.resizerBound = 'true';
+
+    let dragging = false;
+
+    function stopDrag() {
+      dragging = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+
+    function onMove(event) {
+      if (!dragging || shellEl.dataset.mode !== 'markdown') {return;}
+      const rect = shellEl.getBoundingClientRect();
+      const next = Math.max(120, Math.min(rect.height - 120, event.clientY - rect.top));
+      shellEl.style.gridTemplateRows = `${next}px 10px minmax(120px, 1fr)`;
+    }
+
+    resizerEl.addEventListener('pointerdown', event => {
+      if (shellEl.dataset.mode !== 'markdown') {return;}
+      dragging = true;
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+      event.preventDefault();
+    });
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', stopDrag);
+  }
+
   function bind() {
     refs?.fileSaveBtnEl?.addEventListener('click', () => {
       void saveCurrentFile().catch(error => emitStatus(error.message || String(error)));
@@ -116,6 +189,9 @@ export function createCodeReaderController(refs, options = {}) {
       const currentValue = refs?.fileEditorEl?.value || '';
       markDirty(!!state.currentFilePath && currentValue !== state.currentFileOriginal);
     });
+    refs?.fileEditorEl?.addEventListener('click', () => syncViewerMode());
+    refs?.fileEditorEl?.addEventListener('keyup', () => syncViewerMode());
+    bindMarkdownSplitResizer();
     syncChrome();
   }
 
