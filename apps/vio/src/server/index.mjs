@@ -16,7 +16,7 @@ import { createSessionRegistry } from './runtime/sessionRegistry.mjs';
 import { createTranscriptService } from './runtime/transcriptService.mjs';
 import { servePublicFile } from './static.mjs';
 
-export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSessionKey = null, stateRef = { connected: false }, root = new URL('..', import.meta.url).pathname } = {}) {
+export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSessionKey = null, stateRef = { connected: false }, root = new URL('../..', import.meta.url).pathname } = {}) {
   const diagnostics = createRuntimeDiagnostics();
   const messageDebugSink = createMessageDebugSink({ root });
   const eventBus = createKernelEventBus();
