@@ -1,8 +1,11 @@
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import { createLiveGatewayEventBridge } from './gateway/liveGatewayEventBridge.mjs';
 import { createChatProjection } from './projection/chatProjection.mjs';
 import { handleChatRoutes } from './routes/chatRoutes.mjs';
+import { handleFileRoutes } from './routes/fileRoutes.mjs';
 import { handleSessionRoutes } from './routes/sessionRoutes.mjs';
+import { listProjectFiles, readProjectFile, safeProjectPath, writeProjectFile } from './filesystem.mjs';
 import { createChatRuntime } from './runtime/chatRuntime.mjs';
 import { createGatewayRpcClient } from './runtime/gatewayRpcClient.mjs';
 import { createKernelEventBus, KERNEL_CHANNELS } from './runtime/kernelEventBus.mjs';
@@ -74,6 +77,16 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
 
     if (handleSessionRoutes({ req, res, requestUrl, rpcClient, sessionRegistry, defaultSessionKey, eventBridge })) {return;}
     if (handleChatRoutes({ req, res, requestUrl, chatRuntime, transcriptService, chatProjection })) {return;}
+    if (handleFileRoutes({
+      req,
+      res,
+      requestUrl,
+      listProjectFiles,
+      readProjectFile,
+      writeProjectFile,
+      safeProjectPath,
+      openPath: (targetDir, cb) => execFile('open', [targetDir], cb),
+    })) {return;}
     servePublicFile(requestUrl, res);
   });
 

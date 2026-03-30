@@ -1,4 +1,5 @@
 import { createApiClient } from './modules/api-client.js';
+import { createExplorerController } from './modules/explorer.js';
 import { enableLayoutResize } from './modules/layout-resize.js';
 import { createMessageFlow } from './modules/message-flow/index.js';
 import { normalizeFlowMessages } from './modules/message-flow/normalize.js';
@@ -75,6 +76,10 @@ async function bootstrap() {
 
   bindPageShellActions({ refs, flow, shell });
   attachRunEventStream(flow, shell);
+
+  const explorer = createExplorerController(refs);
+  explorer.bind();
+  await explorer.loadFileTree('.');
 
   const sessionsData = await flow.fetchSessionList();
   renderSessionListView(flow, refs, {

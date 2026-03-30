@@ -23,11 +23,16 @@ export function createPageShell(root) {
         <section class="card section explorer-shell">
           <div class="section-header">
             <h2 class="section-title">Explorer</h2>
-            <button type="button" class="chip state-idle" disabled>files</button>
+            <button id="openDirBtn" type="button" class="chip state-idle">files</button>
           </div>
-          <section class="file-browser-panel explorer-pane vio-placeholder-pane">
-            <div class="vio-placeholder-title">Placeholder</div>
-            <div class="vio-placeholder-body">Old VioDashboard explorer shell restored first. Backend wiring comes next.</div>
+          <section class="file-browser-panel explorer-pane">
+            <div class="explorer-toolbar">
+              <button id="fileBackBtn" type="button" class="chip state-idle">↑</button>
+              <button id="fileForwardBtn" type="button" class="chip state-idle">↩</button>
+              <button id="fileRefreshBtn" type="button" class="chip state-idle">⟳</button>
+              <div class="event-sub"><span class="semantic-label">dir</span> <span id="fileBrowserRoot" class="semantic-value">.</span></div>
+            </div>
+            <div id="fileTree" class="file-tree"></div>
           </section>
         </section>
       </aside>
@@ -54,14 +59,20 @@ export function createPageShell(root) {
             <section class="editor-stack" id="editorStack">
               <section class="file-editor-pane vio-unified-workspace-page">
                 <div class="pane-header workspace-view-header">
-                  <div class="pane-actions"></div>
+                  <div class="pane-actions">
+                    <div id="activeFilePath" class="event-sub"><span class="semantic-value">Select a file from Explorer</span></div>
+                    <div class="workspace-code-actions" id="workspaceCodeActions">
+                      <button id="fileUndoBtn" type="button" class="chip state-idle">undo</button>
+                      <button id="fileSaveBtn" type="button" class="chip state-idle">save</button>
+                      <div id="fileModeBadge" class="chip state-idle">plain</div>
+                    </div>
+                  </div>
                 </div>
                 <div class="workspace-view-stack">
                   <div class="workspace-view-pane is-active">
-                    <section class="vio-unified-workspace-card">
-                      <div class="vio-placeholder-title">Cloud</div>
-                      <div class="vio-placeholder-body">Cloud panel is the default active section in the unified workspace page.</div>
-                    </section>
+                    <div class="editor-shell">
+                      <textarea id="fileEditor" class="file-editor" spellcheck="false" placeholder="Project file preview / edit area"></textarea>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -137,6 +148,17 @@ export function createPageShell(root) {
     composerInputEl: document.getElementById('composer-input'),
     composerSendBtnEl: document.getElementById('composer-send-btn'),
     composerStatusEl: document.getElementById('composer-status'),
+    openDirBtnEl: document.getElementById('openDirBtn'),
+    fileBackBtnEl: document.getElementById('fileBackBtn'),
+    fileForwardBtnEl: document.getElementById('fileForwardBtn'),
+    fileRefreshBtnEl: document.getElementById('fileRefreshBtn'),
+    fileBrowserRootEl: document.getElementById('fileBrowserRoot'),
+    fileTreeEl: document.getElementById('fileTree'),
+    activeFilePathEl: document.getElementById('activeFilePath'),
+    fileUndoBtnEl: document.getElementById('fileUndoBtn'),
+    fileSaveBtnEl: document.getElementById('fileSaveBtn'),
+    fileModeBadgeEl: document.getElementById('fileModeBadge'),
+    fileEditorEl: document.getElementById('fileEditor'),
   };
 }
 
