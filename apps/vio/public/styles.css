@@ -900,7 +900,60 @@ button.chip:disabled {
 }
 
 .claude-code-panel .section-header {
-  padding-bottom: 2px;
+  padding-bottom: 6px;
+}
+
+.claude-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(143,255,224,.16);
+  background: linear-gradient(180deg, rgba(14,22,40,.9), rgba(9,14,28,.92));
+  color: #d7f8ff !important;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.02);
+}
+
+.claude-status-chip .semantic-value {
+  opacity: .96;
+}
+
+.claude-status-chip.is-running .semantic-value {
+  color: #00e5ff !important;
+  text-shadow: 0 0 10px rgba(0,229,255,.22) !important;
+}
+
+.claude-status-chip .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.claude-status-chip.is-running {
+  color: #8fff9f !important;
+  border-color: rgba(143,255,159,.28);
+  background: linear-gradient(180deg, rgba(10,28,18,.92), rgba(8,22,14,.94));
+}
+
+.claude-status-chip.is-pending {
+  color: #ff9f43 !important;
+  border-color: rgba(255,159,67,.28);
+  background: linear-gradient(180deg, rgba(36,20,8,.92), rgba(28,14,6,.94));
+}
+
+.claude-status-chip.is-stopped {
+  color: #ff7a88 !important;
+  border-color: rgba(255,122,136,.28);
+  background: linear-gradient(180deg, rgba(38,14,18,.92), rgba(28,10,13,.94));
 }
 
 .claude-code-output {
@@ -2439,6 +2492,11 @@ body.animations-off *::after {
   transition: box-shadow .16s ease, border-color .16s ease, background .16s ease;
 }
 
+.claude-terminal-host-full {
+  min-height: 0;
+  height: 100%;
+}
+
 .claude-terminal-host.is-focused {
   border-color: rgba(0,255,198,.32);
   box-shadow: inset 0 0 0 1px rgba(0,255,198,.12), 0 0 18px rgba(0,255,198,.10), 0 0 28px rgba(122,0,255,.08);
@@ -2618,8 +2676,8 @@ body.animations-off *::after {
 }
 
 #claudeStatusBadge[data-status="running"] {
-  border-color: rgba(0,255,198,.34);
-  color: #8FFFE0;
+  border-color: rgba(82, 182, 255, .42);
+  color: #00e5ff;
 }
 
 #claudeStatusBadge[data-status="terminating"] {

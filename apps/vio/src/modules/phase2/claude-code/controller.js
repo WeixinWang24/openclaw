@@ -292,7 +292,17 @@ export function createClaudeCodeController(refs) {
       const parts = [state.status];
       if (state.cwd && state.cwd !== '.') {parts.push(`cwd=${state.cwd}`);}
       if (state.error) {parts.push(`error=${String(state.error)}`);}
-      refs.claudeCodeStatusEl.innerHTML = `<span class="semantic-value">${parts.join(' · ')}</span>`;
+      let tone = 'is-stopped';
+      if (state.running && !state.error) {
+        tone = 'is-running';
+      } else if (state.loading || state.status === 'starting' || state.status === 'restarting') {
+        tone = 'is-pending';
+      } else if (state.error || state.status === 'terminated' || state.status === 'failed' || state.status === 'exited') {
+        tone = 'is-stopped';
+      }
+      refs.claudeCodeStatusEl.classList.remove('is-running', 'is-stopped', 'is-pending');
+      refs.claudeCodeStatusEl.classList.add(tone);
+      refs.claudeCodeStatusEl.innerHTML = `<span class="status-dot" aria-hidden="true"></span><span class="semantic-value">${parts.join(' · ')}</span>`;
     }
     if (refs?.claudeCodeStartBtnEl) {
       refs.claudeCodeStartBtnEl.disabled = state.loading || state.running;

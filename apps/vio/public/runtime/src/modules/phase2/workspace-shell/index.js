@@ -131,19 +131,14 @@ export function renderWorkspaceShell() {
                     <section id="claudeCodePanel" class="section claude-code-panel vio-unified-workspace-card claude-code-terminal-layout">
                       <div class="section-header claude-code-chrome">
                         <h3 class="section-title">Claude Code</h3>
-                        <div id="claudeCodeStatus" class="event-sub"><span class="semantic-value">idle</span></div>
+                        <div id="claudeCodeStatus" class="claude-status-chip"><span class="semantic-value">idle</span></div>
                         <div class="pane-actions claude-code-chrome-actions">
                           <button id="claudeCodeStartBtn" type="button" class="chip state-idle">start</button>
                           <button id="claudeCodeStopBtn" type="button" class="chip state-idle">stop</button>
                           <button id="claudeCodeRestartBtn" type="button" class="chip state-idle">restart</button>
                         </div>
                       </div>
-                      <div id="claudeTerminalHost" class="claude-terminal-host"></div>
-                      <div class="claude-composer-shell">
-                        <textarea id="claudeCodeInput" class="claude-composer-input" spellcheck="false" rows="1" placeholder="Dispatch a new task to Claude..."></textarea>
-                        <button id="claudeCodeSendBtn" type="button" class="chip state-idle">Dispatch</button>
-                        <div id="claudeComposerStatus" class="claude-composer-status">Enter 发送 · Shift+Enter 换行</div>
-                      </div>
+                      <div id="claudeTerminalHost" class="claude-terminal-host claude-terminal-host-full"></div>
                     </section>
                   </div>
                 </div>
