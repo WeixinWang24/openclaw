@@ -165,6 +165,14 @@ function shouldDisplayMessage(message = {}) {
   return role === 'user' || role === 'assistant';
 }
 
+function normalizeComparableUserText(text = '') {
+  return String(text || '')
+    .replace(/^\s*\[\[\s*reply_to_current\s*\]\]\s*/i, '')
+    .replace(/^Sender \(untrusted metadata\):\s*```json[\s\S]*?```\s*/i, '')
+    .replace(/^\[[^\]\n]*\]\s*/m, '')
+    .trim();
+}
+
 export function createMessageShell({ mountEl } = {}) {
   let mountedSessionKey = null;
   let pendingMessages = [];
@@ -260,8 +268,13 @@ export function createMessageShell({ mountEl } = {}) {
     const canonicalUserTexts = new Set(
       messages
         .filter(item => normalizeMessageRole(item) === 'user')
-        .map(item => String(item?.text || '')),
+        .map(item => normalizeComparableUserText(item?.text || ''))
+        .filter(Boolean),
     );
+    const latestCanonicalUserText = [...messages]
+      .toReversed()
+      .find(item => normalizeMessageRole(item) === 'user')?.text || '';
+    const latestCanonicalComparable = normalizeComparableUserText(latestCanonicalUserText);
     const remaining = [];
     const absorbedIds = [];
     for (const pending of pendingMessages) {
@@ -269,7 +282,12 @@ export function createMessageShell({ mountEl } = {}) {
         remaining.push(pending);
         continue;
       }
-      if (pending.text && canonicalUserTexts.has(String(pending.text))) {
+      const pendingComparable = normalizeComparableUserText(pending.text || '');
+      const shouldAbsorb = !!pendingComparable && (
+        canonicalUserTexts.has(pendingComparable)
+        || latestCanonicalComparable === pendingComparable
+      );
+      if (shouldAbsorb) {
         const row = findPendingRow(pending.localId);
         row?.remove();
         absorbedIds.push(pending.localId);
