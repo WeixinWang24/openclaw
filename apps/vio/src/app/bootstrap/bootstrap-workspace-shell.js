@@ -1,5 +1,5 @@
-import { createCodeReaderController } from '../../modules/workspace-support/code-reader.js';
-import { createExplorerController } from '../../modules/workspace-support/explorer.js';
+import { createCodeReaderController } from '../../modules/phase2/code-reader/controller.js';
+import { createExplorerController } from '../../modules/phase2/explorer/controller.js';
 
 export function createExplorerStatusSetter(refs) {
   return function setExplorerStatus(text, extra = {}) {

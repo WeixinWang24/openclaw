@@ -9,3 +9,5 @@ export function createExplorerModuleSeed() {
     ],
   };
 }
+
+export { createExplorerController } from './controller.js';
