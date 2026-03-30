@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'vio.phase1.layout.v2';
+const STORAGE_KEY = 'vio.phase1.layout.v3';
 
 const DEFAULTS = {
   sidebarW: 280,
@@ -10,12 +10,20 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function sanitizeState(input = {}) {
+  const next = { ...DEFAULTS, ...(input && typeof input === 'object' ? input : {}) };
+  next.sidebarW = clamp(Number(next.sidebarW) || DEFAULTS.sidebarW, 200, 520);
+  next.rightbarW = clamp(Number(next.rightbarW) || DEFAULTS.rightbarW, 220, 520);
+  next.workspaceSplit = clamp(Number(next.workspaceSplit) || DEFAULTS.workspaceSplit, 0.2, 0.8);
+  return next;
+}
+
 function readSaved() {
   try {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) {return { ...DEFAULTS };}
     const parsed = JSON.parse(raw);
-    return { ...DEFAULTS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    return sanitizeState(parsed);
   } catch {
     return { ...DEFAULTS };
   }
@@ -36,7 +44,7 @@ function applyLayout(root, state) {
 }
 
 export function enableLayoutResize({ root = document.documentElement } = {}) {
-  const state = readSaved();
+  const state = sanitizeState(readSaved());
   applyLayout(root, state);
 
   let rafId = 0;
