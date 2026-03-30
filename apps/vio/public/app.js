@@ -1,4 +1,5 @@
 import { createApiClient } from './modules/api-client.js';
+import { createCodeReaderController } from './modules/code-reader.js';
 import { createExplorerController } from './modules/explorer.js';
 import { enableLayoutResize } from './modules/layout-resize.js';
 import { createMessageFlow } from './modules/message-flow/index.js';
@@ -77,7 +78,25 @@ async function bootstrap() {
   bindPageShellActions({ refs, flow, shell });
   attachRunEventStream(flow, shell);
 
-  const explorer = createExplorerController(refs);
+  function setExplorerStatus(text, extra = {}) {
+    if (!refs?.activeFilePathEl) {return;}
+    if (extra?.semanticLabel) {
+      refs.activeFilePathEl.innerHTML = `<span class="semantic-label">${String(extra.semanticLabel)}</span> <span class="semantic-value">${String(text || '')}</span>`;
+      return;
+    }
+    refs.activeFilePathEl.innerHTML = `<span class="semantic-value">${String(text || '')}</span>`;
+  }
+
+  const codeReader = createCodeReaderController(refs, {
+    onStatus: setExplorerStatus,
+  });
+  codeReader.bind();
+
+  const explorer = createExplorerController(refs, {
+    onStatus: setExplorerStatus,
+    canNavigateAway: () => codeReader.confirmDiscardIfDirty(),
+    onFileSelected: async relPath => await codeReader.loadFile(relPath),
+  });
   explorer.bind();
   await explorer.loadFileTree('.');
 
