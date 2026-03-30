@@ -14,6 +14,9 @@ import {
   sendClaudeCodeInput,
   startClaudeCodeSession,
   stopClaudeCodeSession,
+  restartClaudeCodeSession,
+  resizeClaudeCodeSession,
+  readClaudeCodeStream,
 } from './runtime/claudeCodeRuntime.mjs';
 import { createGatewayRpcClient } from './runtime/gatewayRpcClient.mjs';
 import { createKernelEventBus, KERNEL_CHANNELS } from './runtime/kernelEventBus.mjs';
@@ -74,11 +77,36 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
           res.write(`data: ${JSON.stringify({ channel: KERNEL_CHANNELS.RUN, event })}\n\n`);
         } catch {}
       });
+      // Claude-state polling: broadcast lifecycle/status changes every 200ms.
+      // Terminal display should rely on /api/claude/stream, not state.output snapshots.
+      let lastClaudeStateKey = '';
+      const claudePoller = setInterval(() => {
+        try {
+          const state = getClaudeCodeState();
+          if (!state.started && !state.running && !state.exited) {return;}
+          const stateKey = JSON.stringify({
+            status: state.status || 'idle',
+            started: !!state.started,
+            running: !!state.running,
+            exited: !!state.exited,
+            exitCode: state.exitCode ?? null,
+            error: state.error ?? null,
+            cwd: state.cwd || '.',
+            bridgePid: state.bridgePid ?? null,
+            childPid: state.childPid ?? null,
+          });
+          if (stateKey !== lastClaudeStateKey) {
+            lastClaudeStateKey = stateKey;
+            res.write(`data: ${JSON.stringify({ channel: 'claude-state', event: state })}\n\n`);
+          }
+        } catch {}
+      }, 200);
       const heartbeat = setInterval(() => {
         try { res.write(': heartbeat\n\n'); } catch {}
       }, 15000);
       req.on('close', () => {
         clearInterval(heartbeat);
+        clearInterval(claudePoller);
         unsubscribe?.();
         try { res.end(); } catch {}
       });
@@ -95,6 +123,9 @@ export function createVioServer({ gatewayCall, bridgeRequest = null, defaultSess
       startClaudeCodeSession,
       sendClaudeCodeInput,
       stopClaudeCodeSession,
+      restartClaudeCodeSession,
+      resizeClaudeCodeSession,
+      readClaudeCodeStream,
     })) {return;}
     if (handleDebugRoutes({ req, res, requestUrl, messageDebugSink })) {return;}
     if (handleFileRoutes({

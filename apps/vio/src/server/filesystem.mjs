@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const PROJECT_ROOT = '/Volumes/2TB/MAS';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, '../../..', '..');
 const EXTRA_ALLOWED_ROOTS = [
-  '/Users/visen24/MAS/openclaw_fork',
+  '/Volumes/2TB/MAS',
   '/Volumes/2TB/MAS/openclaw-core',
 ];
 const ALLOWED_ROOTS = [PROJECT_ROOT, ...EXTRA_ALLOWED_ROOTS].map(root => path.resolve(root));
