@@ -45,9 +45,21 @@ function main() {
     if (!fs.existsSync(srcDir)) {continue;}
     copyTree(srcDir, path.join(runtimeJsRoot, dirName));
   }
+
+  const srcAppEntry = path.join(srcRoot, 'app.js');
+  const publicAppEntry = path.join(runtimeRoot, '..', 'app.js');
+  if (fs.existsSync(srcAppEntry)) {
+    let appEntry = fs.readFileSync(srcAppEntry, 'utf8');
+    appEntry = appEntry.replace(
+      "from './modules/phase2/claude-code/controller.js'",
+      "from './runtime/src/modules/phase2/claude-code/controller.js'",
+    );
+    fs.writeFileSync(publicAppEntry, appEntry, 'utf8');
+  }
+
   console.log(`Published Vio runtime JS -> ${path.relative(appRoot, runtimeJsRoot)}`);
   console.log(`Published trees -> ${PUBLISH_DIRS.join(', ')}`);
-  console.log('Browser runtime entry -> public/app.js');
+  console.log(`Published browser entry -> ${path.relative(appRoot, publicAppEntry)}`);
   console.log('Source of truth -> src/');
 }
 
